@@ -23,10 +23,17 @@ set(SourceDirectory ./src)
 set(ApplicationSources 
 ${SourceDirectory}/application/application.cpp
 )
+
+
+
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src FILES ${ApplicationSources})
 add_executable(3DVulkanEngine ${ApplicationSources})
 target_include_directories(3DVulkanEngine
 PUBLIC ${glfw_IncludeDirectory}
 PUBLIC ${glm_IncludeDirectory}
+PUBLIC ${ThirdPartiesSource}/stb_image-2.30
 PUBLIC ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(3DVulkanEngine PRIVATE glfw ${Vulkan_LIBRARIES})
+
+# setup vs debug working directory
+set_property(TARGET 3DVulkanEngine PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
