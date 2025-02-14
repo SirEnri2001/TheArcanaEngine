@@ -32,6 +32,7 @@ target_include_directories(3DVulkanEngine
 PUBLIC ${glfw_IncludeDirectory}
 PUBLIC ${glm_IncludeDirectory}
 PUBLIC ${ThirdPartiesSource}/stb_image-2.30
+PUBLIC ${ThirdPartiesSource}/tinyobjloader-1.0.6
 PUBLIC ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(3DVulkanEngine PRIVATE glfw ${Vulkan_LIBRARIES})
 
