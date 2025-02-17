@@ -1,0 +1,1 @@
+int __declspec(dllexport) RunApp();

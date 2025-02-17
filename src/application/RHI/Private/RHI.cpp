@@ -1,3 +1,5 @@
+#include "RHI.h"
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -1743,7 +1745,7 @@ private:
     }
 };
 
-int main() {
+int RunApp() {
     HelloTriangleApplication app;
 
     try {
