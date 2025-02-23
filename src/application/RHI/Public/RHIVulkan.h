@@ -1,0 +1,112 @@
+#pragma once
+
+#include <iostream>
+#include <vector>
+#include <vulkan/vulkan_core.h>
+
+class GLFWwindow;
+
+void CreateGLFWWindow(GLFWwindow*& pGLFWwindow, int width, int height, void* CallbackOwner, void (*framebufferResizeCallback)(GLFWwindow* window, int width, int height));
+
+VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
+
+void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool);
+
+void BeginCommandBufferOneTimeSubmit(VkCommandBuffer& InCommandBuffer, VkCommandPool commandPool, VkDevice device);
+
+void EndCommandBufferOneTimeSubmit(VkCommandBuffer InCommandBuffer, VkCommandPool commandPool, VkQueue graphicsQueue, VkDevice device);
+
+void CreateVkInstance(
+    VkInstance& OutVkInstance,
+    VkDebugUtilsMessengerEXT& OutDebugMessenger,
+    std::vector<const char*>& InOutExtensions,
+    PFN_vkDebugUtilsMessengerCallbackEXT DebugCallback = debugCallback
+);
+
+void CreateVkSurface(VkInstance& Instance, GLFWwindow* Window, VkSurfaceKHR& OutVkSurface);
+
+void CreateVkDevice(VkDevice& OutVkDevice, VkQueue& OutGraphicsQueue, VkQueue& OutPresentQueue,
+    VkPhysicalDevice physicalDevice, uint32_t GraphicsFamilyIndex, uint32_t PresentFamilyIndex, const std::vector<const char*>& Extensions);
+
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+
+VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+
+void chooseSwapExtent(VkExtent2D& InOutExtent, const VkSurfaceCapabilitiesKHR& capabilities);
+
+void CreateImageView(VkImageView& OutImageView, VkImage image, VkDevice Device, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
+
+void CreateSwapchain(
+    VkSwapchainKHR& OutSwapchain,
+    std::vector<VkImage>& OutSwapchainImages,
+    std::vector<VkImageView>& OutSwapchainImageViews,
+    VkFormat& OutSwapchainImageFormat,
+    VkExtent2D& InOutSwapchainExtent,
+    const VkDevice& Device,
+    const VkSurfaceKHR& Surface,
+    const VkSurfaceCapabilitiesKHR& SurfaceCapabilities,
+    const std::vector<VkSurfaceFormatKHR>& SurfaceFormats,
+    const std::vector<VkPresentModeKHR>& PresentModes,
+    uint32_t GraphicsFamilyIndex, uint32_t PresentFamilyIndex
+);
+
+VkSampleCountFlagBits getMaxUsableSampleCount(const VkPhysicalDevice& physicalDevice);
+
+void RetrieveAvailablePhysicalDevices(std::vector<VkPhysicalDevice>& OutAvailablePhysicalDevices, const VkInstance& instance);
+
+bool PhysicalDevideSupportQueueFamilies(uint32_t& OutGraphicsFamily, uint32_t& OutPresentFamily, VkPhysicalDevice PhysicalDevice, VkSurfaceKHR surface);
+
+bool PhysicalDeviceSupportExtensions(VkPhysicalDevice device, std::vector<const char*> extensions);
+
+bool PhysicalDeviceSupportSurface(
+    VkSurfaceCapabilitiesKHR& OutSurfaceCapabilities,
+    std::vector<VkSurfaceFormatKHR>& OutSurfaceFormats,
+    std::vector<VkPresentModeKHR>& OutPresentModes,
+    VkPhysicalDevice PhysicalDevice, VkSurfaceKHR surface
+);
+
+VkFormat findSupportedFormat(VkPhysicalDevice PhysicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+
+VkFormat findDepthFormat(VkPhysicalDevice PhysicalDevice);
+
+void CreateRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkPhysicalDevice PhysicalDevice, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples);
+
+void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, VkDevice Device);
+
+void CreateGraphicsPipeline(VkPipeline& OutGraphicsPipeline, VkPipelineLayout& OutPipelineLayout, VkSampleCountFlagBits SampleCountFlagBits,
+    VkDevice device, const std::vector<char>& VertShaderBytecode, const char* VertShaderMain, const std::vector<char>& FragShaderBytecode, const char* FragShaderMain,
+    const std::vector<VkVertexInputBindingDescription>& BindingDescriptions, const std::vector<VkVertexInputAttributeDescription>& AttributeDescriptions,
+    const VkDescriptorSetLayout& DescriptorSetLayout, const VkRenderPass& RenderPass);
+
+void CreateCommandPool(VkCommandPool& OutCommandPool, VkDevice Device, uint32_t GraphcisFamilyIndex);
+
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+
+void GetMemoryRequirement(VkMemoryRequirements& OutMemoryRequirement, VkDevice Device, VkImage Image);
+
+void GetMemoryRequirement(VkMemoryRequirements& OutMemoryRequirement, VkDevice Device, VkBuffer Buffer);
+
+void CreateDeviceMemory(VkDeviceMemory& OutDeviceMemory, VkDevice Device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+
+void CreateImageAndDeviceMemory(VkImage& Image, VkDeviceMemory& DeviceMemory,
+    VkDevice Device, VkExtent3D Extent, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
+    VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+
+void CreateBufferAndDeviceMemory(VkBuffer& OutBuffer, VkDeviceMemory& OutDeviceMemory, VkDevice Device, VkDeviceSize size, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+
+void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
+
+void CopyBufferToImage(VkBuffer buffer, VkImage image, VkCommandBuffer commandBuffer, uint32_t width, uint32_t height);
+
+void CreateSampler(VkSampler& OutSampler, VkDevice Device, VkPhysicalDevice PhysicalDevice);
+
+void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size, VkCommandBuffer CommandBuffer);
+
+void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount, uint32_t CombinedImageSamplerCount);
+
+void CreateDescriptorSet(VkDescriptorSet& OutDescriptorSet, std::vector<VkWriteDescriptorSet>& InOutWriteDescriptorSets,
+    VkDevice Device, VkDescriptorPool DescriptorPool, const VkDescriptorSetLayout& DescriptorSetLayout);
+
+VkSampleCountFlagBits GetMaxUsableSampleCount(VkPhysicalDevice& PhysicalDevice);
