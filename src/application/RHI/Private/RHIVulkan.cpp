@@ -109,6 +109,12 @@ void RHIVulkanContext::WaitDeviceIdle()
 	vkDeviceWaitIdle(Device);
 }
 
+bool RHIVulkanContext::WindowActive()
+{
+	return !glfwWindowShouldClose(pGLFWwindow);
+}
+
+
 void RHIVulkanImageResource::Initialize(RHIVulkanContext* Context, VkExtent3D ImageExtent, uint32_t MipLevel, VkSampleCountFlagBits numSamples,
 	VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkImageAspectFlagBits ImageAspectFlagBits, VkMemoryPropertyFlags properties)
 {
@@ -316,7 +322,7 @@ void RHIVulkanUniform::Initialize(RHIVulkanContext* Context, uint32_t UniformStr
 
 void RHIVulkanUniform::CopyToBuffer(RHIVulkanContext* Context, void* data, uint32_t TotalBytes)
 {
-	memcpy(MappedMemory, &data, TotalBytes);
+	memcpy(MappedMemory, data, TotalBytes);
 }
 
 void RHIVulkanUniform::Cleanup(RHIVulkanContext* Context)
@@ -407,7 +413,7 @@ void RHIVulkanPipeline::Initialize(RHIVulkanContext* Context, const std::vector<
 		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	CreateSwapchainFramebuffer(Context, ColorRenderTargetResource->ImageView, DepthRenderTargetResource->ImageView, RenderPass);
 
-	if (UniformBufferDescriptorCount>0 && CombinedImageSamplerDescriptorCount > 0)
+	if (UniformBufferDescriptorCount>0 || CombinedImageSamplerDescriptorCount > 0)
 	{
 		CreateDescriptorSetLayout(DescriptorSetLayout, Context->Device);
 		CreateDescriptorPool(DescriptorPool, Context->Device, UniformBufferDescriptorCount, CombinedImageSamplerDescriptorCount);
@@ -490,6 +496,7 @@ void RHIVulkanGraphicDispatcher::BindIndexBuffer(RHIVulkanBufferResource* Buffer
 
 void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
+	glfwPollEvents();
 	vkWaitForFences(Context->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;
@@ -599,17 +606,6 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPi
 	}
 	else if (result != VK_SUCCESS) {
 		throw std::runtime_error("failed to present swap chain image!");
-	}
-
-	currentFrame++;
-	currentFrame = currentFrame % Context->SwapchainImageViews.size();
-}
-
-void RHIVulkanGraphicDispatcher::Start(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
-{
-	while (!glfwWindowShouldClose(Context->pGLFWwindow)) {
-		glfwPollEvents();
-		Dispatch(Context, Pipeline, IndexCount, IndexOffset, InstanceCount);
 	}
 }
 

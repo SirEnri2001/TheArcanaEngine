@@ -862,7 +862,7 @@ void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, 
         poolSizes.push_back(descPoolSize);
     }
 
-    if (UniformBufferCount && CombinedImageSamplerCount)
+    if (UniformBufferCount || CombinedImageSamplerCount)
     {
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;

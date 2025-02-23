@@ -137,7 +137,7 @@ int main()
 	// executing shaders
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-
+    UniformBufferObject ubo;
     // RHI Objects
     RHIVulkanContext Context({WIDTH, HEIGHT});
     RHIVulkanPipeline Pipeline;
@@ -149,7 +149,7 @@ int main()
 
     std::vector<char> VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
     std::vector<char> FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
-    //loadModel(vertices, indices, MODEL_PATH);
+    loadModel(vertices, indices, MODEL_PATH);
     vertices.push_back(Vertex{ float3(-1., 0.,0.), float3(1.,0.,0.), float2(0.,0.) });
     vertices.push_back(Vertex{ float3( 1., 0.,0.), float3(0.,1.,0.), float2(1.,0.) });
     vertices.push_back(Vertex{ float3( 0., 1.,0.), float3(1.,0.,1.), float2(0.,1.) });
@@ -169,15 +169,19 @@ int main()
     Pipeline.AddLayout(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos));
     Pipeline.AddLayout(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color));
     Pipeline.AddLayout(0, 2, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, texCoord));
-    //Pipeline.AddUniformBuffer({ Uniform.Buffer, 0, sizeof(UniformBufferObject) });
-    //Pipeline.AddImageSampler({ Texture.Sampler, Texture.ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
+    Pipeline.AddUniformBuffer({ Uniform.Buffer, 0, sizeof(UniformBufferObject) });
+    Pipeline.AddImageSampler({ Texture.Sampler, Texture.ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
     Pipeline.Initialize(&Context, VertexShaderSPIRV, FragmentShaderSPIRV);
 
     GraphicDispatcher.BindIndexBuffer(&RHIIndexBuffer, 0);
     GraphicDispatcher.BindVertexBuffer(&RHIVertexBuffer, 0, 0);
     GraphicDispatcher.Initialize(&Context);
-
-    GraphicDispatcher.Start(&Context, &Pipeline, indices.size(), 0, 1);
+    while (Context.WindowActive())
+    {
+        updateUniformBuffer(ubo);
+        Uniform.CopyToBuffer(&Context, &ubo, sizeof(ubo));
+        GraphicDispatcher.Dispatch(&Context, &Pipeline, indices.size(), 0, 1);
+    }
 
 	return 0;
 }

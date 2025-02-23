@@ -71,6 +71,8 @@ public:
     static void OnWindowResize(GLFWwindow* window, int width, int height);
 
     void WaitDeviceIdle();
+
+    bool WindowActive();
 };
 
 class RHI_API RHIVulkanImageResource
@@ -168,7 +170,6 @@ public:
     VkSemaphore ImageAvailableSemaphore;
     VkSemaphore RenderFinishSemaphore;
     VkFence InFlightFence;
-    int currentFrame = 0;
     VkCommandBuffer CommandBuffer;
 
     struct BindingInfo
@@ -190,8 +191,6 @@ public:
     void BindIndexBuffer(RHIVulkanBufferResource* BufferResource, VkDeviceSize Offset);
 
     void Dispatch(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount);
-
-    void Start(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount);
 };
 
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
