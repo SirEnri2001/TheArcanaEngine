@@ -7,13 +7,13 @@ ${ENGINE_MODULE_ROOT}/Public/Engine.h
 ${ENGINE_MODULE_ROOT}/Private/Engine.cpp)
 target_include_directories(Engine
 PUBLIC ${ENGINE_MODULE_ROOT}/Public
-PRIVATE ${ThirdPartiesDir}/tinyobjloader-1.0.6
 )
 
-target_link_libraries(Engine RHI)
+target_link_libraries(Engine RHI CoreGeometry)
 target_include_directories(Engine PRIVATE ${RHI_MODULE_ROOT}/Public)
 target_include_directories(Engine 
 PUBLIC ${CoreMath_MODULE_ROOT}/Public
+PUBLIC ${CoreGeometry_MODULE_ROOT}/Public
 PUBLIC ${glm_INCLUDE_DIRS}
 )
 
