@@ -13,3 +13,7 @@ target_include_directories(CoreGeometry
 PUBLIC ${CoreGeometry_MODULE_ROOT}/Public
 PRIVATE ${CoreGeometry_MODULE_ROOT}/Private
 )
+
+target_include_directories(CoreGeometry
+PUBLIC ${ThirdPartiesDir}/tinyobjloader-1.0.6
+)
