@@ -16,8 +16,8 @@
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
-const std::string MODEL_PATH = "models/viking_room.obj";
-const std::string TEXTURE_PATH = "textures/viking_room.png";
+const std::string MODEL_PATH = "models/spot/spot_triangulated_good.obj";
+const std::string TEXTURE_PATH = "models/spot/spot_texture.png";
 const std::string VERT_SHADER_PATH = "shaders/vert.spv";
 const std::string FRAG_SHADER_PATH = "shaders/frag.spv";
 
@@ -37,6 +37,7 @@ struct UniformBufferObject {
     alignas(16) float4x4 model;
     alignas(16) float4x4 view;
     alignas(16) float4x4 proj;
+    alignas(16) float4 viewPosition;
 };
 
 std::vector<char> readFile(const std::string& filename) {
@@ -63,10 +64,11 @@ void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject) {
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-    OutUniformBufferObject.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    OutUniformBufferObject.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
     OutUniformBufferObject.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), float(WIDTH) / float(HEIGHT), 0.1f, 10.0f);
     OutUniformBufferObject.proj[1][1] *= -1;
+    OutUniformBufferObject.viewPosition = float4(2.f, 2.f, 2.f, 1.f);
 }
 
 int main()
@@ -100,6 +102,7 @@ int main()
     Pipeline.AddLayout(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexType, Position));
     Pipeline.AddLayout(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexType, Color));
     Pipeline.AddLayout(0, 2, VK_FORMAT_R32G32_SFLOAT, offsetof(VertexType, TexCoord));
+    Pipeline.AddLayout(0, 3, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexType, Normal));
     Pipeline.AddUniformBuffer({ Uniform.Buffer, 0, sizeof(UniformBufferObject) });
     Pipeline.AddImageSampler({ Texture.Sampler, Texture.ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
     Pipeline.Initialize(&Context, VertexShaderSPIRV, FragmentShaderSPIRV);
