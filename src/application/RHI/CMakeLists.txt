@@ -13,6 +13,8 @@ ${RHI_MODULE_ROOT}/Private/RHIOpenGL.cpp
 ${RHI_MODULE_ROOT}/Public/RHIVulkan.h
 ${RHI_MODULE_ROOT}/Private/RHIVulkan.cpp
 ${RHI_MODULE_ROOT}/Private/RHIVulkanImpl.cpp
+${RHI_MODULE_ROOT}/Public/RHIDirect3D12.h
+${RHI_MODULE_ROOT}/Private/RHIDirect3D12.cpp
 ${RHI_MODULE_ROOT}/Public/RHICommon.h
 ${RHI_MODULE_ROOT}/Private/RHICommon.cpp
 )
@@ -21,7 +23,8 @@ target_include_directories(RHI
 PRIVATE ${glfw_INCLUDE_DIRS}
 PRIVATE ${glm_INCLUDE_DIRS}
 PRIVATE ${ThirdPartiesDir}/stb_image-2.30
-PRIVATE ${Vulkan_INCLUDE_DIRS})
+PRIVATE ${Vulkan_INCLUDE_DIRS}
+)
 
 target_include_directories(RHI
 PUBLIC ${RHI_MODULE_ROOT}/Public
@@ -33,3 +36,4 @@ target_include_directories(RHI PRIVATE ${CoreMath_MODULE_ROOT}/Public)
 
 target_link_libraries(RHI Vulkan::Vulkan)
 target_link_libraries(RHI glfw)
+target_link_libraries(RHI d3d12.lib)
