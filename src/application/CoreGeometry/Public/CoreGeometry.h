@@ -91,7 +91,7 @@ TMesh<VertexType, IndexType> TMesh<VertexType, IndexType>::LoadObj(const std::st
 	        {
 				vertex.TexCoord = {
 					attrib.texcoords[2 * index.texcoord_index],
-					attrib.texcoords[2 * index.texcoord_index + 1]};
+                    1. - attrib.texcoords[2 * index.texcoord_index + 1] };
 	        }
     		else
 	        {
@@ -107,4 +107,22 @@ TMesh<VertexType, IndexType> TMesh<VertexType, IndexType>::LoadObj(const std::st
     }
 
     return OutMesh;
+}
+
+template <typename VertexType, typename IndexType>
+void CalculateNormal(TMesh<VertexType, IndexType>& InOutMesh)
+{
+    for (size_t i = 0; i < InOutMesh.Vertices.size() / 3; i++)
+    {
+        auto v1 = InOutMesh.Vertices[3 * i + 1].Position - InOutMesh.Vertices[3 * i].Position;
+        auto v2 = InOutMesh.Vertices[3 * i + 2].Position - InOutMesh.Vertices[3 * i].Position;
+        InOutMesh.Vertices[3 * i].Normal += cross(v1, v2);
+        InOutMesh.Vertices[3 * i + 1].Normal += cross(v1, v2);
+        InOutMesh.Vertices[3 * i + 2].Normal += cross(v1, v2);
+    }
+
+    for (size_t i = 0; i < InOutMesh.Vertices.size(); i++)
+    {
+        InOutMesh.Vertices[i].Normal = normalize(InOutMesh.Vertices[i].Normal);
+    }
 }
