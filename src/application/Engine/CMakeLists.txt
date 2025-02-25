@@ -9,7 +9,7 @@ target_include_directories(Engine
 PUBLIC ${ENGINE_MODULE_ROOT}/Public
 )
 
-target_link_libraries(Engine RHI CoreGeometry)
+target_link_libraries(Engine RHI CoreGeometry imgui)
 target_include_directories(Engine PRIVATE ${RHI_MODULE_ROOT}/Public)
 target_include_directories(Engine 
 PUBLIC ${CoreMath_MODULE_ROOT}/Public

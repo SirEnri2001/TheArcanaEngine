@@ -846,19 +846,19 @@ void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size, VkCom
 
 void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount, uint32_t CombinedImageSamplerCount) {
     std::vector<VkDescriptorPoolSize> poolSizes{};
-    if (UniformBufferCount>0)
+    if (UniformBufferCount>0 || true)
     {
         VkDescriptorPoolSize descPoolSize{};
         descPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descPoolSize.descriptorCount = UniformBufferCount;
+        descPoolSize.descriptorCount = 16;
         poolSizes.push_back(descPoolSize);
     }
 
-    if (CombinedImageSamplerCount > 0)
+    if (CombinedImageSamplerCount > 0 || true)
     {
         VkDescriptorPoolSize descPoolSize{};
         descPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descPoolSize.descriptorCount = CombinedImageSamplerCount;
+        descPoolSize.descriptorCount = 16;
         poolSizes.push_back(descPoolSize);
     }
 
@@ -868,7 +868,7 @@ void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, 
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = 1;
+        poolInfo.maxSets = 16;
 
         if (vkCreateDescriptorPool(Device, &poolInfo, nullptr, &OutDescriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor pool!");

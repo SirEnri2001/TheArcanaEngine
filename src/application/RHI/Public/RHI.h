@@ -18,6 +18,8 @@
 #include <vector>
 #include <fstream>
 
+struct ImDrawData;
+
 class RHI_API RHIVulkanContext
 {
 public:
@@ -164,6 +166,13 @@ public:
     void Cleanup(RHIVulkanContext* Context);
 };
 
+class RHI_API RHIVulkanImGUI
+{
+public:
+    void Initialize(RHIVulkanContext* Context);
+    void Dispatch(RHIVulkanContext* Context);
+};
+
 class RHI_API RHIVulkanGraphicDispatcher
 {
 public:
@@ -191,6 +200,17 @@ public:
     void BindIndexBuffer(RHIVulkanBufferResource* BufferResource, VkDeviceSize Offset);
 
     void Dispatch(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount);
+
+	void DispatchImGUI(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, ImDrawData* draw_data,
+        void (*ImGui_ImplVulkan_RenderDrawData)(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline));
+
+    void PrepareRenderPass(RHIVulkanContext* Context, uint32_t& OutImageIndex);
+
+	void BeginRenderPass(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t ImageIndex);
+
+	void EndRenderPass();
+
+	void Submit(RHIVulkanContext* Context, uint32_t ImageIndex);
 };
 
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);

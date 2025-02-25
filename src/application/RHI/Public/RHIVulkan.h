@@ -4,7 +4,8 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
-class GLFWwindow;
+struct GLFWwindow;
+struct GLFWmonitor;
 
 void CreateGLFWWindow(GLFWwindow*& pGLFWwindow, int width, int height, void* CallbackOwner, void (*framebufferResizeCallback)(GLFWwindow* window, int width, int height));
 
