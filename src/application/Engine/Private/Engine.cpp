@@ -13,6 +13,11 @@
 #include "GLFW/glfw3.h"
 #include "glm/glm.hpp"
 
+
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
@@ -89,7 +94,8 @@ int main()
 
     std::vector<char> VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
     std::vector<char> FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
-
+    ImGui::CreateContext();
+    ImGui_ImplVulkan_InitInfo ImGuiInitInfo{};
     Context.Initialize();
     Uniform.Initialize(&Context, sizeof(UniformBufferObject));
     RHIVertexBuffer.Initialize(&Context, sizeof(VertexType), StaticMesh.Vertices.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -110,12 +116,85 @@ int main()
     GraphicDispatcher.BindIndexBuffer(&RHIIndexBuffer, 0);
     GraphicDispatcher.BindVertexBuffer(&RHIVertexBuffer, 0, 0);
     GraphicDispatcher.Initialize(&Context);
+
+    ImGuiInitInfo.Instance = Context.Instance;
+    ImGuiInitInfo.PhysicalDevice = Context.PhysicalDevice;
+    ImGuiInitInfo.Device = Context.Device;
+    ImGuiInitInfo.QueueFamily = Context.GraphicsQueueFamilyIndex;
+    ImGuiInitInfo.Queue = Context.GraphicsQueue;
+    ImGuiInitInfo.DescriptorPool = Pipeline.DescriptorPool;
+    ImGuiInitInfo.DescriptorPoolSize = 0;
+    ImGuiInitInfo.RenderPass = Pipeline.RenderPass;
+    ImGuiInitInfo.MinImageCount = 2;
+    ImGuiInitInfo.ImageCount = Context.SwapchainImageViews.size();
+    ImGuiInitInfo.MSAASamples = Pipeline.msaaSamples;
+
+    ImGui_ImplVulkan_Init(&ImGuiInitInfo);
+    ImGui_ImplGlfw_InitForVulkan(Context.pGLFWwindow, true);
+    bool show_demo_window = true;
+    bool show_another_window = true;
+    float4 clear_color;
     while (Context.WindowActive())
     {
         updateUniformBuffer(ubo);
         Uniform.CopyToBuffer(&Context, &ubo, sizeof(ubo));
-        GraphicDispatcher.Dispatch(&Context, &Pipeline, StaticMesh.Indices.size(), 0, 1);
-    }
+        // Start the Dear ImGui frame
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+        if (show_demo_window)
+        {
+            ImGui::ShowDemoWindow(&show_demo_window);
+        }
 
+        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+        {
+            static float f = 0.0f;
+            static int counter = 0;
+
+            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+            ImGui::Checkbox("Another Window", &show_another_window);
+
+            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+                counter++;
+            ImGui::SameLine();
+            ImGui::Text("counter = %d", counter);
+
+            ImGui::End();
+        }
+
+        // 3. Show another simple window.
+        if (show_another_window)
+        {
+            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+            ImGui::Text("Hello from another window!");
+            if (ImGui::Button("Close Me"))
+                show_another_window = false;
+            ImGui::End();
+        }
+
+        // Rendering
+        ImGui::Render();
+        ImDrawData* draw_data = ImGui::GetDrawData();
+        const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
+        uint32_t ImageIndex;
+        GraphicDispatcher.PrepareRenderPass(&Context, ImageIndex);
+        GraphicDispatcher.BeginRenderPass(&Context, &Pipeline, ImageIndex);
+        GraphicDispatcher.Dispatch(&Context, &Pipeline, StaticMesh.Indices.size(), 0, 1);
+
+        // Comment this line if you don't want ImGUI
+        GraphicDispatcher.DispatchImGUI(&Context, &Pipeline, draw_data, ImGui_ImplVulkan_RenderDrawData);
+
+        GraphicDispatcher.EndRenderPass();
+        GraphicDispatcher.Submit(&Context, ImageIndex);
+
+    }
 	return 0;
 }

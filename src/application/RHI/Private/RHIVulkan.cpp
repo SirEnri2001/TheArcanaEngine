@@ -496,11 +496,47 @@ void RHIVulkanGraphicDispatcher::BindIndexBuffer(RHIVulkanBufferResource* Buffer
 
 void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
+	vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline->Pipeline);
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = (float)Context->SwapchainExtent.width;
+	viewport.height = (float)Context->SwapchainExtent.height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(CommandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = Context->SwapchainExtent;
+	vkCmdSetScissor(CommandBuffer, 0, 1, &scissor);
+
+	for (auto& Info : BindingInfos)
+	{
+		vkCmdBindVertexBuffers(CommandBuffer, Info.BindingIndex, 1, &Info.BufferResource->Buffer, &Info.Offset);
+	}
+	vkCmdBindIndexBuffer(CommandBuffer, IndexBindingInfo.BufferResource->Buffer, IndexBindingInfo.Offset, VK_INDEX_TYPE_UINT32);
+	if (Pipeline->DescriptorSet)
+	{
+		vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline->PipelineLayout, 0, 1,
+			&Pipeline->DescriptorSet, 0, nullptr);
+	}
+	
+	vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
+}
+
+void RHIVulkanGraphicDispatcher::DispatchImGUI(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, ImDrawData* draw_data, 
+	void (*ImGui_ImplVulkan_RenderDrawData)(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline))
+{
+	ImGui_ImplVulkan_RenderDrawData(draw_data, CommandBuffer, nullptr);
+}
+
+void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIVulkanContext* Context, uint32_t& OutImageIndex)
+{
 	glfwPollEvents();
 	vkWaitForFences(Context->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
-
-	uint32_t imageIndex;
-	VkResult result = vkAcquireNextImageKHR(Context->Device, Context->Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+	VkResult result = vkAcquireNextImageKHR(Context->Device, Context->Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 		//recreateSwapChain();
@@ -514,64 +550,44 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPi
 
 	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
 
-	{
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-		if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
-			throw std::runtime_error("failed to begin recording command buffer!");
-		}
-
-		VkRenderPassBeginInfo renderPassInfo{};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = Pipeline->RenderPass;
-		renderPassInfo.framebuffer = Pipeline->SwapchainFramebuffers[imageIndex];
-		renderPassInfo.renderArea.offset = { 0, 0 };
-		renderPassInfo.renderArea.extent = Context->SwapchainExtent;
-
-		std::array<VkClearValue, 2> clearValues{};
-		clearValues[0].color = { {1.0f, 0.0f, 1.0f, 1.0f} };
-		clearValues[1].depthStencil = { 1.0f, 0 };
-
-		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-		renderPassInfo.pClearValues = clearValues.data();
-
-		vkCmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline->Pipeline);
-
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = 0.0f;
-		viewport.width = (float)Context->SwapchainExtent.width;
-		viewport.height = (float)Context->SwapchainExtent.height;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		vkCmdSetViewport(CommandBuffer, 0, 1, &viewport);
-
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
-		scissor.extent = Context->SwapchainExtent;
-		vkCmdSetScissor(CommandBuffer, 0, 1, &scissor);
-
-		for (auto& Info : BindingInfos)
-		{
-			vkCmdBindVertexBuffers(CommandBuffer, Info.BindingIndex, 1, &Info.BufferResource->Buffer, &Info.Offset);
-		}
-		vkCmdBindIndexBuffer(CommandBuffer, IndexBindingInfo.BufferResource->Buffer, IndexBindingInfo.Offset, VK_INDEX_TYPE_UINT32);
-		if (Pipeline->DescriptorSet)
-		{
-			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline->PipelineLayout, 0, 1,
-				&Pipeline->DescriptorSet, 0, nullptr);
-		}
-		
-		vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
-		vkCmdEndRenderPass(CommandBuffer);
-		if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
-			throw std::runtime_error("failed to record command buffer!");
-		}
+	if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
+		throw std::runtime_error("failed to begin recording command buffer!");
 	}
+}
 
+
+void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t ImageIndex)
+{
+	VkRenderPassBeginInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassInfo.renderPass = Pipeline->RenderPass;
+	renderPassInfo.framebuffer = Pipeline->SwapchainFramebuffers[ImageIndex];
+	renderPassInfo.renderArea.offset = { 0, 0 };
+	renderPassInfo.renderArea.extent = Context->SwapchainExtent;
+
+	std::array<VkClearValue, 2> clearValues{};
+	clearValues[0].color = { {1.0f, 0.0f, 1.0f, 1.0f} };
+	clearValues[1].depthStencil = { 1.0f, 0 };
+
+	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+	renderPassInfo.pClearValues = clearValues.data();
+
+	vkCmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
+
+void RHIVulkanGraphicDispatcher::EndRenderPass()
+{
+	vkCmdEndRenderPass(CommandBuffer);
+}
+
+void RHIVulkanGraphicDispatcher::Submit(RHIVulkanContext* Context, uint32_t ImageIndex)
+{
+	if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to record command buffer!");
+	}
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -596,9 +612,9 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPi
 	presentInfo.pWaitSemaphores = &RenderFinishSemaphore;
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &Context->Swapchain;
-	presentInfo.pImageIndices = &imageIndex;
+	presentInfo.pImageIndices = &ImageIndex;
 
-	result = vkQueuePresentKHR(Context->PresentQueue, &presentInfo);
+	auto result = vkQueuePresentKHR(Context->PresentQueue, &presentInfo);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
 		//framebufferResized = false;
@@ -607,6 +623,7 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPi
 	else if (result != VK_SUCCESS) {
 		throw std::runtime_error("failed to present swap chain image!");
 	}
+
 }
 
 
