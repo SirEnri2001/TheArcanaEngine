@@ -1,6 +1,7 @@
 #define RHI_INCLUDE
 #define COREGEOMETRY_INCLUDE
 #include <chrono>
+#include <imgui_internal.h>
 
 #include "RHI.h"
 
@@ -63,17 +64,17 @@ std::vector<char> readFile(const std::string& filename) {
     return buffer;
 }
 
-void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float WindowHeight, float WindowWidth) {
+void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float WindowHeight, float WindowWidth, glm::mat4 viewMat, float4 ViewPos) {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-    OutUniformBufferObject.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    OutUniformBufferObject.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    OutUniformBufferObject.model = glm::mat4(1.0f);//glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    OutUniformBufferObject.view = viewMat;
     OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), WindowWidth / WindowHeight, 0.1f, 10.0f);
     OutUniformBufferObject.proj[1][1] *= -1;
-    OutUniformBufferObject.viewPosition = float4(2.f, 2.f, 2.f, 1.f);
+    OutUniformBufferObject.viewPosition = ViewPos;
 }
 
 int main()
@@ -137,9 +138,13 @@ int main()
     bool show_demo_window = true;
     bool show_another_window = true;
     float4 clear_color;
+    ImGuiIO& io = ImGui::GetIO();
+
+    auto viewMat = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    float4 ViewPos = {2.,2.,2.,1.};
     while (Context.WindowActive())
     {
-        updateUniformBuffer(ubo, Context.SwapchainExtent.height, Context.SwapchainExtent.width);
+        updateUniformBuffer(ubo, Context.SwapchainExtent.height, Context.SwapchainExtent.width, viewMat, ViewPos);
         Uniform.CopyToBuffer(&Context, &ubo, sizeof(ubo));
         // Start the Dear ImGui frame
         ImGui_ImplVulkan_NewFrame();
@@ -178,10 +183,48 @@ int main()
         {
             ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
             ImGui::Text("Hello from another window!");
+            ImGui::Text("io.WantCaptureMouse = %d", io.WantCaptureMouse);
             if (ImGui::Button("Close Me"))
                 show_another_window = false;
             ImGui::End();
         }
+        if(!io.WantCaptureMouse && (io.MouseDown[0]||io.MouseDown[1])) // User operate with actual scene
+        {
+            float DeltaX = io.MousePos.x - io.MousePosPrev.x;
+            float DeltaY = io.MousePos.y - io.MousePosPrev.y;
+
+            viewMat = glm::rotate(glm::mat4(1.f), DeltaX*0.01f, glm::vec3(0.0f, 1.0f, 0.0f)) * viewMat;
+            viewMat = glm::rotate(glm::mat4(1.f), DeltaY*0.01f, glm::vec3(1.0f, 0.0f, 0.0f)) * viewMat;
+            
+			float3 PlayerMove = {0.f, 0.f, 0.f};
+            if(ImGui::IsKeyDown(ImGuiKey_W))
+	        {
+                PlayerMove += float3(0.,0.,1.);
+	        }
+            if(ImGui::IsKeyDown(ImGuiKey_S))
+            {
+                PlayerMove += float3(0.,0.,-1.);
+            }
+            if(ImGui::IsKeyDown(ImGuiKey_A))
+	        {
+                PlayerMove += float3(1.,0.,0.);
+	        }
+            if(ImGui::IsKeyDown(ImGuiKey_D))
+            {
+                PlayerMove += float3(-1.,0.,0.);
+            }
+            if(ImGui::IsKeyDown(ImGuiKey_Q))
+	        {
+                PlayerMove += float3(0.,-1.,0.);
+	        }
+            if(ImGui::IsKeyDown(ImGuiKey_E))
+            {
+                PlayerMove += float3(0.,1.,0.);
+            }
+		    viewMat = glm::translate(glm::mat4(1.0),PlayerMove * 0.001f) * viewMat;
+        }
+
+        
 
         // Rendering
         ImGui::Render();
