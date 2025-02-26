@@ -124,18 +124,37 @@ public:
     void Cleanup(RHIVulkanContext* Context);
 };
 
+class RHI_API RHIVulkanRenderPass
+{
+public:
+    VkRenderPass RenderPass;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    std::vector<VkFramebuffer> SwapchainFramebuffers;
+    RHIVulkanImageResource ColorRenderTargetResource;
+    RHIVulkanImageResource DepthRenderTargetResource;
+
+    void Initialize(RHIVulkanContext* Context);
+    
+    void CreateColorRenderTarget(RHIVulkanContext* Context, VkExtent3D RTExtent);
+
+    void CreateDepthRenderTarget(RHIVulkanContext* Context, VkExtent3D RTExtent);
+
+    void CreateSwapchainFramebuffer(RHIVulkanContext* Context);
+
+    void CleanupSwapchainFramebuffer(RHIVulkanContext* Context);
+
+    void Cleanup(RHIVulkanContext* Context);
+};
+
 class RHI_API RHIVulkanPipeline
 {
     std::vector<char> VertShaderBytecode;
     std::vector<char> FragShaderBytecode;
 public:
-    VkRenderPass RenderPass;
-    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     VkDescriptorPool DescriptorPool;
     VkDescriptorSetLayout DescriptorSetLayout;
     VkPipeline Pipeline;
     VkPipelineLayout PipelineLayout;
-    std::vector<VkFramebuffer> SwapchainFramebuffers;
 
     std::vector<VkVertexInputBindingDescription> BindingDescriptions;
     std::vector<VkVertexInputAttributeDescription> AttributeDescriptions;
@@ -145,10 +164,6 @@ public:
     uint32_t UniformBufferDescriptorCount = 0;
     uint32_t CombinedImageSamplerDescriptorCount = 0;
 
-
-    RHIVulkanImageResource* ColorRenderTargetResource;
-    RHIVulkanImageResource* DepthRenderTargetResource;
-
     void AddLayout(uint32_t BindingIndex, uint32_t Location, VkFormat Format, uint32_t Offset);
 
     void AddBinding(uint32_t BindingIndex, uint32_t Stride);
@@ -157,14 +172,11 @@ public:
 
     void AddImageSampler(const VkDescriptorImageInfo& DescImageInfo);
 
-    void CreateSwapchainFramebuffer(RHIVulkanContext* Context, VkImageView ColorRenderTargetImageView, VkImageView DepthRenderTargetImageView, VkRenderPass RenderPass);
-
-    void Initialize(RHIVulkanContext* Context, const std::vector<char>& VertShader, const std::vector<char>& FragShader);
-
-    void CleanupSwapchainFramebuffer(RHIVulkanContext* Context);
+    void Initialize(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource, const std::vector<char>& VertShader, const std::vector<char>& FragShader);
 
     void Cleanup(RHIVulkanContext* Context);
 };
+
 
 class RHI_API RHIVulkanImGUI
 {
@@ -201,12 +213,11 @@ public:
 
     void Dispatch(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount);
 
-	void DispatchImGUI(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, ImDrawData* draw_data,
-        void (*ImGui_ImplVulkan_RenderDrawData)(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline));
+	void DispatchImGUI(ImDrawData* draw_data, void (*ImGui_ImplVulkan_RenderDrawData)(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline));
 
-    void PrepareRenderPass(RHIVulkanContext* Context, uint32_t& OutImageIndex);
+    void PrepareRenderPass(RHIVulkanContext* Context, uint32_t& OutImageIndex, RHIVulkanRenderPass* RenderPass);
 
-	void BeginRenderPass(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t ImageIndex);
+	void BeginRenderPass(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource, uint32_t ImageIndex);
 
 	void EndRenderPass();
 

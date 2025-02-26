@@ -63,7 +63,7 @@ std::vector<char> readFile(const std::string& filename) {
     return buffer;
 }
 
-void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject) {
+void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float WindowHeight, float WindowWidth) {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     auto currentTime = std::chrono::high_resolution_clock::now();
@@ -71,7 +71,7 @@ void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject) {
 
     OutUniformBufferObject.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
     OutUniformBufferObject.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), float(WIDTH) / float(HEIGHT), 0.1f, 10.0f);
+    OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), WindowWidth / WindowHeight, 0.1f, 10.0f);
     OutUniformBufferObject.proj[1][1] *= -1;
     OutUniformBufferObject.viewPosition = float4(2.f, 2.f, 2.f, 1.f);
 }
@@ -86,6 +86,7 @@ int main()
     // RHI Objects
     RHIVulkanContext Context({WIDTH, HEIGHT});
     RHIVulkanPipeline Pipeline;
+    RHIVulkanRenderPass RenderPass;
     RHIVulkanUniform Uniform;
     RHIVulkanBufferResource RHIVertexBuffer;
     RHIVulkanBufferResource RHIIndexBuffer;
@@ -104,6 +105,8 @@ int main()
     RHIIndexBuffer.CopyToBuffer(&Context, StaticMesh.Indices.data(), StaticMesh.Indices.size() * sizeof(uint32_t));
     Texture.Initialize(&Context, TEXTURE_PATH.c_str());
 
+    RenderPass.Initialize(&Context);
+
     Pipeline.AddBinding(0, sizeof(VertexType));
     Pipeline.AddLayout(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexType, Position));
     Pipeline.AddLayout(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexType, Color));
@@ -111,7 +114,7 @@ int main()
     Pipeline.AddLayout(0, 3, VK_FORMAT_R32G32B32_SFLOAT, offsetof(VertexType, Normal));
     Pipeline.AddUniformBuffer({ Uniform.Buffer, 0, sizeof(UniformBufferObject) });
     Pipeline.AddImageSampler({ Texture.Sampler, Texture.ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
-    Pipeline.Initialize(&Context, VertexShaderSPIRV, FragmentShaderSPIRV);
+    Pipeline.Initialize(&Context, &RenderPass, VertexShaderSPIRV, FragmentShaderSPIRV);
 
     GraphicDispatcher.BindIndexBuffer(&RHIIndexBuffer, 0);
     GraphicDispatcher.BindVertexBuffer(&RHIVertexBuffer, 0, 0);
@@ -124,10 +127,10 @@ int main()
     ImGuiInitInfo.Queue = Context.GraphicsQueue;
     ImGuiInitInfo.DescriptorPool = Pipeline.DescriptorPool;
     ImGuiInitInfo.DescriptorPoolSize = 0;
-    ImGuiInitInfo.RenderPass = Pipeline.RenderPass;
+    ImGuiInitInfo.RenderPass = RenderPass.RenderPass;
     ImGuiInitInfo.MinImageCount = 2;
     ImGuiInitInfo.ImageCount = Context.SwapchainImageViews.size();
-    ImGuiInitInfo.MSAASamples = Pipeline.msaaSamples;
+    ImGuiInitInfo.MSAASamples = RenderPass.msaaSamples;
 
     ImGui_ImplVulkan_Init(&ImGuiInitInfo);
     ImGui_ImplGlfw_InitForVulkan(Context.pGLFWwindow, true);
@@ -136,7 +139,7 @@ int main()
     float4 clear_color;
     while (Context.WindowActive())
     {
-        updateUniformBuffer(ubo);
+        updateUniformBuffer(ubo, Context.SwapchainExtent.height, Context.SwapchainExtent.width);
         Uniform.CopyToBuffer(&Context, &ubo, sizeof(ubo));
         // Start the Dear ImGui frame
         ImGui_ImplVulkan_NewFrame();
@@ -185,12 +188,12 @@ int main()
         ImDrawData* draw_data = ImGui::GetDrawData();
         const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
         uint32_t ImageIndex;
-        GraphicDispatcher.PrepareRenderPass(&Context, ImageIndex);
-        GraphicDispatcher.BeginRenderPass(&Context, &Pipeline, ImageIndex);
+        GraphicDispatcher.PrepareRenderPass(&Context, ImageIndex, &RenderPass);
+        GraphicDispatcher.BeginRenderPass(&Context, &RenderPass, ImageIndex);
         GraphicDispatcher.Dispatch(&Context, &Pipeline, StaticMesh.Indices.size(), 0, 1);
 
         // Comment this line if you don't want ImGUI
-        GraphicDispatcher.DispatchImGUI(&Context, &Pipeline, draw_data, ImGui_ImplVulkan_RenderDrawData);
+        GraphicDispatcher.DispatchImGUI(draw_data, ImGui_ImplVulkan_RenderDrawData);
 
         GraphicDispatcher.EndRenderPass();
         GraphicDispatcher.Submit(&Context, ImageIndex);
