@@ -1,4 +1,4 @@
 Libs/*
-**/build/
+**/[Bb]uild[s]/
 .vs
 imgui.ini
