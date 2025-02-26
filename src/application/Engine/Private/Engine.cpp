@@ -1,5 +1,6 @@
 #define RHI_INCLUDE
 #define COREGEOMETRY_INCLUDE
+#define CORESCENE_INCLUDE
 #include <chrono>
 #include <imgui_internal.h>
 
@@ -8,6 +9,7 @@
 #include "CoreMath.h"
 #include "CoreMath.inl"
 #include "CoreGeometry.h"
+#include "CoreScene.h"
 
 #include <unordered_map>
 
@@ -79,7 +81,35 @@ void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float Wind
 
 int main()
 {
-    typedef Vertex<float3, float3, float2, float3, float3> VertexType;
+    Scene MainScene;
+    std::string TestJson = R"({
+    "Children":[
+        {
+            "Type":"Primitive",
+            "Mesh":"cube.obj",
+			"Transform":{
+		        "Location":{
+		            "x":1.0,
+		            "y":2.0,
+		            "z":3.0
+		        },
+		        "Rotation":{
+		            "x":0.0,
+		            "y":20.0,
+		            "z":30.0
+		        },
+		        "Scale":{
+		            "x":1.0,
+		            "y":2.0,
+		            "z":1.0
+		        }
+		    }
+        }
+    ]
+})";
+    Scene::LoadSceneJson(MainScene, TestJson);
+
+    typedef TVertex<float3, float3, float2, float3, float3> VertexType;
     typedef TMesh<VertexType, uint32_t> MeshType;
 
     MeshType StaticMesh = MeshType::LoadObj(MODEL_PATH);

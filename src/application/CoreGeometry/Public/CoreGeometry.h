@@ -25,7 +25,7 @@ namespace CoreGeometryImpl
 
 
 template<typename PositionType, typename ColorType, typename TexCoordType, typename NormalType, typename TangentType>
-struct Vertex {
+struct TVertex {
     PositionType Position;
     ColorType Color;
     TexCoordType TexCoord;
@@ -126,3 +126,5 @@ void CalculateNormal(TMesh<VertexType, IndexType>& InOutMesh)
         InOutMesh.Vertices[i].Normal = normalize(InOutMesh.Vertices[i].Normal);
     }
 }
+
+
