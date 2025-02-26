@@ -87,6 +87,7 @@ void RHIVulkanContext::Cleanup()
 
 void RHIVulkanContext::InitializeSwapchain()
 {
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(PhysicalDevice, Surface, &SurfaceCapabilities);
 	glfwGetFramebufferSize(pGLFWwindow, reinterpret_cast<int*>(&SwapchainExtent.width), reinterpret_cast<int*>(&SwapchainExtent.height));
 	while (SwapchainExtent.width == 0 || SwapchainExtent.height == 0) {
 		glfwGetFramebufferSize(pGLFWwindow, reinterpret_cast<int*>(&SwapchainExtent.width), reinterpret_cast<int*>(&SwapchainExtent.height));
@@ -101,6 +102,7 @@ void RHIVulkanContext::InitializeSwapchain()
 void RHIVulkanContext::OnWindowResize(GLFWwindow* window, int width, int height)
 {
 	auto self = reinterpret_cast<RHIVulkanContext*>(glfwGetWindowUserPointer(window));
+	std::cout<<"Windows Resize!\n";
 	// todo resize
 }
 
@@ -370,13 +372,69 @@ void RHIVulkanPipeline::AddImageSampler(const VkDescriptorImageInfo& DescImageIn
 	CombinedImageSamplerDescriptorCount++;
 }
 
-void RHIVulkanPipeline::CreateSwapchainFramebuffer(RHIVulkanContext* Context, VkImageView ColorRenderTargetImageView, VkImageView DepthRenderTargetImageView, VkRenderPass RenderPass)
+
+void RHIVulkanPipeline::Initialize(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource, const std::vector<char>& VertShader, const std::vector<char>& FragShader)
+{
+	VertShaderBytecode = VertShader;
+	FragShaderBytecode = FragShader;
+
+	if (UniformBufferDescriptorCount>0 || CombinedImageSamplerDescriptorCount > 0)
+	{
+		CreateDescriptorSetLayout(DescriptorSetLayout, Context->Device);
+		CreateDescriptorPool(DescriptorPool, Context->Device, UniformBufferDescriptorCount, CombinedImageSamplerDescriptorCount);
+		CreateDescriptorSet(DescriptorSet, WriteDescriptorSets, Context->Device, DescriptorPool, DescriptorSetLayout);
+	}
+	else
+	{
+		DescriptorSetLayout = nullptr;
+		DescriptorPool = nullptr;
+		DescriptorSet = nullptr;
+	}
+	CreateGraphicsPipeline(Pipeline, PipelineLayout, RenderPassResource->msaaSamples, Context->Device, VertShaderBytecode, "main", FragShaderBytecode, "main",
+		BindingDescriptions, AttributeDescriptions, DescriptorSetLayout, RenderPassResource->RenderPass);
+}
+
+
+void RHIVulkanPipeline::Cleanup(RHIVulkanContext* Context)
+{
+	vkDestroyPipeline(Context->Device, Pipeline, nullptr);
+	vkDestroyPipelineLayout(Context->Device, PipelineLayout, nullptr);
+	vkDestroyDescriptorPool(Context->Device, DescriptorPool, nullptr);
+	vkDestroyDescriptorSetLayout(Context->Device, DescriptorSetLayout, nullptr);
+}
+
+void RHIVulkanRenderPass::Initialize(RHIVulkanContext* Context)
+{
+	msaaSamples = GetMaxUsableSampleCount(Context->PhysicalDevice);
+	CreateRenderPass(RenderPass, Context->Device, Context->PhysicalDevice, Context->SwapchainImageFormat, msaaSamples);
+	VkExtent3D RenderTargetExtent;
+	RenderTargetExtent.height = Context->SwapchainExtent.height;
+	RenderTargetExtent.width = Context->SwapchainExtent.width;
+	RenderTargetExtent.depth = 1;
+	CreateColorRenderTarget(Context, RenderTargetExtent);
+	CreateDepthRenderTarget(Context, RenderTargetExtent);
+	CreateSwapchainFramebuffer(Context);
+}
+
+void RHIVulkanRenderPass::CreateColorRenderTarget(RHIVulkanContext* Context, VkExtent3D RTExtent)
+{
+	ColorRenderTargetResource.Initialize(Context, RTExtent, 1, msaaSamples, Context->SwapchainImageFormat, 
+		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+}
+
+void RHIVulkanRenderPass::CreateDepthRenderTarget(RHIVulkanContext* Context, VkExtent3D RTExtent)
+{
+	DepthRenderTargetResource.Initialize(Context, RTExtent, 1, msaaSamples, Context->DepthFormat,
+		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+}
+
+void RHIVulkanRenderPass::CreateSwapchainFramebuffer(RHIVulkanContext* Context)
 {
 	SwapchainFramebuffers.resize(Context->SwapchainImageViews.size());
 	for (size_t i = 0; i < Context->SwapchainImageViews.size(); i++) {
 		std::array<VkImageView, 3> attachments = {
-			ColorRenderTargetImageView,
-			DepthRenderTargetImageView,
+			ColorRenderTargetResource.ImageView,
+			DepthRenderTargetResource.ImageView,
 			Context->SwapchainImageViews[i]
 		};
 
@@ -394,63 +452,22 @@ void RHIVulkanPipeline::CreateSwapchainFramebuffer(RHIVulkanContext* Context, Vk
 		}
 	}
 }
-
-void RHIVulkanPipeline::Initialize(RHIVulkanContext* Context, const std::vector<char>& VertShader, const std::vector<char>& FragShader)
-{
-	msaaSamples = GetMaxUsableSampleCount(Context->PhysicalDevice);
-	VertShaderBytecode = VertShader;
-	FragShaderBytecode = FragShader;
-	CreateRenderPass(RenderPass, Context->Device, Context->PhysicalDevice, Context->SwapchainImageFormat, msaaSamples);
-	VkExtent3D RenderTargetExtent;
-	RenderTargetExtent.height = Context->SwapchainExtent.height;
-	RenderTargetExtent.width = Context->SwapchainExtent.width;
-	RenderTargetExtent.depth = 1;
-	ColorRenderTargetResource = new RHIVulkanImageResource();
-	ColorRenderTargetResource->Initialize(Context, RenderTargetExtent, 1, msaaSamples, Context->SwapchainImageFormat,
-		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_ASPECT_COLOR_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	DepthRenderTargetResource = new RHIVulkanImageResource();
-	DepthRenderTargetResource->Initialize(Context, RenderTargetExtent, 1, msaaSamples, Context->DepthFormat,
-		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	CreateSwapchainFramebuffer(Context, ColorRenderTargetResource->ImageView, DepthRenderTargetResource->ImageView, RenderPass);
-
-	if (UniformBufferDescriptorCount>0 || CombinedImageSamplerDescriptorCount > 0)
-	{
-		CreateDescriptorSetLayout(DescriptorSetLayout, Context->Device);
-		CreateDescriptorPool(DescriptorPool, Context->Device, UniformBufferDescriptorCount, CombinedImageSamplerDescriptorCount);
-		CreateDescriptorSet(DescriptorSet, WriteDescriptorSets, Context->Device, DescriptorPool, DescriptorSetLayout);
-	}
-	else
-	{
-		DescriptorSetLayout = nullptr;
-		DescriptorPool = nullptr;
-		DescriptorSet = nullptr;
-	}
-	CreateGraphicsPipeline(Pipeline, PipelineLayout, msaaSamples, Context->Device, VertShaderBytecode, "main", FragShaderBytecode, "main",
-		BindingDescriptions, AttributeDescriptions, DescriptorSetLayout, RenderPass);
-}
-
-void RHIVulkanPipeline::CleanupSwapchainFramebuffer(RHIVulkanContext* Context)
+void RHIVulkanRenderPass::CleanupSwapchainFramebuffer(RHIVulkanContext* Context)
 {
 	for (auto framebuffer : SwapchainFramebuffers) {
 		vkDestroyFramebuffer(Context->Device, framebuffer, nullptr);
 	}
 }
 
-void RHIVulkanPipeline::Cleanup(RHIVulkanContext* Context)
+void RHIVulkanRenderPass::Cleanup(RHIVulkanContext* Context)
 {
 	CleanupSwapchainFramebuffer(Context);
 	// clean up
-	ColorRenderTargetResource->Cleanup(Context);
-	delete ColorRenderTargetResource;
-	DepthRenderTargetResource->Cleanup(Context);
-	delete DepthRenderTargetResource;
-
-	vkDestroyPipeline(Context->Device, Pipeline, nullptr);
-	vkDestroyPipelineLayout(Context->Device, PipelineLayout, nullptr);
+	ColorRenderTargetResource.Cleanup(Context);
+	DepthRenderTargetResource.Cleanup(Context);
 	vkDestroyRenderPass(Context->Device, RenderPass, nullptr);
-	vkDestroyDescriptorPool(Context->Device, DescriptorPool, nullptr);
-	vkDestroyDescriptorSetLayout(Context->Device, DescriptorSetLayout, nullptr);
 }
+
 
 void RHIVulkanGraphicDispatcher::Initialize(RHIVulkanContext* Context)
 {
@@ -526,23 +543,38 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPi
 	vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
 }
 
-void RHIVulkanGraphicDispatcher::DispatchImGUI(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, ImDrawData* draw_data, 
+void RHIVulkanGraphicDispatcher::DispatchImGUI(ImDrawData* draw_data, 
 	void (*ImGui_ImplVulkan_RenderDrawData)(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline))
 {
 	ImGui_ImplVulkan_RenderDrawData(draw_data, CommandBuffer, nullptr);
 }
 
-void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIVulkanContext* Context, uint32_t& OutImageIndex)
+void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIVulkanContext* Context, uint32_t& OutImageIndex, RHIVulkanRenderPass* RenderPass)
 {
 	glfwPollEvents();
 	vkWaitForFences(Context->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 	VkResult result = vkAcquireNextImageKHR(Context->Device, Context->Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
 
-	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-		//recreateSwapChain();
-		return;
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+		Context->CleanupSwapchain();
+		Context->InitializeSwapchain();
+		RenderPass->CleanupSwapchainFramebuffer(Context);
+		RenderPass->ColorRenderTargetResource.Cleanup(Context);
+		RenderPass->DepthRenderTargetResource.Cleanup(Context);
+		VkExtent3D RenderTargetExtent;
+		RenderTargetExtent.height = Context->SwapchainExtent.height;
+		RenderTargetExtent.width = Context->SwapchainExtent.width;
+		RenderTargetExtent.depth = 1;
+		RenderPass->CreateColorRenderTarget(Context, RenderTargetExtent);
+		RenderPass->CreateDepthRenderTarget(Context, RenderTargetExtent);
+		RenderPass->CreateSwapchainFramebuffer(Context);
+		VkResult result = vkAcquireNextImageKHR(Context->Device, Context->Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+		{
+			throw std::runtime_error("failed to acquire swap chain after retry!");
+		}
 	}
-	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+	else if (result != VK_SUCCESS) {
 		throw std::runtime_error("failed to acquire swap chain image!");
 	}
 
@@ -559,12 +591,12 @@ void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIVulkanContext* Context, ui
 }
 
 
-void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t ImageIndex)
+void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource, uint32_t ImageIndex)
 {
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	renderPassInfo.renderPass = Pipeline->RenderPass;
-	renderPassInfo.framebuffer = Pipeline->SwapchainFramebuffers[ImageIndex];
+	renderPassInfo.renderPass = RenderPassResource->RenderPass;
+	renderPassInfo.framebuffer = RenderPassResource->SwapchainFramebuffers[ImageIndex];
 	renderPassInfo.renderArea.offset = { 0, 0 };
 	renderPassInfo.renderArea.extent = Context->SwapchainExtent;
 
