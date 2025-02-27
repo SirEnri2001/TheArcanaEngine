@@ -3,8 +3,10 @@
 #define RHI_IMPLEMENT
 #include <RHI.h>
 #include <d3d12.h>
+#include <d3dcompiler.h>	// TODO: Use DirectX Shader Compiler
 #include <dxgi.h>
 #include <wrl/client.h>
+#include <DirectXMath.h>
 
 
 // Note that while ComPtr is used to manage the lifetime of resources on the CPU,
@@ -13,7 +15,6 @@
 // referenced by the GPU.
 // An example of this can be found in the class method: OnDestroy().
 using Microsoft::WRL::ComPtr;
-
 
 /// <summary>
 /// Platform & application related: initialize devices, create window, configure swap chain...
@@ -26,12 +27,13 @@ public:
 
 
 
-	// Pipeline objects.
-	D3D12_VIEWPORT Viewport;
+
+	D3D12_VIEWPORT Viewport;	// TODO: on resize
 	D3D12_RECT ScissorRect;
 	ComPtr<ID3D12Device> Device;
 	ComPtr<ID3D12Resource> RenderTargets[FrameCount];
 	ComPtr<IDXGISwapChain> SwapChain;
+
 	ComPtr<ID3D12CommandAllocator> CommandAllocator;
 	ComPtr<ID3D12CommandQueue> CommandQueue;
 	ComPtr<ID3D12GraphicsCommandList> CommandList;
@@ -40,8 +42,13 @@ public:
 	ComPtr<ID3D12DescriptorHeap> RTVHeap;
 	UINT RVTDescriptorSize;
 
+
+	HWND hwnd = nullptr;
+
+	//	ComPtr<ID3DBlob> blob;
 	
 };
+
 
 
 /// <summary>

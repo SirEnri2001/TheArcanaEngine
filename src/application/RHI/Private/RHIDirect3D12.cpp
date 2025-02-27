@@ -1,9 +1,6 @@
 #pragma once
 
 #define RHI_IMPLEMENT
-#include <RHI.h>
-#include <d3d12.h>
-#include <dxgi.h>
 
 /// <summary>
 /// Platform & application related: initialize devices, create window, configure swap chain...
