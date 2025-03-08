@@ -34,12 +34,15 @@ struct TVertex {
     TangentType TangentTypeY;
 };
 
-template<typename VertexType, typename IndexType>
+template<typename TVertex, typename TIndex>
 class TMesh
 {
 public:
+    using VertexType = TVertex;
+    using IndexType = TIndex;
     std::vector<VertexType> Vertices;
     std::vector<IndexType> Indices;
+    std::string TexturePath;
 
     static TMesh<VertexType, IndexType> LoadObj(const std::string ObjFileName);
 };
