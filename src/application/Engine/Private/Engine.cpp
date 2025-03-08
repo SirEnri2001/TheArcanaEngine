@@ -10,6 +10,7 @@
 #include "CoreMath.inl"
 #include "CoreGeometry.h"
 #include "CoreScene.h"
+#include "CoreLog.inl"
 
 #include <unordered_map>
 
@@ -81,6 +82,9 @@ void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float Wind
 
 int main()
 {
+    Log("Engine starts at ", "application mode", " ", 3);
+    Warning("This is a test warning. ");
+    Error("This is a test ERROR. ");
     Scene MainScene;
     std::string TestJson = R"({
     "Children":[
