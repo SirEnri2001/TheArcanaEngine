@@ -12,3 +12,5 @@ set_target_properties(glm PROPERTIES FOLDER "Thirdparties/glm")
 add_subdirectory(${ThirdPartiesDir}/imgui-1.91.8)
 set(imgui_INCLUDE_DIRS ${ThirdPartiesDir}/imgui-1.91.8)
 set_target_properties(imgui PROPERTIES FOLDER "Thirdparties/imgui-1.91.8")
+
+set(json_INCLUDE_DIRS ${ThirdPartiesDir}/nlohmann_json-3.11.3)

@@ -15,5 +15,6 @@ include(./src/thirdparties/CMakeLists.txt)
 # add modules
 include(./src/application/CoreMath/CMakeLists.txt)
 include(./src/application/CoreGeometry/CMakeLists.txt)
+include(./src/application/CoreScene/CMakeLists.txt)
 include(./src/application/RHI/CMakeLists.txt)
 include(./src/application/Engine/CMakeLists.txt)
