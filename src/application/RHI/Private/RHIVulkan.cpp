@@ -11,19 +11,20 @@
 #include <cstdlib>
 #include <cstdint>
 #include <array>
+#include <cassert>
 #include <optional>
 #include <set>
 #include <stb_image.h>
 #include <unordered_map>
 #include "GLFW/glfw3.h"
 
-RHIVulkanContext::RHIVulkanContext(VulkanContextInfo CreateInfo) : Info(CreateInfo)
+RHIVulkanContext::RHIVulkanContext()
 {
 }
 
-void RHIVulkanContext::Initialize()
+void RHIVulkanContext::Initialize(VulkanContextInfo CreateInfo)
 {
-	CreateGLFWWindow(pGLFWwindow, Info.WindowWidth, Info.WindowHeight, this, OnWindowResize);
+	CreateGLFWWindow(pGLFWwindow, CreateInfo.WindowWidth, CreateInfo.WindowHeight, this, OnWindowResize);
 	CreateVkInstance(Instance, DebugMessenger, Extensions);
 	CreateVkSurface(Instance, pGLFWwindow, Surface);
 	PhysicalDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -129,6 +130,7 @@ void RHIVulkanImageResource::Initialize(RHIVulkanContext* Context, const char* I
 {
 	int texWidth, texHeight, texChannels;
 	stbi_uc* pixels = stbi_load(ImageFileName, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	assert(texHeight > 0 && texWidth > 0);
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 	uint32_t MipLevel = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
