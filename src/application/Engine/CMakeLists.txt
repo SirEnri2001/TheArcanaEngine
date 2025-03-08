@@ -13,6 +13,7 @@ target_link_libraries(Engine RHI CoreGeometry imgui CoreScene)
 target_include_directories(Engine PRIVATE ${RHI_MODULE_ROOT}/Public)
 target_include_directories(Engine 
 PUBLIC ${CoreMath_MODULE_ROOT}/Public
+PUBLIC ${CoreLog_MODULE_ROOT}/Public
 PUBLIC ${CoreGeometry_MODULE_ROOT}/Public
 PUBLIC ${glm_INCLUDE_DIRS}
 )
