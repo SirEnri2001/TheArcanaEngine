@@ -117,6 +117,7 @@ public:
     VkDeviceMemory DeviceMemory;
     void* MappedMemory;
     VkDescriptorBufferInfo DescriptorBufferInfo;
+    uint32_t Size;
     void Initialize(RHIVulkanContext* Context, uint32_t UniformStructSize);
 
     void CopyToBuffer(RHIVulkanContext* Context, void* data, uint32_t TotalBytes);
@@ -160,6 +161,9 @@ public:
     std::vector<VkVertexInputAttributeDescription> AttributeDescriptions;
 
     VkDescriptorSet DescriptorSet;
+    std::vector<VkDescriptorImageInfo> DescriptorImageInfos;
+    std::vector<VkDescriptorBufferInfo> DescriptorBufferInfos;
+    std::vector<VkDescriptorSetLayoutBinding> DescSetLayoutBindings;
     std::vector<VkWriteDescriptorSet> WriteDescriptorSets;
     uint32_t UniformBufferDescriptorCount = 0;
     uint32_t CombinedImageSamplerDescriptorCount = 0;
@@ -168,11 +172,13 @@ public:
 
     void AddBinding(uint32_t BindingIndex, uint32_t Stride);
 
-    void AddUniformBuffer(const VkDescriptorBufferInfo& UniformDescBufferInfo);
+    void AddUniformBuffer(const VkDescriptorBufferInfo& UniformDescBufferInfo, uint32_t Binding);
 
-    void AddImageSampler(const VkDescriptorImageInfo& DescImageInfo);
+    void AddImageSampler(const VkDescriptorImageInfo& DescImageInfo, uint32_t Binding);
 
-    void Initialize(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource, const std::vector<char>& VertShader, const std::vector<char>& FragShader);
+    void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader);
+
+    void Initialize(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource);
 
     void Cleanup(RHIVulkanContext* Context);
 };
@@ -188,7 +194,9 @@ public:
 class RHI_API RHIVulkanGraphicDispatcher
 {
 public:
+    bool bWindowResizeLastframe = false;
     VkSemaphore ImageAvailableSemaphore;
+    VkSemaphore ImageAvailableSemaphore2;
     VkSemaphore RenderFinishSemaphore;
     VkFence InFlightFence;
     VkCommandBuffer CommandBuffer;

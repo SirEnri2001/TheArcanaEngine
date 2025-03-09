@@ -2,6 +2,7 @@
 #include "Renderer.h"
 
 #include <chrono>
+#include <CoreLog.inl>
 
 #include "GLFW/glfw3.h"
 #include "glm/glm.hpp"
@@ -9,20 +10,6 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
-
-
-void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float WindowHeight, float WindowWidth, glm::mat4 viewMat, float4 ViewPos) {
-	static auto startTime = std::chrono::high_resolution_clock::now();
-
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-	OutUniformBufferObject.model = glm::mat4(1.0f);//glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-	OutUniformBufferObject.view = viewMat;
-	OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), WindowWidth / WindowHeight, 0.1f, 10.0f);
-	OutUniformBufferObject.proj[1][1] *= -1;
-	OutUniformBufferObject.viewPosition = ViewPos;
-}
 
 void MeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh)
 {
@@ -34,51 +21,46 @@ void MeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh)
     IndexBufferSize = InMesh.Indices.size();
 }
 
-
-void Renderer::Initialize(RendererContext* Context)
+MeshRenderProxy::~MeshRenderProxy()
 {
-	UniformBufferSize = sizeof(UniformBufferObject);
-	Uniform.Initialize(&Context->Context, UniformBufferSize);
+    Log("Release Render Proxy");
 }
 
 
-void Renderer::DrawScene(RendererContext* Context, MeshRenderProxy& InMeshProxy, std::vector<char> VS, std::vector<char> PS)
+void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS)
 {
-    MeshProxy = &InMeshProxy;
-	Pipeline.AddBinding(0, sizeof(Mesh::VertexType));
-	Pipeline.AddLayout(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
-	Pipeline.AddLayout(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
-	Pipeline.AddLayout(0, 2, VK_FORMAT_R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
-	Pipeline.AddLayout(0, 3, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
-	Pipeline.AddUniformBuffer({ Uniform.Buffer, 0, UniformBufferSize });
-	Pipeline.AddImageSampler({ MeshProxy->Texture.Sampler, MeshProxy->Texture.ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
-	Pipeline.Initialize(&Context->Context, &Context->RenderPass, VS, PS);
-
-	GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
-	GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
-	GraphicDispatcher.Initialize(&Context->Context);
+    Pipeline.SetShaders(VS, PS);
+    Pipeline.AddBinding(0, sizeof(Mesh::VertexType));
+    Pipeline.AddLayout(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
+    Pipeline.AddLayout(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
+    Pipeline.AddLayout(0, 2, VK_FORMAT_R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
+    Pipeline.AddLayout(0, 3, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
+    Pipeline.Initialize(&Context->Context, &Context->RenderPass);
+    GraphicDispatcher.Initialize(&Context->Context);
 }
 
-void Renderer::DrawUI()
+void Renderer::AddUniform(RHIVulkanUniform Uniform, uint32_t Binding)
 {
-
+    Pipeline.AddUniformBuffer({ Uniform.Buffer, 0, Uniform.Size}, Binding);
 }
 
-void Renderer::UpdateFrame(RendererContext* RContext)
+void Renderer::AddTextureSampler(RHIVulkanImageResource Texture, uint32_t Binding)
 {
-    auto Context = RContext->Context;
-    static auto viewMat = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    static float4 ViewPos = { 2.,2.,2.,1. };
+    Pipeline.AddImageSampler({ Texture.Sampler, Texture.ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL }, Binding);
+}
 
 
+void Renderer::DrawScene(RendererContext* Context, MeshRenderProxy& InMeshProxy)
+{
+    MeshProxyPasses.push_back(&InMeshProxy);
+}
+
+void Renderer::UpdateUI()
+{
     static bool show_demo_window = true;
     static bool show_another_window = true;
     static float4 clear_color;
     static ImGuiIO& io = ImGui::GetIO();
-
-    updateUniformBuffer(ubo, Context.SwapchainExtent.height, Context.SwapchainExtent.width, viewMat, ViewPos);
-
-	Uniform.CopyToBuffer(&Context, &ubo, sizeof(ubo));
     // Start the Dear ImGui frame
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -126,8 +108,8 @@ void Renderer::UpdateFrame(RendererContext* RContext)
         float DeltaX = io.MousePos.x - io.MousePosPrev.x;
         float DeltaY = io.MousePos.y - io.MousePosPrev.y;
 
-        viewMat = glm::rotate(glm::mat4(1.f), DeltaX * 0.01f, glm::vec3(0.0f, 1.0f, 0.0f)) * viewMat;
-        viewMat = glm::rotate(glm::mat4(1.f), DeltaY * 0.01f, glm::vec3(1.0f, 0.0f, 0.0f)) * viewMat;
+        //viewMat = glm::rotate(glm::mat4(1.f), DeltaX * 0.01f, glm::vec3(0.0f, 1.0f, 0.0f)) * viewMat;
+        //viewMat = glm::rotate(glm::mat4(1.f), DeltaY * 0.01f, glm::vec3(1.0f, 0.0f, 0.0f)) * viewMat;
 
         float3 PlayerMove = { 0.f, 0.f, 0.f };
         if (ImGui::IsKeyDown(ImGuiKey_W))
@@ -154,20 +136,29 @@ void Renderer::UpdateFrame(RendererContext* RContext)
         {
             PlayerMove += float3(0., 1., 0.);
         }
-        viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.001f) * viewMat;
+        //viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.001f) * viewMat;
     }
-
-
-
     // Rendering
     ImGui::Render();
+}
+
+void Renderer::UpdateFrame(RendererContext* RContext)
+{
+    auto& Context = RContext->Context;
+    UpdateUI();
     ImDrawData* draw_data = ImGui::GetDrawData();
     const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
     uint32_t ImageIndex;
     GraphicDispatcher.PrepareRenderPass(&Context, ImageIndex, &RContext->RenderPass);
     GraphicDispatcher.BeginRenderPass(&Context, &RContext->RenderPass, ImageIndex);
-    GraphicDispatcher.Dispatch(&Context, &Pipeline, MeshProxy->IndexBufferSize, 0, 1);
 
+    for (auto& MeshProxy : MeshProxyPasses)
+    {
+        GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
+        GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
+        IndexBufferSize = MeshProxy->IndexBufferSize;
+        GraphicDispatcher.Dispatch(&Context, &Pipeline, IndexBufferSize, 0, 1);
+    }
     // Comment this line if you don't want ImGUI
     GraphicDispatcher.DispatchImGUI(draw_data, ImGui_ImplVulkan_RenderDrawData);
 

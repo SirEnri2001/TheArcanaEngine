@@ -19,17 +19,9 @@
 
 class RendererContext;
 
-struct UniformBufferObject {
-	alignas(16) float4x4 model;
-	alignas(16) float4x4 view;
-	alignas(16) float4x4 proj;
-	alignas(16) float4 viewPosition;
-};
-
 
 class RENDERER_API RenderProxyBase
 {
-	
 };
 
 class RENDERER_API MeshRenderProxy : public RenderProxyBase
@@ -40,6 +32,7 @@ public:
 	RHIVulkanImageResource Texture;
 	uint32_t IndexBufferSize;
 	void Initialize(RendererContext* Context, Mesh& InMesh);
+	~MeshRenderProxy();
 };
 
 class RENDERER_API SceneRenderProxy : public RenderProxyBase
@@ -55,19 +48,20 @@ class RENDERER_API UIRenderProxy : public RenderProxyBase
 class RENDERER_API Renderer
 {
 public:
-	RHIVulkanUniform Uniform;
+	uint32_t IndexBufferSize;
 	RHIVulkanPipeline Pipeline;
-
 	RHIVulkanGraphicDispatcher GraphicDispatcher;
+	std::vector<MeshRenderProxy*> MeshProxyPasses;
 
-	uint32_t UniformBufferSize;
-	UniformBufferObject ubo;
-	MeshRenderProxy* MeshProxy;
-	void Initialize(RendererContext* Context);
+	void Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS);
 
-	void DrawScene(RendererContext* Context, MeshRenderProxy& MeshProxy, std::vector<char> VS, std::vector<char> PS);
+	void AddUniform(RHIVulkanUniform Uniform, uint32_t Binding);
 
-	void DrawUI();
+	void AddTextureSampler(RHIVulkanImageResource Texture, uint32_t Binding);
+
+	void DrawScene(RendererContext* Context, MeshRenderProxy& MeshProxy);
+
+	void UpdateUI();
 
 	void UpdateFrame(RendererContext* RContext);
 };

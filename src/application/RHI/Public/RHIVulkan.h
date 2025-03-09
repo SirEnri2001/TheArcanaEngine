@@ -73,7 +73,7 @@ VkFormat findDepthFormat(VkPhysicalDevice PhysicalDevice);
 
 void CreateRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkPhysicalDevice PhysicalDevice, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples);
 
-void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, VkDevice Device);
+void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, const std::vector<VkDescriptorSetLayoutBinding>& DescSetLayoutBindings, VkDevice Device);
 
 void CreateGraphicsPipeline(VkPipeline& OutGraphicsPipeline, VkPipelineLayout& OutPipelineLayout, VkSampleCountFlagBits SampleCountFlagBits,
     VkDevice device, const std::vector<char>& VertShaderBytecode, const char* VertShaderMain, const std::vector<char>& FragShaderBytecode, const char* FragShaderMain,
@@ -105,7 +105,7 @@ void CreateSampler(VkSampler& OutSampler, VkDevice Device, VkPhysicalDevice Phys
 
 void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size, VkCommandBuffer CommandBuffer);
 
-void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount, uint32_t CombinedImageSamplerCount);
+void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount = 16, uint32_t CombinedImageSamplerCount = 16);
 
 void CreateDescriptorSet(VkDescriptorSet& OutDescriptorSet, std::vector<VkWriteDescriptorSet>& InOutWriteDescriptorSets,
     VkDevice Device, VkDescriptorPool DescriptorPool, const VkDescriptorSetLayout& DescriptorSetLayout);
