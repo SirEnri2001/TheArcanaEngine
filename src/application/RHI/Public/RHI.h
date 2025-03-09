@@ -28,7 +28,7 @@ public:
     {
         int WindowWidth;
         int WindowHeight;
-    } Info;
+    };
 
     VkInstance Instance;
     VkDebugUtilsMessengerEXT DebugMessenger;
@@ -60,9 +60,9 @@ public:
 
     GLFWwindow* pGLFWwindow;
 
-    RHIVulkanContext(VulkanContextInfo CreateInfo);
+    RHIVulkanContext();
 
-    void Initialize();
+    void Initialize(VulkanContextInfo CreateInfo);
 
     void CleanupSwapchain();
 

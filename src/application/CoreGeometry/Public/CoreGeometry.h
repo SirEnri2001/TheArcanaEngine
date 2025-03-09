@@ -25,7 +25,7 @@ namespace CoreGeometryImpl
 
 
 template<typename PositionType, typename ColorType, typename TexCoordType, typename NormalType, typename TangentType>
-struct Vertex {
+struct TVertex {
     PositionType Position;
     ColorType Color;
     TexCoordType TexCoord;
@@ -34,12 +34,15 @@ struct Vertex {
     TangentType TangentTypeY;
 };
 
-template<typename VertexType, typename IndexType>
+template<typename TVertex, typename TIndex>
 class TMesh
 {
 public:
+    using VertexType = TVertex;
+    using IndexType = TIndex;
     std::vector<VertexType> Vertices;
     std::vector<IndexType> Indices;
+    std::string TexturePath;
 
     static TMesh<VertexType, IndexType> LoadObj(const std::string ObjFileName);
 };
@@ -126,3 +129,5 @@ void CalculateNormal(TMesh<VertexType, IndexType>& InOutMesh)
         InOutMesh.Vertices[i].Normal = normalize(InOutMesh.Vertices[i].Normal);
     }
 }
+
+
