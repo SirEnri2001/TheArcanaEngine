@@ -32,7 +32,10 @@ PRIVATE ${RHI_MODULE_ROOT}/Private
 )
 
 
-target_include_directories(RHI PRIVATE ${CoreMath_MODULE_ROOT}/Public)
+target_include_directories(RHI 
+PRIVATE ${CoreMath_MODULE_ROOT}/Public
+PRIVATE ${CoreLog_MODULE_ROOT}/Public
+)
 
 target_link_libraries(RHI Vulkan::Vulkan)
 target_link_libraries(RHI glfw)

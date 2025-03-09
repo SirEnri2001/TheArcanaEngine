@@ -1,4 +1,5 @@
 #include "RHIVulkan.h"
+#include "CoreLog.inl"
 
 #include <algorithm>
 #include <iostream>
@@ -9,6 +10,9 @@
 #include <vulkan/vulkan_core.h>
 
 #include "GLFW/glfw3.h"
+
+VkInstance GVkInstance = nullptr;
+
 
 void CreateGLFWWindow(GLFWwindow*& pGLFWwindow, int width, int height, void* CallbackOwner, void (*framebufferResizeCallback)(GLFWwindow* window, int width, int height))
 {
@@ -23,7 +27,17 @@ void CreateGLFWWindow(GLFWwindow*& pGLFWwindow, int width, int height, void* Cal
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
-    std::cerr << "[Vulkan] " << pCallbackData->pMessage << std::endl;
+    if (messageSeverity== VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+    {
+        Error("[Vulkan] ", pCallbackData->pMessage);
+        __debugbreak();
+    }else if (messageSeverity == VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+    {
+        Warning("[Vulkan] ", pCallbackData->pMessage);
+    }else
+    {
+        Log("[Vulkan] ", pCallbackData->pMessage);
+    }
     return VK_FALSE;
 }
 
@@ -70,6 +84,17 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDebugUtilsMessengerEXT(
     VkDebugUtilsMessengerEXT* pMessenger) {
     PFN_vkCreateDebugUtilsMessengerEXT myvkCreateDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
     return myvkCreateDebugUtilsMessengerEXT(instance, pCreateInfo, pAllocator, pMessenger);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
+    VkCommandBuffer                             commandBuffer,
+    VkPipelineBindPoint                         pipelineBindPoint,
+    VkPipelineLayout                            layout,
+    uint32_t                                    set,
+    uint32_t                                    descriptorWriteCount,
+    const VkWriteDescriptorSet* pDescriptorWrites) {
+    PFN_vkCmdPushDescriptorSetKHR myvkCmdPushDescriptorSetKHR = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetInstanceProcAddr(GVkInstance, "vkCmdPushDescriptorSetKHR"));
+    return myvkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount, pDescriptorWrites);
 }
 
 void CreateVkInstance(
@@ -126,6 +151,7 @@ void CreateVkInstance(
     if (vkCreateDebugUtilsMessengerEXT(OutVkInstance, &debugCreateInfo, nullptr, &OutDebugMessenger) != VK_SUCCESS) {
         throw std::runtime_error("failed to set up debug messenger!");
     }
+    GVkInstance = OutVkInstance;
 }
 
 void CreateVkSurface(VkInstance& Instance, GLFWwindow* Window, VkSurfaceKHR& OutVkSurface)
@@ -484,26 +510,40 @@ void CreateRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkPhysicalDe
     }
 }
 
-void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, VkDevice Device) {
-    VkDescriptorSetLayoutBinding uboLayoutBinding;
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+//void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, VkDevice Device) {
+//    VkDescriptorSetLayoutBinding uboLayoutBinding;
+//    uboLayoutBinding.binding = 0;
+//    uboLayoutBinding.descriptorCount = 1;
+//    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+//    uboLayoutBinding.pImmutableSamplers = nullptr;
+//    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+//
+//    VkDescriptorSetLayoutBinding samplerLayoutBinding;
+//    samplerLayoutBinding.binding = 1;
+//    samplerLayoutBinding.descriptorCount = 1;
+//    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+//    samplerLayoutBinding.pImmutableSamplers = nullptr;
+//    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+//
+//    std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
+//    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+//    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+//    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+//    layoutInfo.pBindings = bindings.data();
+//    layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
+//
+//    if (vkCreateDescriptorSetLayout(Device, &layoutInfo, nullptr, &OutDescriptorSetLayout) != VK_SUCCESS) {
+//        throw std::runtime_error("failed to create descriptor set layout!");
+//    }
+//}
 
-    VkDescriptorSetLayoutBinding samplerLayoutBinding;
-    samplerLayoutBinding.binding = 1;
-    samplerLayoutBinding.descriptorCount = 1;
-    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerLayoutBinding.pImmutableSamplers = nullptr;
-    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
+void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, const std::vector<VkDescriptorSetLayoutBinding>& DescSetLayoutBindings, VkDevice Device)
+{
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-    layoutInfo.pBindings = bindings.data();
+    layoutInfo.bindingCount = static_cast<uint32_t>(DescSetLayoutBindings.size());
+    layoutInfo.pBindings = DescSetLayoutBindings.data();
+    layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
 
     if (vkCreateDescriptorSetLayout(Device, &layoutInfo, nullptr, &OutDescriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
@@ -846,33 +886,25 @@ void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size, VkCom
 
 void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount, uint32_t CombinedImageSamplerCount) {
     std::vector<VkDescriptorPoolSize> poolSizes{};
-    if (UniformBufferCount>0 || true)
-    {
-        VkDescriptorPoolSize descPoolSize{};
-        descPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descPoolSize.descriptorCount = 16;
-        poolSizes.push_back(descPoolSize);
-    }
 
-    if (CombinedImageSamplerCount > 0 || true)
-    {
-        VkDescriptorPoolSize descPoolSize{};
-        descPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descPoolSize.descriptorCount = 16;
-        poolSizes.push_back(descPoolSize);
-    }
+    VkDescriptorPoolSize UniformDescPoolSize{};
+    UniformDescPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    UniformDescPoolSize.descriptorCount = UniformBufferCount;
+    poolSizes.push_back(UniformDescPoolSize);
 
-    if (UniformBufferCount || CombinedImageSamplerCount)
-    {
-        VkDescriptorPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-        poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = 16;
+    VkDescriptorPoolSize SamplerDescPoolSize{};
+    SamplerDescPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    SamplerDescPoolSize.descriptorCount = CombinedImageSamplerCount;
+    poolSizes.push_back(SamplerDescPoolSize);
 
-        if (vkCreateDescriptorPool(Device, &poolInfo, nullptr, &OutDescriptorPool) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create descriptor pool!");
-        }
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
+    poolInfo.maxSets = 16;
+
+    if (vkCreateDescriptorPool(Device, &poolInfo, nullptr, &OutDescriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor pool!");
     }
 }
 

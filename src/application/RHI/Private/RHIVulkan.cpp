@@ -27,7 +27,10 @@ void RHIVulkanContext::Initialize(VulkanContextInfo CreateInfo)
 	CreateGLFWWindow(pGLFWwindow, CreateInfo.WindowWidth, CreateInfo.WindowHeight, this, OnWindowResize);
 	CreateVkInstance(Instance, DebugMessenger, Extensions);
 	CreateVkSurface(Instance, pGLFWwindow, Surface);
-	PhysicalDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+	PhysicalDeviceExtensions = {
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME
+	};
 	RetrieveAvailablePhysicalDevices(AvailablePhysicalDevices, Instance);
 
 	for (auto& CurrentPhysicalDevice : AvailablePhysicalDevices)
@@ -322,6 +325,7 @@ void RHIVulkanUniform::Initialize(RHIVulkanContext* Context, uint32_t UniformStr
 	DescriptorBufferInfo.buffer = Buffer;
 	DescriptorBufferInfo.offset = 0;
 	DescriptorBufferInfo.range = UniformStructSize;
+	Size = UniformStructSize;
 }
 
 void RHIVulkanUniform::CopyToBuffer(RHIVulkanContext* Context, void* data, uint32_t TotalBytes)
@@ -346,45 +350,66 @@ void RHIVulkanPipeline::AddBinding(uint32_t BindingIndex, uint32_t Stride)
 	BindingDescriptions.push_back({ BindingIndex, Stride, VK_VERTEX_INPUT_RATE_VERTEX });
 }
 
-void RHIVulkanPipeline::AddUniformBuffer(const VkDescriptorBufferInfo& UniformDescBufferInfo)
+void RHIVulkanPipeline::AddUniformBuffer(const VkDescriptorBufferInfo& UniformDescBufferInfo, uint32_t Binding)
 {
 	VkWriteDescriptorSet WriteDescSet{};
 	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	WriteDescSet.dstSet = nullptr;
-	WriteDescSet.dstBinding = 0;
+	WriteDescSet.dstBinding = Binding;
 	WriteDescSet.dstArrayElement = 0;
 	WriteDescSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	WriteDescSet.descriptorCount = 1;
-	WriteDescSet.pBufferInfo = &UniformDescBufferInfo;
+	DescriptorBufferInfos.push_back(UniformDescBufferInfo);
+	WriteDescSet.pBufferInfo = &DescriptorBufferInfos.back();
 	WriteDescriptorSets.push_back(WriteDescSet);
 	UniformBufferDescriptorCount++;
+
+	VkDescriptorSetLayoutBinding uboLayoutBinding;
+    uboLayoutBinding.binding = Binding;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+	DescSetLayoutBindings.push_back(uboLayoutBinding);
 }
 
-void RHIVulkanPipeline::AddImageSampler(const VkDescriptorImageInfo& DescImageInfo)
+void RHIVulkanPipeline::AddImageSampler(const VkDescriptorImageInfo& DescImageInfo, uint32_t Binding)
 {
 	VkWriteDescriptorSet WriteDescSet{};
 	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	WriteDescSet.dstSet = nullptr;
-	WriteDescSet.dstBinding = 1;
+	WriteDescSet.dstBinding = Binding;
 	WriteDescSet.dstArrayElement = 0;
 	WriteDescSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	WriteDescSet.descriptorCount = 1;
-	WriteDescSet.pImageInfo = &DescImageInfo;
+	DescriptorImageInfos.push_back(DescImageInfo);
+	WriteDescSet.pImageInfo = &DescriptorImageInfos.back();
 	WriteDescriptorSets.push_back(WriteDescSet);
 	CombinedImageSamplerDescriptorCount++;
+
+    VkDescriptorSetLayoutBinding samplerLayoutBinding;
+    samplerLayoutBinding.binding = Binding;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerLayoutBinding.pImmutableSamplers = nullptr;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	DescSetLayoutBindings.push_back(samplerLayoutBinding);
 }
 
-
-void RHIVulkanPipeline::Initialize(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource, const std::vector<char>& VertShader, const std::vector<char>& FragShader)
+void RHIVulkanPipeline::SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader)
 {
 	VertShaderBytecode = VertShader;
 	FragShaderBytecode = FragShader;
+}
 
+
+void RHIVulkanPipeline::Initialize(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource)
+{
 	if (UniformBufferDescriptorCount>0 || CombinedImageSamplerDescriptorCount > 0)
 	{
-		CreateDescriptorSetLayout(DescriptorSetLayout, Context->Device);
-		CreateDescriptorPool(DescriptorPool, Context->Device, UniformBufferDescriptorCount, CombinedImageSamplerDescriptorCount);
-		CreateDescriptorSet(DescriptorSet, WriteDescriptorSets, Context->Device, DescriptorPool, DescriptorSetLayout);
+		CreateDescriptorSetLayout(DescriptorSetLayout, DescSetLayoutBindings, Context->Device);
+		//CreateDescriptorPool(DescriptorPool, Context->Device);
+		//CreateDescriptorSet(DescriptorSet, WriteDescriptorSets, Context->Device, DescriptorPool, DescriptorSetLayout);
 	}
 	else
 	{
@@ -482,6 +507,7 @@ void RHIVulkanGraphicDispatcher::Initialize(RHIVulkanContext* Context)
 
 	CreateCommandBuffer(CommandBuffer, Context->Device, Context->CommandPool);
 	if (vkCreateSemaphore(Context->Device, &semaphoreInfo, nullptr, &ImageAvailableSemaphore) != VK_SUCCESS ||
+		vkCreateSemaphore(Context->Device, &semaphoreInfo, nullptr, &ImageAvailableSemaphore2) != VK_SUCCESS ||
 		vkCreateSemaphore(Context->Device, &semaphoreInfo, nullptr, &RenderFinishSemaphore) != VK_SUCCESS ||
 		vkCreateFence(Context->Device, &fenceInfo, nullptr, &InFlightFence) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create synchronization objects for a frame!");
@@ -493,6 +519,7 @@ void RHIVulkanGraphicDispatcher::Cleanup(RHIVulkanContext* Context)
 	for (int i = 0; i < Context->SwapchainImageViews.size(); i++)
 	{
 		vkDestroySemaphore(Context->Device, ImageAvailableSemaphore, nullptr);
+		vkDestroySemaphore(Context->Device, ImageAvailableSemaphore2, nullptr);
 		vkDestroySemaphore(Context->Device, RenderFinishSemaphore, nullptr);
 		vkDestroyFence(Context->Device, InFlightFence, nullptr);
 	}
@@ -536,11 +563,14 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIVulkanContext* Context, RHIVulkanPi
 		vkCmdBindVertexBuffers(CommandBuffer, Info.BindingIndex, 1, &Info.BufferResource->Buffer, &Info.Offset);
 	}
 	vkCmdBindIndexBuffer(CommandBuffer, IndexBindingInfo.BufferResource->Buffer, IndexBindingInfo.Offset, VK_INDEX_TYPE_UINT32);
-	if (Pipeline->DescriptorSet)
-	{
-		vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline->PipelineLayout, 0, 1,
-			&Pipeline->DescriptorSet, 0, nullptr);
-	}
+	vkCmdPushDescriptorSetKHR(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline->PipelineLayout,
+		0, Pipeline->WriteDescriptorSets.size(), Pipeline->WriteDescriptorSets.data());
+	//if (Pipeline->DescriptorSet)
+	//{
+	//	
+	//	//vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline->PipelineLayout, 0, 1,
+	//	//	&Pipeline->DescriptorSet, 0, nullptr);
+	//}
 	
 	vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
 }
@@ -555,9 +585,25 @@ void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIVulkanContext* Context, ui
 {
 	glfwPollEvents();
 	vkWaitForFences(Context->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
+	if (bWindowResizeLastframe)
+	{
+		Context->CleanupSwapchain();
+		RenderPass->CleanupSwapchainFramebuffer(Context);
+		RenderPass->ColorRenderTargetResource.Cleanup(Context);
+		RenderPass->DepthRenderTargetResource.Cleanup(Context);
+		Context->InitializeSwapchain();
+		VkExtent3D RenderTargetExtent;
+		RenderTargetExtent.height = Context->SwapchainExtent.height;
+		RenderTargetExtent.width = Context->SwapchainExtent.width;
+		RenderTargetExtent.depth = 1;
+		RenderPass->CreateColorRenderTarget(Context, RenderTargetExtent);
+		RenderPass->CreateDepthRenderTarget(Context, RenderTargetExtent);
+		RenderPass->CreateSwapchainFramebuffer(Context);
+		bWindowResizeLastframe = false;
+	}
 	VkResult result = vkAcquireNextImageKHR(Context->Device, Context->Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
 
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 		Context->CleanupSwapchain();
 		Context->InitializeSwapchain();
 		RenderPass->CleanupSwapchainFramebuffer(Context);
@@ -571,12 +617,12 @@ void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIVulkanContext* Context, ui
 		RenderPass->CreateDepthRenderTarget(Context, RenderTargetExtent);
 		RenderPass->CreateSwapchainFramebuffer(Context);
 		VkResult result = vkAcquireNextImageKHR(Context->Device, Context->Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
-		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+		if (result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
 			throw std::runtime_error("failed to acquire swap chain after retry!");
 		}
 	}
-	else if (result != VK_SUCCESS) {
+	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
 		throw std::runtime_error("failed to acquire swap chain image!");
 	}
 
@@ -651,8 +697,7 @@ void RHIVulkanGraphicDispatcher::Submit(RHIVulkanContext* Context, uint32_t Imag
 	auto result = vkQueuePresentKHR(Context->PresentQueue, &presentInfo);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-		//framebufferResized = false;
-		//recreateSwapChain();
+		bWindowResizeLastframe = true;
 	}
 	else if (result != VK_SUCCESS) {
 		throw std::runtime_error("failed to present swap chain image!");
