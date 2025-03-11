@@ -19,8 +19,8 @@ const std::string MODEL_PATH = "models/spot/spot_triangulated_good.obj";
 const std::string TEXTURE_PATH = "models/spot/spot_texture.png";
 const std::string MODEL2_PATH = "models/viking_room.obj";
 const std::string TEXTURE2_PATH = "textures/viking_room.png";
-const std::string VERT_SHADER_PATH = "shaders/vert.spv";
-const std::string FRAG_SHADER_PATH = "shaders/frag.spv";
+const std::string VERT_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.vert";
+const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
 
 std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
