@@ -1,5 +1,6 @@
 Libs/*
 **/[Bb]uild[s]/
 **/[Bb]uild/
+shaderbytecode/
 .vs
 imgui.ini

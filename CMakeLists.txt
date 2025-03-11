@@ -12,6 +12,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # add CMakeLists.txt for thirdparties
 include(./src/thirdparties/CMakeLists.txt)
+
+# add custom shader compile target
+include(./shaders/CMakeLists.txt)
+
 # add modules
 include(./src/application/CoreMath/CMakeLists.txt)
 include(./src/application/CoreGeometry/CMakeLists.txt)
@@ -21,3 +25,5 @@ include(./src/application/RHI/CMakeLists.txt)
 include(./src/application/SDF/CMakeLists.txt)
 include(./src/application/Renderer/CMakeLists.txt)
 include(./src/application/Engine/CMakeLists.txt)
+
+add_dependencies(Engine glslCompile)
