@@ -1,113 +1,361 @@
 #pragma once
-
-#include <iostream>
+#include <stdexcept>
 #include <vector>
-#include <vulkan/vulkan_core.h>
 
+#include "vulkan/vulkan_core.h"
+
+#include "RHI.h"
+
+// Forward declarations
+class RHIVulkanWindowManager;
 struct GLFWwindow;
-struct GLFWmonitor;
+struct ImDrawData;
 
-void CreateGLFWWindow(GLFWwindow*& pGLFWwindow, int width, int height, void* CallbackOwner, void (*framebufferResizeCallback)(GLFWwindow* window, int width, int height));
+// This class serves as a helper class to create / destroy window manager and context, and should not be referenced in the pipeline creation process
+// May vary by different hardware and OS, but should be generally same every run of the application
+class RHIVulkanPlatformSupport : public RHIPlatformSupportBase
+{
+    static RHIVulkanPlatformSupport* GInstance;
+public:
+    VkInstance Instance;
+    std::vector<const char*> InstanceExtensions;
+    std::vector<const char*> PhysicalDeviceExtensions;
+    std::vector<VkPhysicalDevice> AvailablePhysicalDevices;
+    VkDebugUtilsMessengerEXT DebugMessenger;
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
+    struct PhysicalDeviceDesc
+    {
+	    VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
+	    VkPhysicalDeviceFeatures PDFeatures;
+	    uint32_t GraphicsQueueFamilyIndex;
+	    uint32_t PresentQueueFamilyIndex;
+        VkPhysicalDeviceProperties PDProperties;
+		VkPhysicalDeviceMemoryProperties PDMemoryProperties;
+    } CurrentPhysicalDevice;
 
-void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool);
+    RHIVulkanPlatformSupport();
 
-void BeginCommandBufferOneTimeSubmit(VkCommandBuffer& InCommandBuffer, VkCommandPool commandPool, VkDevice device);
+    virtual void Initialize() override;
+    virtual void Cleanup() override;
+    virtual void InitializePhysicalDevice(RHIWindowManager* WindowManager) override;
 
-void EndCommandBufferOneTimeSubmit(VkCommandBuffer InCommandBuffer, VkCommandPool commandPool, VkQueue graphicsQueue, VkDevice device);
 
-void CreateVkInstance(
-    VkInstance& OutVkInstance,
-    VkDebugUtilsMessengerEXT& OutDebugMessenger,
-    std::vector<const char*>& InOutExtensions,
-    PFN_vkDebugUtilsMessengerCallbackEXT DebugCallback = debugCallback
-);
+    // Vulkan api loaders
+	inline VKAPI_ATTR VkResult VKAPI_CALL vkCreateDebugUtilsMessengerEXT(
+	    VkInstance instance,
+	    const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+	    const VkAllocationCallbacks* pAllocator,
+	    VkDebugUtilsMessengerEXT* pMessenger) {
+	    static PFN_vkCreateDebugUtilsMessengerEXT myvkCreateDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(Instance, "vkCreateDebugUtilsMessengerEXT"));
+	    return myvkCreateDebugUtilsMessengerEXT(instance, pCreateInfo, pAllocator, pMessenger);
+	}
 
-void CreateVkSurface(VkInstance& Instance, GLFWwindow* Window, VkSurfaceKHR& OutVkSurface);
+	inline VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
+	    VkCommandBuffer                             commandBuffer,
+	    VkPipelineBindPoint                         pipelineBindPoint,
+	    VkPipelineLayout                            layout,
+	    uint32_t                                    set,
+	    uint32_t                                    descriptorWriteCount,
+	    const VkWriteDescriptorSet* pDescriptorWrites) {
+	    static PFN_vkCmdPushDescriptorSetKHR myvkCmdPushDescriptorSetKHR = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetInstanceProcAddr(Instance, "vkCmdPushDescriptorSetKHR"));
+	    return myvkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount, pDescriptorWrites);
+	}
 
-void CreateVkDevice(VkDevice& OutVkDevice, VkQueue& OutGraphicsQueue, VkQueue& OutPresentQueue,
-    VkPhysicalDevice physicalDevice, uint32_t GraphicsFamilyIndex, uint32_t PresentFamilyIndex, const std::vector<const char*>& Extensions);
+    // Helpers
+    inline VkFormatProperties GetFormatProperties(VkFormat Format)
+	{
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(CurrentPhysicalDevice.PhysicalDevice, Format, &props);
+        return props;
+	}
+	    
+	VkFormat GetSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+	    for (VkFormat format : candidates) {
+            auto props = GetFormatProperties(format);
+	        if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+	            return format;
+	        }
+	        else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+	            return format;
+	        }
+	    }
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+	    throw std::runtime_error("failed to find supported format!");
+	}
 
-VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+	VkFormat GetDepthFormat() {
+	    return GetSupportedFormat(
+	        { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+	        VK_IMAGE_TILING_OPTIMAL,
+	        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+	    );
+	}
 
-void chooseSwapExtent(VkExtent2D& InOutExtent, const VkSurfaceCapabilitiesKHR& capabilities);
+    
+	VkSampleCountFlagBits GetMaxUsableSampleCount() {
+	    VkSampleCountFlags counts = CurrentPhysicalDevice.PDProperties.limits.framebufferColorSampleCounts & CurrentPhysicalDevice.PDProperties.limits.framebufferDepthSampleCounts;
+	    if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
+	    if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
+	    if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
+	    if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
+	    if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
+	    if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
 
-void CreateImageView(VkImageView& OutImageView, VkImage image, VkDevice Device, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
+	    return VK_SAMPLE_COUNT_1_BIT;
+	}
 
-void CreateSwapchain(
-    VkSwapchainKHR& OutSwapchain,
-    std::vector<VkImage>& OutSwapchainImages,
-    std::vector<VkImageView>& OutSwapchainImageViews,
-    VkFormat& OutSwapchainImageFormat,
-    VkExtent2D& InOutSwapchainExtent,
-    const VkDevice& Device,
-    const VkSurfaceKHR& Surface,
-    const VkSurfaceCapabilitiesKHR& SurfaceCapabilities,
-    const std::vector<VkSurfaceFormatKHR>& SurfaceFormats,
-    const std::vector<VkPresentModeKHR>& PresentModes,
-    uint32_t GraphicsFamilyIndex, uint32_t PresentFamilyIndex
-);
+    uint32_t GetMemoryType(uint32_t TypeFilter, VkMemoryPropertyFlags Properties)
+	{
+		for (uint32_t i = 0; i < CurrentPhysicalDevice.PDMemoryProperties.memoryTypeCount; i++) {
+	        if ((TypeFilter & (1 << i)) && (CurrentPhysicalDevice.PDMemoryProperties.memoryTypes[i].propertyFlags & Properties) == Properties) {
+	            return i;
+	        }
+	    }
+	    throw std::runtime_error("failed to find suitable memory type!");
+	}
 
-VkSampleCountFlagBits getMaxUsableSampleCount(const VkPhysicalDevice& physicalDevice);
+    uint32_t GetMemoryType(VkMemoryRequirements MemoryRequirements, VkMemoryPropertyFlags Properties)
+	{
+        return GetMemoryType(MemoryRequirements.memoryTypeBits, Properties);
+	}
 
-void RetrieveAvailablePhysicalDevices(std::vector<VkPhysicalDevice>& OutAvailablePhysicalDevices, const VkInstance& instance);
+    static VkFormat GetVkFormat(RHIFormat InFormat)
+    {
+        switch(InFormat)
+        {
+        case R8G8B8A8_SRGB:
+			return VK_FORMAT_R8G8B8A8_SRGB;
+        case R32G32B32_SFLOAT:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case R32G32_SFLOAT:
+            return VK_FORMAT_R32G32_SFLOAT;
+        }
+        return VK_FORMAT_UNDEFINED;
+    }
 
-bool PhysicalDevideSupportQueueFamilies(uint32_t& OutGraphicsFamily, uint32_t& OutPresentFamily, VkPhysicalDevice PhysicalDevice, VkSurfaceKHR surface);
+    static RHIVulkanPlatformSupport* Get();
+};
 
-bool PhysicalDeviceSupportExtensions(VkPhysicalDevice device, std::vector<const char*> extensions);
+// This class serves as a general RHI resource allocator. It should only has necessary fields and handles to create rendering resource like Images and Buffers.
+// Window management function should not be defined here.
+class RHIVulkanContext : public RHIContextBase
+{
+public:
+    bool bIsValid = false;
+    struct VulkanContextInfo
+    {
+        int WindowWidth;
+        int WindowHeight;
+    };
 
-bool PhysicalDeviceSupportSurface(
-    VkSurfaceCapabilitiesKHR& OutSurfaceCapabilities,
-    std::vector<VkSurfaceFormatKHR>& OutSurfaceFormats,
-    std::vector<VkPresentModeKHR>& OutPresentModes,
-    VkPhysicalDevice PhysicalDevice, VkSurfaceKHR surface
-);
+    VkDevice Device = VK_NULL_HANDLE;
+    VkQueue GraphicsQueue;
+    VkQueue PresentQueue;
+    VkCommandPool CommandPool;
 
-VkFormat findSupportedFormat(VkPhysicalDevice PhysicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+    RHIVulkanContext();
+    virtual ~RHIVulkanContext() override;
 
-VkFormat findDepthFormat(VkPhysicalDevice PhysicalDevice);
+    virtual void Initialize(RHIPlatformSupport* PlatformSupport) override;
+    virtual void Cleanup() override;
+    virtual void WaitDeviceIdle() override;
+};
 
-void CreateRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkPhysicalDevice PhysicalDevice, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples);
+class RHIVulkanResourceFactory
+{
+public:
+    void Initialize();
 
-void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, const std::vector<VkDescriptorSetLayoutBinding>& DescSetLayoutBindings, VkDevice Device);
+};
 
-void CreateGraphicsPipeline(VkPipeline& OutGraphicsPipeline, VkPipelineLayout& OutPipelineLayout, VkSampleCountFlagBits SampleCountFlagBits,
-    VkDevice device, const std::vector<char>& VertShaderBytecode, const char* VertShaderMain, const std::vector<char>& FragShaderBytecode, const char* FragShaderMain,
-    const std::vector<VkVertexInputBindingDescription>& BindingDescriptions, const std::vector<VkVertexInputAttributeDescription>& AttributeDescriptions,
-    const VkDescriptorSetLayout& DescriptorSetLayout, const VkRenderPass& RenderPass);
+// This class provide a wrapper for window, e.g. glfwwindow.
+// This class is also responsible for dealing with window resize, full screen mode and v-sync
+class RHIVulkanWindowManager : public RHIWindowManagerBase
+{
+public:
+    GLFWwindow* pGLFWwindow;
+    VkSurfaceKHR Surface;
+    VkSurfaceCapabilitiesKHR SurfaceCapabilities;
+    std::vector<VkSurfaceFormatKHR> SurfaceFormats;
+    std::vector<VkPresentModeKHR> PresentModes;
 
-void CreateCommandPool(VkCommandPool& OutCommandPool, VkDevice Device, uint32_t GraphcisFamilyIndex);
+    struct SwapchainDesc
+    {
+	    VkSwapchainKHR Swapchain;
+	    std::vector<VkImage> SwapchainImages;
+		std::vector<VkImageView> SwapchainImageViews;
+	    VkExtent2D SwapchainExtent;
+	    VkFormat SwapchainImageFormat;
+    } CurrentSwapchain;
 
-uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+    RHIVulkanWindowManager() = default;
+    virtual ~RHIVulkanWindowManager() override = default;
 
-void GetMemoryRequirement(VkMemoryRequirements& OutMemoryRequirement, VkDevice Device, VkImage Image);
+    virtual void Initialize(RHIPlatformSupport* PlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth) override;
+    virtual void Cleanup(RHIPlatformSupport* PlatformSupport) override;
 
-void GetMemoryRequirement(VkMemoryRequirements& OutMemoryRequirement, VkDevice Device, VkBuffer Buffer);
+    virtual void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) override;
+    virtual void CleanupSwapchain(RHIContext* Context) override;
+    virtual bool IsAlive() override;
 
-void CreateDeviceMemory(VkDeviceMemory& OutDeviceMemory, VkDevice Device, const VkMemoryRequirements& memRequirements, VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+    virtual uint32_t GetWindowHeight() override
+    {
+	    return CurrentSwapchain.SwapchainExtent.height;
+    }
+    virtual uint32_t GetWindowWidth() override
+    {
+	    return CurrentSwapchain.SwapchainExtent.width;
+    }
 
-void CreateImageAndDeviceMemory(VkImage& Image, VkDeviceMemory& DeviceMemory,
-    VkDevice Device, VkExtent3D Extent, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
-    VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+    static void OnWindowResize(GLFWwindow* window, int width, int height);
+};
 
-void CreateBufferAndDeviceMemory(VkBuffer& OutBuffer, VkDeviceMemory& OutDeviceMemory, VkDevice Device, VkDeviceSize size, VkBufferUsageFlags usage,
-    VkMemoryPropertyFlags properties, VkPhysicalDeviceMemoryProperties PDMemoryProperties);
+class RHIVulkanImageResource : public RHIImageResourceBase
+{
+public:
+    VkImage Image;
+    VkDeviceMemory DeviceMemory;
+    VkImageView ImageView;
+    VkSampler Sampler;
+    bool bHasSampler = false;
+    ImageUsage Usage;
+    RHIFormat Format;
 
-void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
+    RHIVulkanImageResource() = default;
+    virtual ~RHIVulkanImageResource() override = default;
 
-void CopyBufferToImage(VkBuffer buffer, VkImage image, VkCommandBuffer commandBuffer, uint32_t width, uint32_t height);
+    virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) override;
+    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+    virtual void Cleanup(RHIContext* Context) override;
+};
 
-void CreateSampler(VkSampler& OutSampler, VkDevice Device, VkPhysicalDevice PhysicalDevice);
+class RHIVulkanBufferResource : public RHIBufferResourceBase
+{
+public:
+    VkBuffer Buffer;
+    VkDeviceMemory DeviceMemory;
+    BufferType Type;
 
-void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size, VkCommandBuffer CommandBuffer);
+    RHIVulkanBufferResource() = default;
+    virtual ~RHIVulkanBufferResource() override = default;
 
-void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount = 16, uint32_t CombinedImageSamplerCount = 16);
+    virtual void Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) override;
+    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
+    virtual void Cleanup(RHIContext* Context) override;
 
-void CreateDescriptorSet(VkDescriptorSet& OutDescriptorSet, std::vector<VkWriteDescriptorSet>& InOutWriteDescriptorSets,
-    VkDevice Device, VkDescriptorPool DescriptorPool, const VkDescriptorSetLayout& DescriptorSetLayout);
+    static VkBufferUsageFlags GetVkBufferUsageFlags(BufferType Type);
+};
 
-VkSampleCountFlagBits GetMaxUsableSampleCount(VkPhysicalDevice& PhysicalDevice);
+class RHIVulkanUniform : public RHIUniformBase
+{
+public:
+    VkBuffer Buffer;
+    VkDeviceMemory DeviceMemory;
+    void* MappedMemory;
+    VkDescriptorBufferInfo DescriptorBufferInfo;
+    uint32_t Size;
+
+    RHIVulkanUniform() = default;
+    virtual ~RHIVulkanUniform() override = default;
+
+    virtual void Initialize(RHIContext* Context, uint32_t UniformStructSize) override;
+    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
+    virtual void Cleanup(RHIContext* Context) override;
+};
+
+class RHIVulkanRenderPass : public RHIRenderPassBase
+{
+public:
+    VkRenderPass RenderPass;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    std::vector<VkFramebuffer> SwapchainFramebuffers;
+    RHIVulkanImageResource ColorRenderTargetResource;
+    RHIVulkanImageResource DepthRenderTargetResource;
+
+    RHIVulkanRenderPass() = default;
+    virtual ~RHIVulkanRenderPass() override = default;
+
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void CleanupSwapchainFramebuffer(RHIContext* Context) override;
+    virtual void Cleanup(RHIContext* Context) override;
+};
+
+class RHIVulkanPipeline : public RHIPipelineBase
+{
+    std::vector<char> VertShaderBytecode;
+    std::vector<char> FragShaderBytecode;
+public:
+    VkDescriptorPool DescriptorPool;
+    VkDescriptorSetLayout DescriptorSetLayout;
+    VkPipeline Pipeline;
+    VkPipelineLayout PipelineLayout;
+
+    std::vector<VkVertexInputBindingDescription> BindingDescriptions;
+    std::vector<VkVertexInputAttributeDescription> AttributeDescriptions;
+
+    VkDescriptorSet DescriptorSet;
+    std::vector<VkDescriptorImageInfo> DescriptorImageInfos;
+    std::vector<VkDescriptorBufferInfo> DescriptorBufferInfos;
+    std::vector<VkDescriptorSetLayoutBinding> DescSetLayoutBindings;
+    std::vector<VkWriteDescriptorSet> WriteDescriptorSets;
+    uint32_t UniformBufferDescriptorCount = 0;
+    uint32_t CombinedImageSamplerDescriptorCount = 0;
+
+    RHIVulkanPipeline() = default;
+    virtual ~RHIVulkanPipeline() override = default;
+
+    virtual void AddLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
+    virtual void AddBinding(uint32_t BindingIndex, uint32_t Stride) override;
+    virtual void AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding) override;
+    virtual void AddImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
+    virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
+    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) override;
+    virtual void Cleanup(RHIContext* Context) override;
+};
+
+class RHIVulkanImGUI : public RHIImGUIBase
+{
+public:
+    RHIVulkanImGUI() = default;
+    virtual ~RHIVulkanImGUI() override = default;
+
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) override;
+    virtual void DispatchImGUI(RHIGraphicDispatcher* Dispatcher) override;
+    virtual void UpdateUI() override;
+    virtual void Cleanup() override;
+};
+
+class RHIVulkanGraphicDispatcher : public RHIGraphicDispatcherBase
+{
+public:
+    bool bWindowResizeLastframe = false;
+    VkSemaphore ImageAvailableSemaphore;
+    VkSemaphore RenderFinishSemaphore;
+    VkFence InFlightFence;
+    VkCommandBuffer CommandBuffer;
+
+    struct BindingInfo
+    {
+        RHIVulkanBufferResource* BufferResource;
+        VkDeviceSize Offset;
+        uint32_t BindingIndex;
+    };
+
+    std::vector<BindingInfo> BindingInfos;
+    BindingInfo IndexBindingInfo;
+
+    RHIVulkanGraphicDispatcher() = default;
+    virtual ~RHIVulkanGraphicDispatcher() override = default;
+
+    virtual void Initialize(RHIContext* Context) override;
+    virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
+    virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
+    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    //virtual void DispatchImGUI(ImDrawData* draw_data, void* RenderFunctionPointer) override;
+    virtual void PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex) override;
+    virtual void BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex) override;
+    virtual void EndRenderPass() override;
+    virtual void Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex) override;
+};
