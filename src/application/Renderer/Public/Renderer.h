@@ -52,6 +52,7 @@ public:
 	RHIPipeline Pipeline;
 	RHIGraphicsDispatcher GraphicDispatcher;
 	std::vector<MeshRenderProxy*> MeshProxyPasses;
+	void (*pFuncImDraw)(ImGuiSharedGlobals*);
 
 	void Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS);
 

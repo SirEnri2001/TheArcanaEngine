@@ -4,12 +4,12 @@
 
 #pragma once
 #include <stdexcept>
-#include <unordered_map>
 #include <vector>
 
 #include "vulkan/vulkan_core.h"
 
 #include "RHI.h"
+#include "RHIImGuiHelper.h"
 
 // Forward declarations
 class RHIVulkanWindowManager;
@@ -312,12 +312,13 @@ public:
 class RHIVulkanImGUI : public RHIImGUIBase
 {
 public:
+    ImGuiSharedGlobals ImGlobals;
     RHIVulkanImGUI() = default;
     virtual ~RHIVulkanImGUI() override = default;
 
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) override;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
-    virtual void UpdateUI() override;
+    virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
     virtual void Cleanup() override;
 };
 

@@ -20,8 +20,6 @@
 #include <memory>
 #include <vector>
 
-struct ImDrawData;
-
 /** Pixel format used in all RHI implementations.
  * Every RHI implementation should always write its own convert function.
  */
@@ -396,6 +394,7 @@ public:
     RHIGraphicsDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
+struct ImGuiSharedGlobals;
 class RHIImGUIBase
 {
 public:
@@ -404,7 +403,7 @@ public:
     virtual ~RHIImGUIBase() = default;
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) = 0;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) = 0;
-    virtual void UpdateUI() = 0;
+    virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) = 0;
 	virtual void Cleanup() = 0;
 };
 
@@ -426,7 +425,7 @@ public:
     /**
      * UI components are defined here. 
      */
-    virtual void UpdateUI() override;
+    virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
 	virtual void Cleanup() override;
     RHIImGUIBase* GetImpl() { return pImpl.get(); }
 };

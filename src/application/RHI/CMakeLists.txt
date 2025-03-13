@@ -7,6 +7,7 @@ project(RHI)
 set(RHI_MODULE_ROOT ./src/application/RHI)
 add_library(RHI
 ${RHI_MODULE_ROOT}/Public/RHI.h
+${RHI_MODULE_ROOT}/Public/RHIImGuiHelper.h
 ${RHI_MODULE_ROOT}/Private/RHI.cpp
 ${RHI_MODULE_ROOT}/Private/RHIOpenGL.h
 ${RHI_MODULE_ROOT}/Private/RHIOpenGL.cpp

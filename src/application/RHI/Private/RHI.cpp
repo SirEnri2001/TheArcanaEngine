@@ -285,9 +285,9 @@ void RHIImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, 
 	pImpl->Initialize(Context, WindowManager, RenderPass);
 }
 
-void RHIImGUI::UpdateUI()
+void RHIImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* ImGlobals))
 {
-	pImpl->UpdateUI();
+	pImpl->UpdateUI(pFuncDrawUI);
 }
 
 
@@ -335,11 +335,6 @@ void RHIGraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipelin
 {
 	pImpl->Dispatch(WindowManager, Pipeline, IndexCount, IndexOffset, InstanceCount);
 }
-//
-//void RHIGraphicsDispatcher::DispatchImGUI(ImDrawData* draw_data, void* RenderFunctionPointer)
-//{
-//	pImpl->DispatchImGUI(draw_data, RenderFunctionPointer);
-//}
 
 void RHIGraphicsDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex)
 {

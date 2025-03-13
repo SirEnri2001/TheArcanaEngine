@@ -54,7 +54,7 @@ void Renderer::DrawScene(RendererContext* Context, MeshRenderProxy& InMeshProxy)
 void Renderer::UpdateFrame(RendererContext* RContext)
 {
     auto& Context = RContext->Context;
-    RContext->ImGUI.UpdateUI();
+    RContext->ImGUI.UpdateUI(pFuncImDraw);
     uint32_t ImageIndex;
     GraphicDispatcher.PrepareRenderPass(&Context, &RContext->WindowManager, &RContext->RenderPass, ImageIndex);
     GraphicDispatcher.BeginRenderPass(&Context, &RContext->WindowManager, &RContext->RenderPass, ImageIndex);
