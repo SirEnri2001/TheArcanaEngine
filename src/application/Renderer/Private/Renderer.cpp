@@ -7,11 +7,6 @@
 #include "GLFW/glfw3.h"
 #include "glm/glm.hpp"
 
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_vulkan.h"
-#include "RHIVulkan.h"
-
 void MeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh)
 {
 	RHIVertexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
@@ -40,14 +35,14 @@ void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::v
     GraphicDispatcher.Initialize(&Context->Context);
 }
 
-void Renderer::AddUniform(RHIUniform* Uniform, uint32_t Binding)
+void Renderer::SetUniform(RHIUniform* Uniform, uint32_t Binding)
 {
-    Pipeline.AddUniformBuffer(Uniform, Binding);
+    Pipeline.SetUniformBinding(Uniform, Binding);
 }
 
-void Renderer::AddTextureSampler(RHIImageResource* Texture, uint32_t Binding)
+void Renderer::SetTextureSampler(RHIImageResource* Texture, uint32_t Binding)
 {
-    Pipeline.AddImageSampler(Texture, Binding);
+    Pipeline.SetImageSamplerBinding(Texture, Binding);
 }
 
 
@@ -66,6 +61,7 @@ void Renderer::UpdateFrame(RendererContext* RContext)
 
     for (auto& MeshProxy : MeshProxyPasses)
     {
+        Pipeline.SetImageSamplerBinding(&MeshProxy->Texture, 1);
         GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
         GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
         IndexBufferSize = MeshProxy->IndexBufferSize;

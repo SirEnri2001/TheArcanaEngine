@@ -109,8 +109,8 @@ int main()
     UniformBufferObject ubo;
     RHIUniform Uniform;
     Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
-    RendererInstance.AddUniform(&Uniform, 0);
-    RendererInstance.AddTextureSampler(&MeshProxy.Texture, 1);
+    RendererInstance.SetUniform(&Uniform, 0);
+    RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
     RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV);
     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy);
     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy2);

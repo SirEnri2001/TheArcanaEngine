@@ -1,3 +1,5 @@
+// RHIVulkan.cpp - RHI (Rendering Hardware Interface) Module - TheArcanaEngine Project
+// Copyright (c) 2025 Xinghua Han - MIT License
 #define RHI_IMPLEMENT
 #include "RHI.h"
 #include "RHIVulkan.h"
@@ -116,9 +118,10 @@ void RHIVulkanContext::WaitDeviceIdle()
 	vkDeviceWaitIdle(Device);
 }
 
-void RHIVulkanWindowManager::Initialize(RHIPlatformSupport* PlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth)
+void RHIVulkanWindowManager::Initialize(RHIPlatformSupport* InPlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth)
 {
-	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport->GetImpl());
+	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(InPlatformSupport->GetImpl());
+	PlatformSupport = InPlatformSupport;
 	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
 	CreateVkSurface(VulkanPlatformSupport->Instance, pGLFWwindow, Surface);
 }
@@ -149,6 +152,13 @@ void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatfor
 		VulkanContext->Device, Surface, SurfaceCapabilities, SurfaceFormats, PresentModes, 
 		VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex, VulkanPlatformSupport->CurrentPhysicalDevice.PresentQueueFamilyIndex);
 }
+
+void RHIVulkanWindowManager::RecreateSwapchain(RHIContext* Context)
+{
+	CleanupSwapchain(Context);
+	InitializeSwapchain(Context, PlatformSupport);
+}
+
 
 void RHIVulkanWindowManager::OnWindowResize(GLFWwindow* window, int width, int height)
 {
@@ -273,6 +283,7 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, const char* ImageFi
 	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);
 	vkFreeMemory(VulkanContext->Device, stagingBufferMemory, nullptr);
 	bHasSampler = true;
+	DescriptorInfo = {Sampler, ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
 }
 
 void RHIVulkanImageResource::Cleanup(RHIContext* Context)
@@ -382,7 +393,7 @@ void RHIVulkanPipeline::AddBinding(uint32_t BindingIndex, uint32_t Stride)
 	BindingDescriptions.push_back({ BindingIndex, Stride, VK_VERTEX_INPUT_RATE_VERTEX });
 }
 
-void RHIVulkanPipeline::AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding)
+void RHIVulkanPipeline::SetUniformBinding(RHIUniform* Uniform, uint32_t Binding)
 {
 	auto* VulkanUniform = static_cast<RHIVulkanUniform*>(Uniform->GetImpl());
 	VkWriteDescriptorSet WriteDescSet{};
@@ -392,10 +403,22 @@ void RHIVulkanPipeline::AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding)
 	WriteDescSet.dstArrayElement = 0;
 	WriteDescSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	WriteDescSet.descriptorCount = 1;
-	DescriptorBufferInfos.push_back({VulkanUniform->Buffer, 0u, VulkanUniform->Size});
-	WriteDescSet.pBufferInfo = &DescriptorBufferInfos.back();
-	WriteDescriptorSets.push_back(WriteDescSet);
-	UniformBufferDescriptorCount++;
+	WriteDescSet.pBufferInfo = &VulkanUniform->DescriptorBufferInfo;
+
+	bool HasDescSet = false;
+	for(auto& DescSet : WriteDescriptorSets)
+	{
+		if(DescSet.dstBinding==Binding)
+		{
+			DescSet = WriteDescSet;
+			HasDescSet = true;
+		}
+	}
+	if(!HasDescSet)
+	{
+		WriteDescriptorSets.push_back(WriteDescSet);
+		UniformBufferDescriptorCount++;
+	}
 
 	VkDescriptorSetLayoutBinding uboLayoutBinding;
     uboLayoutBinding.binding = Binding;
@@ -403,10 +426,21 @@ void RHIVulkanPipeline::AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding)
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     uboLayoutBinding.pImmutableSamplers = nullptr;
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
-	DescSetLayoutBindings.push_back(uboLayoutBinding);
+	bool HasLayoutBinding = false;
+	for(auto& SetLayoutBinding : DescSetLayoutBindings)
+	{
+		if(SetLayoutBinding.binding==Binding)
+		{
+			SetLayoutBinding = uboLayoutBinding;
+			HasLayoutBinding = true;
+		}
+	}
+	if(!HasLayoutBinding) {
+		DescSetLayoutBindings.push_back(uboLayoutBinding);
+	}
 }
 
-void RHIVulkanPipeline::AddImageSampler(RHIImageResource* ImageResource, uint32_t Binding)
+void RHIVulkanPipeline::SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding)
 {
 	auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ImageResource->GetImpl());
 	VkWriteDescriptorSet WriteDescSet{};
@@ -416,10 +450,21 @@ void RHIVulkanPipeline::AddImageSampler(RHIImageResource* ImageResource, uint32_
 	WriteDescSet.dstArrayElement = 0;
 	WriteDescSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	WriteDescSet.descriptorCount = 1;
-	DescriptorImageInfos.push_back({VulkanImageResource->Sampler, VulkanImageResource->ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
-	WriteDescSet.pImageInfo = &DescriptorImageInfos.back();
-	WriteDescriptorSets.push_back(WriteDescSet);
-	CombinedImageSamplerDescriptorCount++;
+	WriteDescSet.pImageInfo = &VulkanImageResource->DescriptorInfo;
+	bool HasDescSet = false;
+	for(auto& DescSet : WriteDescriptorSets)
+	{
+		if(DescSet.dstBinding==Binding)
+		{
+			DescSet = WriteDescSet;
+			HasDescSet = true;
+		}
+	}
+	if(!HasDescSet)
+	{
+		WriteDescriptorSets.push_back(WriteDescSet);
+		CombinedImageSamplerDescriptorCount++;
+	}
 
     VkDescriptorSetLayoutBinding samplerLayoutBinding;
     samplerLayoutBinding.binding = Binding;
@@ -427,7 +472,18 @@ void RHIVulkanPipeline::AddImageSampler(RHIImageResource* ImageResource, uint32_
     samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     samplerLayoutBinding.pImmutableSamplers = nullptr;
     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	DescSetLayoutBindings.push_back(samplerLayoutBinding);
+	bool HasLayoutBinding = false;
+	for(auto& SetLayoutBinding : DescSetLayoutBindings)
+	{
+		if(SetLayoutBinding.binding==Binding)
+		{
+			SetLayoutBinding = samplerLayoutBinding;
+			HasLayoutBinding = true;
+		}
+	}
+	if(!HasLayoutBinding) {
+		DescSetLayoutBindings.push_back(samplerLayoutBinding);
+	}
 }
 
 
@@ -472,7 +528,7 @@ void RHIVulkanRenderPass::Initialize(RHIContext* Context, RHIWindowManager* Wind
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	msaaSamples = RHIVulkanPlatformSupport::Get()->GetMaxUsableSampleCount();
+	msaaSamples = VK_SAMPLE_COUNT_4_BIT; //RHIVulkanPlatformSupport::Get()->GetMaxUsableSampleCount();
 	CreateRenderPass(RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat, msaaSamples);
 	ImageExtent3D RenderTargetExtent;
 	RenderTargetExtent.Height = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.height;
@@ -621,14 +677,13 @@ void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindo
 	vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 	if (bWindowResizeLastframe)
 	{
-		VulkanWindowManager->CleanupSwapchain(Context);
+		WindowManager->RecreateSwapchain(Context);
 		VulkanRenderPass->CleanupSwapchainFramebuffer(Context);
 		VulkanRenderPass->ColorRenderTargetResource.Cleanup(Context);
 		VulkanRenderPass->DepthRenderTargetResource.Cleanup(Context);
-		VulkanWindowManager->InitializeSwapchain(Context, RHIPlatformSupport::Get());
 		ImageExtent3D RenderTargetExtent;
-		RenderTargetExtent.Height = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.height;
-		RenderTargetExtent.Width = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.width;
+		RenderTargetExtent.Height = WindowManager->GetWindowHeight();
+		RenderTargetExtent.Width = WindowManager->GetWindowWidth();
 		RenderTargetExtent.Depth = 1;
 		VulkanRenderPass->ColorRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, VulkanRenderPass->msaaSamples);
 		VulkanRenderPass->DepthRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, VulkanRenderPass->msaaSamples);
@@ -638,17 +693,16 @@ void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindo
 	VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-		VulkanWindowManager->CleanupSwapchain(Context);
+		WindowManager->RecreateSwapchain(Context);
 		VulkanRenderPass->CleanupSwapchainFramebuffer(Context);
 		VulkanRenderPass->ColorRenderTargetResource.Cleanup(Context);
 		VulkanRenderPass->DepthRenderTargetResource.Cleanup(Context);
-		VulkanWindowManager->InitializeSwapchain(Context, RHIPlatformSupport::Get());
 		ImageExtent3D RenderTargetExtent;
-		RenderTargetExtent.Height = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.height;
-		RenderTargetExtent.Width = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.width;
+		RenderTargetExtent.Height = WindowManager->GetWindowHeight();
+		RenderTargetExtent.Width = WindowManager->GetWindowWidth();
 		RenderTargetExtent.Depth = 1;
-		VulkanRenderPass->ColorRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent);
-		VulkanRenderPass->DepthRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent);
+		VulkanRenderPass->ColorRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, VulkanRenderPass->msaaSamples);
+		VulkanRenderPass->DepthRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, VulkanRenderPass->msaaSamples);
 		VulkanRenderPass->CreateSwapchainFramebuffer(Context, WindowManager);
 		bWindowResizeLastframe = false;
 		VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
@@ -863,7 +917,7 @@ void RHIVulkanImGUI::Cleanup()
 	
 }
 
-void RHIVulkanImGUI::DispatchImGUI(RHIGraphicDispatcher* Dispatcher)
+void RHIVulkanImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
 {
     ImDrawData* draw_data = ImGui::GetDrawData();
     const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);

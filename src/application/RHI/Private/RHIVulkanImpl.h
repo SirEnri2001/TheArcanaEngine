@@ -1,3 +1,7 @@
+// RHIVulkanImpl.h - RHI (Rendering Hardware Interface) Module - TheArcanaEngine Project
+// Copyright (c) 2025 Xinghua Han - MIT License
+// @description Vulkan helper functions
+
 #pragma once
 #include <vector>
 #include <vulkan/vulkan_core.h>

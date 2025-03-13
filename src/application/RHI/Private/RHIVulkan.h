@@ -1,5 +1,10 @@
+// RHIVulkan.h - RHI (Rendering Hardware Interface) Module - TheArcanaEngine Project
+// Copyright (c) 2025 Xinghua Han - MIT License
+// @description RHI Vulkan implementation
+
 #pragma once
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 #include "vulkan/vulkan_core.h"
@@ -11,8 +16,6 @@ class RHIVulkanWindowManager;
 struct GLFWwindow;
 struct ImDrawData;
 
-// This class serves as a helper class to create / destroy window manager and context, and should not be referenced in the pipeline creation process
-// May vary by different hardware and OS, but should be generally same every run of the application
 class RHIVulkanPlatformSupport : public RHIPlatformSupportBase
 {
     static RHIVulkanPlatformSupport* GInstance;
@@ -136,18 +139,9 @@ public:
     static RHIVulkanPlatformSupport* Get();
 };
 
-// This class serves as a general RHI resource allocator. It should only has necessary fields and handles to create rendering resource like Images and Buffers.
-// Window management function should not be defined here.
 class RHIVulkanContext : public RHIContextBase
 {
 public:
-    bool bIsValid = false;
-    struct VulkanContextInfo
-    {
-        int WindowWidth;
-        int WindowHeight;
-    };
-
     VkDevice Device = VK_NULL_HANDLE;
     VkQueue GraphicsQueue;
     VkQueue PresentQueue;
@@ -168,11 +162,10 @@ public:
 
 };
 
-// This class provide a wrapper for window, e.g. glfwwindow.
-// This class is also responsible for dealing with window resize, full screen mode and v-sync
 class RHIVulkanWindowManager : public RHIWindowManagerBase
 {
 public:
+    RHIPlatformSupport* PlatformSupport;
     GLFWwindow* pGLFWwindow;
     VkSurfaceKHR Surface;
     VkSurfaceCapabilitiesKHR SurfaceCapabilities;
@@ -196,6 +189,7 @@ public:
 
     virtual void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) override;
     virtual void CleanupSwapchain(RHIContext* Context) override;
+    virtual void RecreateSwapchain(RHIContext* Context) override;
     virtual bool IsAlive() override;
 
     virtual uint32_t GetWindowHeight() override
@@ -220,6 +214,7 @@ public:
     bool bHasSampler = false;
     ImageUsage Usage;
     RHIFormat Format;
+    VkDescriptorImageInfo DescriptorInfo;
 
     RHIVulkanImageResource() = default;
     virtual ~RHIVulkanImageResource() override = default;
@@ -307,8 +302,8 @@ public:
 
     virtual void AddLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
     virtual void AddBinding(uint32_t BindingIndex, uint32_t Stride) override;
-    virtual void AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding) override;
-    virtual void AddImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
+    virtual void SetUniformBinding(RHIUniform* Uniform, uint32_t Binding) override;
+    virtual void SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding) override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
     virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) override;
     virtual void Cleanup(RHIContext* Context) override;
@@ -321,12 +316,12 @@ public:
     virtual ~RHIVulkanImGUI() override = default;
 
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) override;
-    virtual void DispatchImGUI(RHIGraphicDispatcher* Dispatcher) override;
+    virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
     virtual void UpdateUI() override;
     virtual void Cleanup() override;
 };
 
-class RHIVulkanGraphicDispatcher : public RHIGraphicDispatcherBase
+class RHIVulkanGraphicDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
     bool bWindowResizeLastframe = false;

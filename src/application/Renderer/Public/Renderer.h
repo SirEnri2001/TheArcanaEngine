@@ -50,14 +50,14 @@ class RENDERER_API Renderer
 public:
 	uint32_t IndexBufferSize;
 	RHIPipeline Pipeline;
-	RHIGraphicDispatcher GraphicDispatcher;
+	RHIGraphicsDispatcher GraphicDispatcher;
 	std::vector<MeshRenderProxy*> MeshProxyPasses;
 
 	void Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS);
 
-	void AddUniform(RHIUniform* Uniform, uint32_t Binding);
+	void SetUniform(RHIUniform* Uniform, uint32_t Binding);
 
-	void AddTextureSampler(RHIImageResource* Texture, uint32_t Binding);
+	void SetTextureSampler(RHIImageResource* Texture, uint32_t Binding);
 
 	void DrawScene(RendererContext* Context, MeshRenderProxy& MeshProxy);
 

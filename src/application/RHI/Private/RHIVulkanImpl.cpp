@@ -1,3 +1,5 @@
+// RHIVulkanImpl.cpp - RHI (Rendering Hardware Interface) Module - TheArcanaEngine Project
+// Copyright (c) 2025 Xinghua Han - MIT License
 #include "RHIVulkanImpl.h"
 #include "CoreLog.inl"
 

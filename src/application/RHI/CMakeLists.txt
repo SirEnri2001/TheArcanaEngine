@@ -8,16 +8,14 @@ set(RHI_MODULE_ROOT ./src/application/RHI)
 add_library(RHI
 ${RHI_MODULE_ROOT}/Public/RHI.h
 ${RHI_MODULE_ROOT}/Private/RHI.cpp
-${RHI_MODULE_ROOT}/Public/RHIOpenGL.h
+${RHI_MODULE_ROOT}/Private/RHIOpenGL.h
 ${RHI_MODULE_ROOT}/Private/RHIOpenGL.cpp
-${RHI_MODULE_ROOT}/Public/RHIVulkan.h
+${RHI_MODULE_ROOT}/Private/RHIVulkan.h
 ${RHI_MODULE_ROOT}/Private/RHIVulkan.cpp
 ${RHI_MODULE_ROOT}/Private/RHIVulkanImpl.h
 ${RHI_MODULE_ROOT}/Private/RHIVulkanImpl.cpp
-${RHI_MODULE_ROOT}/Public/RHIDirect3D12.h
+${RHI_MODULE_ROOT}/Private/RHIDirect3D12.h
 ${RHI_MODULE_ROOT}/Private/RHIDirect3D12.cpp
-${RHI_MODULE_ROOT}/Public/RHICommon.h
-${RHI_MODULE_ROOT}/Private/RHICommon.cpp
 )
 
 target_include_directories(RHI
