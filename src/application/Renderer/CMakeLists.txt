@@ -13,4 +13,4 @@ PUBLIC ${Renderer_MODULE_ROOT}/Public
 PUBLIC ${CoreLog_MODULE_ROOT}/Public
 )
 
-target_link_libraries(Renderer RHI CoreScene imgui)
+target_link_libraries(Renderer RHI CoreScene)

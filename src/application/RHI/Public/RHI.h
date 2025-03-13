@@ -10,226 +10,313 @@
 #define RHI_API
 #endif
 #endif
+
 #include <cstdint>
-#include <vulkan/vulkan_core.h>
-
-#include "RHIVulkan.h"
-
+#include <memory>
 #include <vector>
-#include <fstream>
 
 struct ImDrawData;
 
-class RHI_API RHIVulkanContext
+enum RHIFormat
 {
-public:
-    bool bIsValid = false;
-    struct VulkanContextInfo
-    {
-        int WindowWidth;
-        int WindowHeight;
-    };
-
-    VkInstance Instance;
-    VkDebugUtilsMessengerEXT DebugMessenger;
-    VkSurfaceKHR Surface;
-    VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
-    VkDevice Device = VK_NULL_HANDLE;
-
-    std::vector<VkPhysicalDevice> AvailablePhysicalDevices;
-    std::vector<const char*> Extensions;
-    std::vector<const char*> PhysicalDeviceExtensions;
-
-    VkSwapchainKHR Swapchain;
-    std::vector<VkImage> SwapchainImages;
-    std::vector<VkImageView> SwapchainImageViews;
-    VkFormat SwapchainImageFormat;
-    VkExtent2D SwapchainExtent;
-    uint32_t GraphicsQueueFamilyIndex;
-    uint32_t PresentQueueFamilyIndex;
-    VkPhysicalDeviceFeatures supportedFeatures;
-    VkSurfaceCapabilitiesKHR SurfaceCapabilities;
-    std::vector<VkSurfaceFormatKHR> SurfaceFormats;
-    std::vector<VkPresentModeKHR> PresentModes;
-
-    VkQueue GraphicsQueue;
-    VkQueue PresentQueue;
-    VkCommandPool CommandPool;
-    VkPhysicalDeviceMemoryProperties PDMemoryProperties;
-    VkFormat DepthFormat;
-
-    GLFWwindow* pGLFWwindow;
-
-    RHIVulkanContext();
-
-    void Initialize(VulkanContextInfo CreateInfo);
-
-    void CleanupSwapchain();
-
-    void Cleanup();
-
-    void InitializeSwapchain();
-
-    static void OnWindowResize(GLFWwindow* window, int width, int height);
-
-    void WaitDeviceIdle();
-
-    bool WindowActive();
+	R8G8B8A8_SRGB,
+    R32G32B32_SFLOAT,
+    R32G32_SFLOAT
 };
 
-class RHI_API RHIVulkanImageResource
+enum ImageUsage
 {
-public:
-    VkImage Image;
-    VkDeviceMemory DeviceMemory;
-    VkImageView ImageView;
-    VkSampler Sampler;
-    bool bHasSampler = false;
-    void Initialize(RHIVulkanContext* Context, VkExtent3D ImageExtent, uint32_t MipLevel, VkSampleCountFlagBits numSamples,
-        VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkImageAspectFlagBits ImageAspectFlagBits, VkMemoryPropertyFlags properties);
-
-    void Initialize(RHIVulkanContext* Context, const char* ImageFileName, VkSampleCountFlagBits numSamples = VK_SAMPLE_COUNT_1_BIT,
-        VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
-        VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        VkImageAspectFlagBits ImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT, VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    void Cleanup(RHIVulkanContext* Context);
+    IU_GENERAL,
+    IU_COLOR_RT,
+    IU_DEPTH_RT
 };
 
-class RHI_API RHIVulkanBufferResource
+enum BufferType
 {
-public:
-    VkBuffer Buffer;
-    VkDeviceMemory DeviceMemory;
-
-    void Initialize(RHIVulkanContext* Context, uint32_t Stride, uint32_t ElementCounts, VkBufferUsageFlags usage,
-        VkMemoryPropertyFlags properties);
-
-    void CopyToBuffer(RHIVulkanContext* Context, void* data, uint32_t TotalBytes);
-
-    void Cleanup(RHIVulkanContext* Context);
+    GENERAL,
+    VERTEX,
+    INDEX
 };
 
-class RHI_API RHIVulkanUniform
+struct ImageExtent3D
 {
-public:
-    VkBuffer Buffer;
-    VkDeviceMemory DeviceMemory;
-    void* MappedMemory;
-    VkDescriptorBufferInfo DescriptorBufferInfo;
-    uint32_t Size;
-    void Initialize(RHIVulkanContext* Context, uint32_t UniformStructSize);
-
-    void CopyToBuffer(RHIVulkanContext* Context, void* data, uint32_t TotalBytes);
-
-    void Cleanup(RHIVulkanContext* Context);
+    uint32_t Width;
+    uint32_t Height;
+    uint32_t Depth;
 };
 
-class RHI_API RHIVulkanRenderPass
+enum RHIImplementationSelection
+{
+	RHIImplement_Vulkan,
+    RHIImplement_D3D12
+};
+extern RHIImplementationSelection GRHIImplementationSelection;
+
+class RHIWindowManager;
+
+class RHIPlatformSupportBase
 {
 public:
-    VkRenderPass RenderPass;
-    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-    std::vector<VkFramebuffer> SwapchainFramebuffers;
-    RHIVulkanImageResource ColorRenderTargetResource;
-    RHIVulkanImageResource DepthRenderTargetResource;
+    RHIPlatformSupportBase() = default;
+    RHIPlatformSupportBase(const RHIPlatformSupportBase&) = delete;
+    virtual ~RHIPlatformSupportBase() = default;
+    virtual void Initialize() = 0;
+    virtual void Cleanup() = 0;
+    virtual void InitializePhysicalDevice(RHIWindowManager* WindowManager) = 0;
+};
 
-    void Initialize(RHIVulkanContext* Context);
+class RHI_API RHIPlatformSupport : public RHIPlatformSupportBase
+{
+	std::unique_ptr<RHIPlatformSupportBase> pImpl = nullptr;
+    static RHIPlatformSupport* GInstance;
+public:
+    RHIPlatformSupport();
+    virtual ~RHIPlatformSupport() override;
+    virtual void Initialize() override;
+    virtual void Cleanup() override;
+    virtual void InitializePhysicalDevice(RHIWindowManager* WindowManager) override;
+    static RHIPlatformSupport* Get();
+    RHIPlatformSupportBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIContextBase
+{
+public:
+    RHIContextBase() = default;
+    RHIContextBase(const RHIContextBase&) = delete;
+    virtual ~RHIContextBase() = default;
+    virtual void Initialize(RHIPlatformSupport* PlatformSupport) = 0;
+    virtual void Cleanup() = 0;
+    virtual void WaitDeviceIdle() = 0;
+};
+
+class RHI_API RHIContext : public RHIContextBase
+{
+    std::unique_ptr<RHIContextBase> pImpl = nullptr;
+public:
+    RHIContext();
+    virtual ~RHIContext() override;
+    virtual void Initialize(RHIPlatformSupport* PlatformSupport) override;
+    virtual void Cleanup() override;
+    virtual void WaitDeviceIdle() override;
+    RHIContextBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIWindowManagerBase
+{
+public:
+    RHIWindowManagerBase() = default;
+    RHIWindowManagerBase(const RHIWindowManagerBase&) = delete;
+    virtual ~RHIWindowManagerBase() = default;
+    virtual void Initialize(RHIPlatformSupport* PlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth) = 0;
+    virtual void Cleanup(RHIPlatformSupport* PlatformSupport) = 0;
+    virtual void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) = 0;
+    virtual void CleanupSwapchain(RHIContext* Context) = 0;
+    virtual bool IsAlive() = 0;
+    virtual uint32_t GetWindowHeight() = 0;
+    virtual uint32_t GetWindowWidth() = 0;
+};
+
+class RHI_API RHIWindowManager : public RHIWindowManagerBase
+{
+    std::unique_ptr<RHIWindowManagerBase> pImpl = nullptr;
+public:
+    RHIWindowManager();
+    virtual ~RHIWindowManager() override;
+    virtual void Initialize(RHIPlatformSupport* PlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth) override;
+    virtual void Cleanup(RHIPlatformSupport* PlatformSupport) override;
+    virtual void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) override;
+    virtual void CleanupSwapchain(RHIContext* Context) override;
+    virtual bool IsAlive() override;
+    virtual uint32_t GetWindowHeight() override;
+    virtual uint32_t GetWindowWidth() override;
+    RHIWindowManagerBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIImageResourceBase
+{
+public:
+    RHIImageResourceBase() = default;
+    RHIImageResourceBase(const RHIImageResourceBase&) = delete;
+    virtual ~RHIImageResourceBase() = default;
+    virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) = 0;
+    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+class RHI_API RHIImageResource : public RHIImageResourceBase
+{
+    std::unique_ptr<RHIImageResourceBase> pImpl = nullptr;
+public:
+    RHIImageResource();
+    virtual ~RHIImageResource() override;
+    virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) override;
+    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    RHIImageResourceBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIBufferResourceBase
+{
+public:
+    RHIBufferResourceBase() = default;
+    RHIBufferResourceBase(const RHIBufferResourceBase&) = delete;
+    virtual ~RHIBufferResourceBase() = default;
+    virtual void Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) = 0;
+    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+class RHI_API RHIBufferResource : public RHIBufferResourceBase
+{
+    std::unique_ptr<RHIBufferResourceBase> pImpl = nullptr;
+public:
+    RHIBufferResource();
+    virtual ~RHIBufferResource() override;
+    virtual void Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) override;
+    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    RHIBufferResourceBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIUniformBase
+{
+public:
+    RHIUniformBase() = default;
+    RHIUniformBase(const RHIUniformBase&) = delete;
+    virtual ~RHIUniformBase() = default;
+    virtual void Initialize(RHIContext* Context, uint32_t UniformStructSize) = 0;
+    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+class RHI_API RHIUniform : public RHIUniformBase
+{
+    std::unique_ptr<RHIUniformBase> pImpl = nullptr;
+public:
+    RHIUniform();
+    virtual ~RHIUniform() override;
+    virtual void Initialize(RHIContext* Context, uint32_t UniformStructSize) override;
+    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    RHIUniformBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIRenderPassBase
+{
+public:
+    RHIRenderPassBase() = default;
+    RHIRenderPassBase(const RHIRenderPassBase&) = delete;
+    virtual ~RHIRenderPassBase() = default;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void CleanupSwapchainFramebuffer(RHIContext* Context) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+class RHI_API RHIRenderPass : public RHIRenderPassBase
+{
+    std::unique_ptr<RHIRenderPassBase> pImpl = nullptr;
+public:
+    RHIRenderPass();
+    virtual ~RHIRenderPass() override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void CleanupSwapchainFramebuffer(RHIContext* Context) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    RHIRenderPassBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIPipelineBase
+{
+public:
+    RHIPipelineBase() = default;
+    RHIPipelineBase(const RHIPipelineBase&) = delete;
+    virtual ~RHIPipelineBase() = default;
+    virtual void AddLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) = 0;
+    virtual void AddBinding(uint32_t BindingIndex, uint32_t Stride) = 0;
+    virtual void AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding) = 0;
+    virtual void AddImageSampler(RHIImageResource* ImageResource, uint32_t Binding) = 0;
+    virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) = 0;
+    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+class RHI_API RHIPipeline : public RHIPipelineBase
+{
+    std::unique_ptr<RHIPipelineBase> pImpl = nullptr;
+public:
+    RHIPipeline();
+    virtual ~RHIPipeline() override;
+    virtual void AddLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
+    virtual void AddBinding(uint32_t BindingIndex, uint32_t Stride) override;
+    virtual void AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding) override;
+    virtual void AddImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
+    virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
+    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    RHIPipelineBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIGraphicDispatcherBase
+{
+public:
+    RHIGraphicDispatcherBase() = default;
+    RHIGraphicDispatcherBase(const RHIGraphicDispatcherBase&) = delete;
+    virtual ~RHIGraphicDispatcherBase() = default;
+    virtual void Initialize(RHIContext* Context) = 0;
+    virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
+    virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
+    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    //virtual void DispatchImGUI(ImDrawData* draw_data, void* RenderFunctionPointer) = 0;
+    virtual void PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex) = 0;
+    virtual void BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex) = 0;
+    virtual void EndRenderPass() = 0;
+    virtual void Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex) = 0;
+};
+
+class RHI_API RHIGraphicDispatcher : public RHIGraphicDispatcherBase
+{
+    std::unique_ptr<RHIGraphicDispatcherBase> pImpl = nullptr;
+public:
+    RHIGraphicDispatcher();
+    virtual ~RHIGraphicDispatcher() override;
+    virtual void Initialize(RHIContext* Context) override;
+    virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
+    virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
+    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
     
-    void CreateColorRenderTarget(RHIVulkanContext* Context, VkExtent3D RTExtent);
-
-    void CreateDepthRenderTarget(RHIVulkanContext* Context, VkExtent3D RTExtent);
-
-    void CreateSwapchainFramebuffer(RHIVulkanContext* Context);
-
-    void CleanupSwapchainFramebuffer(RHIVulkanContext* Context);
-
-    void Cleanup(RHIVulkanContext* Context);
+    virtual void PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex) override;
+    virtual void BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex) override;
+    virtual void EndRenderPass() override;
+    virtual void Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex) override;
+    RHIGraphicDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
-class RHI_API RHIVulkanPipeline
-{
-    std::vector<char> VertShaderBytecode;
-    std::vector<char> FragShaderBytecode;
-public:
-    VkDescriptorPool DescriptorPool;
-    VkDescriptorSetLayout DescriptorSetLayout;
-    VkPipeline Pipeline;
-    VkPipelineLayout PipelineLayout;
-
-    std::vector<VkVertexInputBindingDescription> BindingDescriptions;
-    std::vector<VkVertexInputAttributeDescription> AttributeDescriptions;
-
-    VkDescriptorSet DescriptorSet;
-    std::vector<VkDescriptorImageInfo> DescriptorImageInfos;
-    std::vector<VkDescriptorBufferInfo> DescriptorBufferInfos;
-    std::vector<VkDescriptorSetLayoutBinding> DescSetLayoutBindings;
-    std::vector<VkWriteDescriptorSet> WriteDescriptorSets;
-    uint32_t UniformBufferDescriptorCount = 0;
-    uint32_t CombinedImageSamplerDescriptorCount = 0;
-
-    void AddLayout(uint32_t BindingIndex, uint32_t Location, VkFormat Format, uint32_t Offset);
-
-    void AddBinding(uint32_t BindingIndex, uint32_t Stride);
-
-    void AddUniformBuffer(const VkDescriptorBufferInfo& UniformDescBufferInfo, uint32_t Binding);
-
-    void AddImageSampler(const VkDescriptorImageInfo& DescImageInfo, uint32_t Binding);
-
-    void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader);
-
-    void Initialize(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource);
-
-    void Cleanup(RHIVulkanContext* Context);
-};
-
-
-class RHI_API RHIVulkanImGUI
+class RHIImGUIBase
 {
 public:
-    void Initialize(RHIVulkanContext* Context);
-    void Dispatch(RHIVulkanContext* Context);
+    RHIImGUIBase() = default;
+    RHIImGUIBase(const RHIImGUIBase&) = delete;
+    virtual ~RHIImGUIBase() = default;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) = 0;
+    virtual void DispatchImGUI(RHIGraphicDispatcher* Dispatcher) = 0;
+    virtual void UpdateUI() = 0;
+	virtual void Cleanup() = 0;
 };
 
-class RHI_API RHIVulkanGraphicDispatcher
+class RHI_API RHIImGUI : public RHIImGUIBase
 {
+    std::unique_ptr<RHIImGUIBase> pImpl = nullptr;
 public:
-    bool bWindowResizeLastframe = false;
-    VkSemaphore ImageAvailableSemaphore;
-    VkSemaphore ImageAvailableSemaphore2;
-    VkSemaphore RenderFinishSemaphore;
-    VkFence InFlightFence;
-    VkCommandBuffer CommandBuffer;
-
-    struct BindingInfo
-    {
-        RHIVulkanBufferResource* BufferResource;
-        VkDeviceSize Offset;
-        uint32_t BindingIndex;
-    };
-
-    std::vector<BindingInfo> BindingInfos;
-    BindingInfo IndexBindingInfo;
-
-    void Initialize(RHIVulkanContext* Context);
-
-    void Cleanup(RHIVulkanContext* Context);
-
-    void BindVertexBuffer(RHIVulkanBufferResource* BufferResource, VkDeviceSize Offset, uint32_t BindingIndex);
-
-    void BindIndexBuffer(RHIVulkanBufferResource* BufferResource, VkDeviceSize Offset);
-
-    void Dispatch(RHIVulkanContext* Context, RHIVulkanPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount);
-
-	void DispatchImGUI(ImDrawData* draw_data, void (*ImGui_ImplVulkan_RenderDrawData)(ImDrawData* draw_data, VkCommandBuffer command_buffer, VkPipeline pipeline));
-
-    void PrepareRenderPass(RHIVulkanContext* Context, uint32_t& OutImageIndex, RHIVulkanRenderPass* RenderPass);
-
-	void BeginRenderPass(RHIVulkanContext* Context, RHIVulkanRenderPass* RenderPassResource, uint32_t ImageIndex);
-
-	void EndRenderPass();
-
-	void Submit(RHIVulkanContext* Context, uint32_t ImageIndex);
+    RHIImGUI();
+    RHIImGUI(const RHIImGUI&) = delete;
+    virtual ~RHIImGUI();
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) override;
+    virtual void DispatchImGUI(RHIGraphicDispatcher* Dispatcher) override;
+    virtual void UpdateUI() override;
+	virtual void Cleanup() override;
+    RHIImGUIBase* GetImpl() { return pImpl.get(); }
 };
-
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);

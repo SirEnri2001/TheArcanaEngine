@@ -27,9 +27,9 @@ class RENDERER_API RenderProxyBase
 class RENDERER_API MeshRenderProxy : public RenderProxyBase
 {
 public:
-	RHIVulkanBufferResource RHIVertexBuffer;
-	RHIVulkanBufferResource RHIIndexBuffer;
-	RHIVulkanImageResource Texture;
+	RHIBufferResource RHIVertexBuffer;
+	RHIBufferResource RHIIndexBuffer;
+	RHIImageResource Texture;
 	uint32_t IndexBufferSize;
 	void Initialize(RendererContext* Context, Mesh& InMesh);
 	~MeshRenderProxy();
@@ -49,19 +49,17 @@ class RENDERER_API Renderer
 {
 public:
 	uint32_t IndexBufferSize;
-	RHIVulkanPipeline Pipeline;
-	RHIVulkanGraphicDispatcher GraphicDispatcher;
+	RHIPipeline Pipeline;
+	RHIGraphicDispatcher GraphicDispatcher;
 	std::vector<MeshRenderProxy*> MeshProxyPasses;
 
 	void Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS);
 
-	void AddUniform(RHIVulkanUniform Uniform, uint32_t Binding);
+	void AddUniform(RHIUniform* Uniform, uint32_t Binding);
 
-	void AddTextureSampler(RHIVulkanImageResource Texture, uint32_t Binding);
+	void AddTextureSampler(RHIImageResource* Texture, uint32_t Binding);
 
 	void DrawScene(RendererContext* Context, MeshRenderProxy& MeshProxy);
-
-	void UpdateUI();
 
 	void UpdateFrame(RendererContext* RContext);
 };
@@ -70,8 +68,10 @@ class RENDERER_API RendererContext // This is a context used in one viewport
 {
 public:
 	// RHI Objects
-	RHIVulkanContext Context;
-	RHIVulkanRenderPass RenderPass;
+	RHIContext Context;
+	RHIWindowManager WindowManager;
+	RHIRenderPass RenderPass;
+	RHIImGUI ImGUI;
 
 	void Initialize(int Width, int Height);
 	bool IsWindowAlive();

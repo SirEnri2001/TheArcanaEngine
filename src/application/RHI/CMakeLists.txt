@@ -12,6 +12,7 @@ ${RHI_MODULE_ROOT}/Public/RHIOpenGL.h
 ${RHI_MODULE_ROOT}/Private/RHIOpenGL.cpp
 ${RHI_MODULE_ROOT}/Public/RHIVulkan.h
 ${RHI_MODULE_ROOT}/Private/RHIVulkan.cpp
+${RHI_MODULE_ROOT}/Private/RHIVulkanImpl.h
 ${RHI_MODULE_ROOT}/Private/RHIVulkanImpl.cpp
 ${RHI_MODULE_ROOT}/Public/RHIDirect3D12.h
 ${RHI_MODULE_ROOT}/Private/RHIDirect3D12.cpp
@@ -37,6 +38,5 @@ PRIVATE ${CoreMath_MODULE_ROOT}/Public
 PRIVATE ${CoreLog_MODULE_ROOT}/Public
 )
 
-target_link_libraries(RHI Vulkan::Vulkan)
-target_link_libraries(RHI glfw)
+target_link_libraries(RHI Vulkan::Vulkan imgui glfw)
 target_link_libraries(RHI d3d12.lib)

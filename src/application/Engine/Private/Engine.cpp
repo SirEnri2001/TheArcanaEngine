@@ -107,10 +107,10 @@ int main()
     MeshProxy.Initialize(RendererContext::Get(), StaticMesh);
     MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2);
     UniformBufferObject ubo;
-    RHIVulkanUniform Uniform;
+    RHIUniform Uniform;
     Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
-    RendererInstance.AddUniform(Uniform, 0);
-    RendererInstance.AddTextureSampler(MeshProxy.Texture, 1);
+    RendererInstance.AddUniform(&Uniform, 0);
+    RendererInstance.AddTextureSampler(&MeshProxy.Texture, 1);
     RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV);
     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy);
     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy2);
@@ -119,10 +119,9 @@ int main()
     float4 ViewPos = { 2.,2.,2.,1. };
     while (RendererContext::Get()->IsWindowAlive())
     {
-        updateUniformBuffer(ubo, RendererContext::Get()->Context.SwapchainExtent.height, RendererContext::Get()->Context.SwapchainExtent.width, viewMat, ViewPos);
+        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(),  RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
         Uniform.CopyToBuffer(&RendererContext::Get()->Context, &ubo, sizeof(ubo));
         RendererInstance.UpdateFrame(RendererContext::Get());
-        RendererInstance.UpdateUI();
     }
 	return 0;
 }
