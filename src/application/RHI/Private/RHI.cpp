@@ -1,3 +1,5 @@
+// RHI.cpp - RHI (Rendering Hardware Interface) Module - TheArcanaEngine Project
+// Copyright (c) 2025 Xinghua Han - MIT License
 #define RHI_IMPLEMENT
 #include "RHI.h"
 
@@ -95,6 +97,12 @@ void RHIWindowManager::CleanupSwapchain(RHIContext* Context)
 {
 	pImpl->CleanupSwapchain(Context);
 }
+
+void RHIWindowManager::RecreateSwapchain(RHIContext* Context)
+{
+	pImpl->RecreateSwapchain(Context);
+}
+
 
 bool RHIWindowManager::IsAlive()
 {
@@ -237,14 +245,14 @@ void RHIPipeline::AddBinding(uint32_t BindingIndex, uint32_t Stride)
 	pImpl->AddBinding(BindingIndex, Stride);
 }
 
-void RHIPipeline::AddUniformBuffer(RHIUniform* Uniform, uint32_t Binding)
+void RHIPipeline::SetUniformBinding(RHIUniform* Uniform, uint32_t Binding)
 {
-	pImpl->AddUniformBuffer(Uniform, Binding);
+	pImpl->SetUniformBinding(Uniform, Binding);
 }
 
-void RHIPipeline::AddImageSampler(RHIImageResource* ImageResource, uint32_t Binding)
+void RHIPipeline::SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding)
 {
-	pImpl->AddImageSampler(ImageResource, Binding);
+	pImpl->SetImageSamplerBinding(ImageResource, Binding);
 }
 
 void RHIPipeline::SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader)
@@ -288,67 +296,67 @@ void RHIImGUI::Cleanup()
 	pImpl->Cleanup();
 }
 
-void RHIImGUI::DispatchImGUI(RHIGraphicDispatcher* Dispatcher)
+void RHIImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
 {
 	pImpl->DispatchImGUI(Dispatcher);
 }
 
-// RHIGraphicDispatcher implementation
-RHIGraphicDispatcher::RHIGraphicDispatcher()
+// RHIGraphicsDispatcher implementation
+RHIGraphicsDispatcher::RHIGraphicsDispatcher()
 {
 	pImpl = std::make_unique<RHIVulkanGraphicDispatcher>();
 }
 
-RHIGraphicDispatcher::~RHIGraphicDispatcher()
+RHIGraphicsDispatcher::~RHIGraphicsDispatcher()
 {
 }
 
-void RHIGraphicDispatcher::Initialize(RHIContext* Context)
+void RHIGraphicsDispatcher::Initialize(RHIContext* Context)
 {
 	pImpl->Initialize(Context);
 }
 
-void RHIGraphicDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIGraphicsDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* WindowManager)
 {
 	pImpl->Cleanup(Context, WindowManager);
 }
 
-void RHIGraphicDispatcher::BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
+void RHIGraphicsDispatcher::BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
 {
 	pImpl->BindVertexBuffer(BufferResource, Offset, BindingIndex);
 }
 
-void RHIGraphicDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset)
+void RHIGraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset)
 {
 	pImpl->BindIndexBuffer(BufferResource, Offset);
 }
 
-void RHIGraphicDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIGraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
 	pImpl->Dispatch(WindowManager, Pipeline, IndexCount, IndexOffset, InstanceCount);
 }
 //
-//void RHIGraphicDispatcher::DispatchImGUI(ImDrawData* draw_data, void* RenderFunctionPointer)
+//void RHIGraphicsDispatcher::DispatchImGUI(ImDrawData* draw_data, void* RenderFunctionPointer)
 //{
 //	pImpl->DispatchImGUI(draw_data, RenderFunctionPointer);
 //}
 
-void RHIGraphicDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex)
+void RHIGraphicsDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex)
 {
 	pImpl->PrepareRenderPass(Context, WindowManager, RenderPass, OutImageIndex);
 }
 
-void RHIGraphicDispatcher::BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex)
+void RHIGraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex)
 {
 	pImpl->BeginRenderPass(Context, WindowManager, RenderPassResource, InImageIndex);
 }
 
-void RHIGraphicDispatcher::EndRenderPass()
+void RHIGraphicsDispatcher::EndRenderPass()
 {
 	pImpl->EndRenderPass();
 }
 
-void RHIGraphicDispatcher::Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex)
+void RHIGraphicsDispatcher::Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex)
 {
 	pImpl->Submit(Context, WindowManager, ImageIndex);
 }
