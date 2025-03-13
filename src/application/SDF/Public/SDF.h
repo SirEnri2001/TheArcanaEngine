@@ -1,10 +1,20 @@
 #pragma once
 
+#if defined(SDF_IMPLEMENT)
+	#define SDF_API __declspec(dllexport)
+#elif defined(SDF_INCLUDE)
+	#define SDF_API __declspec(dllimport)
+#else
+	#error Please specify API linkage before include this file
+	#define SDF_API
+#endif
+
+
 #include <CoreMath.inl>
 
 namespace SDF 
 {
-	class Transform
+	class SDF_API Transform
 	{
 	private:
 		float3 m_position;
@@ -36,18 +46,16 @@ namespace SDF
 	/*					SDFs																												 */
 	/*****************************************************************************************************************************************/
 	// Sphere
-    float SphereSD(const float3& measurePoint, float radius, const float4x4& invTransformationMat);
-
+	SDF_API float SphereSD(const float3& measurePoint, float radius, const float4x4& invTransformationMat);
 
 	// Box
 	// extent is the half size of the box's boundary
-	float BoxSD(const float3& measurePoint, const float3& extent, const float4x4& invTransformationMat);
-
+	SDF_API float BoxSD(const float3& measurePoint, const float3& extent, const float4x4& invTransformationMat);
 
 	// Primitive Combination
-	float Union(float d1, float d2);
-	float Intersection(float d1, float d2);
-	float Subtraction(float base, float subtrahend);
-	float Xor(float d1, float d2);
+	SDF_API float Union(float d1, float d2);
+	SDF_API float Intersection(float d1, float d2);
+	SDF_API float Subtraction(float base, float subtrahend);
+	SDF_API float Xor(float d1, float d2);
 
 }

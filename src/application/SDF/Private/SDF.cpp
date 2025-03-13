@@ -1,11 +1,13 @@
+#define SDF_IMPLEMENT
 #include "SDF.h"
-// #include <glm/gtx/extended_min_max.inl>
+
 
 constexpr float3 vec3_zero =	float3(0);
 constexpr float3 x_axis =		float3(1, 0, 0);
 constexpr float3 y_axis =		float3(0, 1, 0);
 constexpr float3 z_axis =		float3(0, 0, 1);
 constexpr float4x4 iMat4x4 =	float4x4(1);
+
 
 #define TRANSLATE(mat, vec)		( glm::translate(mat, vec) )
 #define ROTATE(mat, vec)		( glm::rotate(glm::rotate(glm::rotate(mat, (vec).x, x_axis), (vec).y, y_axis), (vec).z, z_axis) )
@@ -93,7 +95,7 @@ float SDF::Xor(float d1, float d2)
 int main()
 {
 	// Sphere
-
+	
 
 	// Box
 }
