@@ -1,7 +1,6 @@
 #define SDF_IMPLEMENT
 #include "SDF.h"
 
-
 constexpr float3 vec3_zero =	float3(0);
 constexpr float3 x_axis =		float3(1, 0, 0);
 constexpr float3 y_axis =		float3(0, 1, 0);
@@ -13,10 +12,11 @@ constexpr float4x4 iMat4x4 =	float4x4(1);
 #define ROTATE(mat, vec)		( glm::rotate(glm::rotate(glm::rotate(mat, (vec).x, x_axis), (vec).y, y_axis), (vec).z, z_axis) )
 #define SCALE(mat, vec)			( glm::scale(mat, vec) )
 
-#define LENGTH(x)		( glm::length(x) )
-#define NORMALIZE(x)	( glm::normalize(x) )
-#define MAX(x, y)		( glm::max(x, y) )
-#define MIN(x, y)		( glm::min(x, y) )
+#define LENGTH(x)				( glm::length(x) )
+#define NORMALIZE(x)			( glm::normalize(x) )
+#define MAX(x, y)				( glm::max(x, y) )
+#define MIN(x, y)				( glm::min(x, y) )
+#define CLAMP(val, min, max)	( glm::clamp(val, min, max) )
 
 
 
@@ -50,26 +50,36 @@ void SDF::Transform::SetScale(const float3& scale)
 
 
 // Sphere
-float SDF::SphereSD(const float3& measurePoint, float radius, const float4x4& invTransformationMat)
+float SDF::SphereSD(const float3& measurePoint, const float4x4& shapeInvTransMat, float radius)
 {
-	float3 pInObjSpace = invTransformationMat * float4(measurePoint, 1);
+	float3 pInObjSpace = shapeInvTransMat * float4(measurePoint, 1);
 	return LENGTH(pInObjSpace) - radius;
 }
 
 // Box
-float SDF::BoxSD(const float3& measurePoint, const float3& extent, const float4x4& invTransformationMat)
+float SDF::BoxSD(const float3& measurePoint, const float4x4& shapeInvTransMat, const float3& extent)
 {
-	float3 pInObjSpace = invTransformationMat * float4(measurePoint, 1);
+	float3 pInObjSpace = shapeInvTransMat * float4(measurePoint, 1);
 
 	float3 displacement = abs(pInObjSpace) - extent;
 
-	// hack to avoid branching
+	// hack to avoid branching between outside and inside SDF evaluation
 	float outsideCaseDist = LENGTH(MAX(displacement, vec3_zero));
 	float insideCaseDist = MIN(MAX(displacement.x, displacement.y), 0.0f);
 
 	return outsideCaseDist + insideCaseDist;
 }
 
+// Vertical Capsule
+float SDF::CapsuleSD(const float3& measurePoint, const float4x4& shapeInvTransMat, float halfHeight, float radius)
+{
+	float3 pInObjSpace = shapeInvTransMat * float4(measurePoint, 1);
+
+	float3 p = pInObjSpace;
+	p.y = MAX(0.f, (abs(p.y) - halfHeight));
+
+	return LENGTH(p) - radius;
+}
 
 // Primitive Combination
 float SDF::Union(float d1, float d2)
@@ -90,12 +100,4 @@ float SDF::Subtraction(float base, float subtrahend)
 float SDF::Xor(float d1, float d2)
 {
 	return MAX(MIN(d1, d2), -MAX(d1, d2));
-}
-
-int main()
-{
-	// Sphere
-	
-
-	// Box
 }

@@ -9,7 +9,6 @@
 	#define SDF_API
 #endif
 
-
 #include <CoreMath.inl>
 
 namespace SDF 
@@ -46,11 +45,14 @@ namespace SDF
 	/*					SDFs																												 */
 	/*****************************************************************************************************************************************/
 	// Sphere
-	SDF_API float SphereSD(const float3& measurePoint, float radius, const float4x4& invTransformationMat);
+	SDF_API float SphereSD(const float3& measurePoint, const float4x4& shapeInvTransMat, float radius);
 
 	// Box
 	// extent is the half size of the box's boundary
-	SDF_API float BoxSD(const float3& measurePoint, const float3& extent, const float4x4& invTransformationMat);
+	SDF_API float BoxSD(const float3& measurePoint, const float4x4& shapeInvTransMat, const float3& extent);
+
+	// Vertical Capsule
+	SDF_API float CapsuleSD(const float3& measurePoint, const float4x4& shapeInvTransMat, float halfHeight, float radius);
 
 	// Primitive Combination
 	SDF_API float Union(float d1, float d2);

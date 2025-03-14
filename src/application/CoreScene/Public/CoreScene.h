@@ -29,8 +29,8 @@ struct CORESCENE_API Transform
     float3 Scale = float3(1.f,1.f,1.f);
     
 };
-float4x4 ToMatrix(const Transform& Trans);
-float4x4 GetRotationMat(const Transform& Trans);
+CORESCENE_API float4x4 ToMatrix(const Transform& Trans);
+CORESCENE_API float4x4 GetRotationMat(const Transform& Trans);
 
 class CORESCENE_API Object
 {
