@@ -3,6 +3,7 @@
 #define RENDERER_INCLUDE
 #include <chrono>
 #include <fstream>
+#include <windows.h>
 
 #include "CoreMath.h"
 #include "CoreMath.inl"
@@ -145,69 +146,104 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
     }
 }
 
+
+// int main()
+// {
+//     //Log("Engine starts at ", "application mode", " ", 3);
+//     //Warning("This is a test warning. ");
+//     //Error("This is a test ERROR. ");
+//     Scene MainScene;
+//     std::string TestJson = R"({
+//     "Children":[
+//         {
+//             "Type":"Primitive",
+//             "Mesh":"cube.obj",
+// 			"Transform":{
+// 		        "Location":{
+// 		            "x":1.0,
+// 		            "y":2.0,
+// 		            "z":3.0
+// 		        },
+// 		        "Rotation":{
+// 		            "x":0.0,
+// 		            "y":20.0,
+// 		            "z":30.0
+// 		        },
+// 		        "Scale":{
+// 		            "x":1.0,
+// 		            "y":2.0,
+// 		            "z":1.0
+// 		        }
+// 		    }
+//         }
+//     ]
+// })";
+//     Scene::LoadSceneJson(MainScene, TestJson);
+//     Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
+//     Mesh StaticMesh2 = Mesh::LoadObj(MODEL2_PATH);
+//     StaticMesh.TexturePath = TEXTURE_PATH;
+//     StaticMesh2.TexturePath = TEXTURE2_PATH;
+//     std::vector<char> VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
+//     std::vector<char> FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
+
+//     std::vector<char> postprocessvertSPV = readFile("shaderbytecode/glsl/ScreenPost.vert");
+//     std::vector<char> postprocessfragSPV = readFile("shaderbytecode/glsl/ScreenPost.frag");
+
+//     // Renderer
+//     RendererContext::Get()->Initialize(WIDTH, HEIGHT);
+//     Renderer RendererInstance;
+//     RendererInstance.pFuncImDraw = DrawUI;
+//     MeshRenderProxy MeshProxy;
+//     MeshRenderProxy MeshProxy2;
+//     MeshProxy.Initialize(RendererContext::Get(), StaticMesh);
+//     MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2);
+//     UniformBufferObject ubo;
+//     RHIUniform Uniform;
+//     Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
+//     RendererInstance.SetUniform(&Uniform, 0);
+//     RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
+//     RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV, postprocessvertSPV, postprocessfragSPV);
+//     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy);
+//     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy2);
+//     while (RendererContext::Get()->IsWindowAlive())
+//     {
+//         updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(),  RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
+//         Uniform.CopyToBuffer(&RendererContext::Get()->Context, &ubo, sizeof(ubo));
+//         RendererInstance.UpdateFrame(RendererContext::Get());
+//     }
+// 	return 0;
+// }
+
 int main()
 {
-    //Log("Engine starts at ", "application mode", " ", 3);
-    //Warning("This is a test warning. ");
-    //Error("This is a test ERROR. ");
-    Scene MainScene;
-    std::string TestJson = R"({
-    "Children":[
-        {
-            "Type":"Primitive",
-            "Mesh":"cube.obj",
-			"Transform":{
-		        "Location":{
-		            "x":1.0,
-		            "y":2.0,
-		            "z":3.0
-		        },
-		        "Rotation":{
-		            "x":0.0,
-		            "y":20.0,
-		            "z":30.0
-		        },
-		        "Scale":{
-		            "x":1.0,
-		            "y":2.0,
-		            "z":1.0
-		        }
-		    }
-        }
-    ]
-})";
-    Scene::LoadSceneJson(MainScene, TestJson);
-    Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
-    Mesh StaticMesh2 = Mesh::LoadObj(MODEL2_PATH);
-    StaticMesh.TexturePath = TEXTURE_PATH;
-    StaticMesh2.TexturePath = TEXTURE2_PATH;
-    std::vector<char> VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
-    std::vector<char> FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
-
-    std::vector<char> postprocessvertSPV = readFile("shaderbytecode/glsl/ScreenPost.vert");
-    std::vector<char> postprocessfragSPV = readFile("shaderbytecode/glsl/ScreenPost.frag");
-
-    // Renderer
-    RendererContext::Get()->Initialize(WIDTH, HEIGHT);
-    Renderer RendererInstance;
-    RendererInstance.pFuncImDraw = DrawUI;
-    MeshRenderProxy MeshProxy;
-    MeshRenderProxy MeshProxy2;
-    MeshProxy.Initialize(RendererContext::Get(), StaticMesh);
-    MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2);
-    UniformBufferObject ubo;
-    RHIUniform Uniform;
-    Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
-    RendererInstance.SetUniform(&Uniform, 0);
-    RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
-    RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV, postprocessvertSPV, postprocessfragSPV);
-    RendererInstance.DrawScene(RendererContext::Get(), MeshProxy);
-    RendererInstance.DrawScene(RendererContext::Get(), MeshProxy2);
-    while (RendererContext::Get()->IsWindowAlive())
+	GRHIImplementationSelection = RHIImplement_D3D12;
+    RHIPlatformSupport::Get()->Initialize();
+    RHIWindowManager Manager;
+    Manager.Initialize(RHIPlatformSupport::Get(), 1280, 720);
+    RHIContext Context;
+    Context.Initialize(RHIPlatformSupport::Get());
+    Manager.InitializeSwapchain(&Context, RHIPlatformSupport::Get());
+    RHIPipelineFactory PipelineFactory;
+    RHIPipelineObject PipelineObject;
+    PipelineFactory.InitializePipelineObject(&PipelineObject, &Context, (RHIRenderPass*)nullptr);
+    RHIGraphicsDispatcher GraphicsDispatcher;
+    GraphicsDispatcher.Initialize(&Context);
+    // Main sample loop.
+    MSG msg = {};
+    while (msg.message != WM_QUIT)
     {
-        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(),  RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
-        Uniform.CopyToBuffer(&RendererContext::Get()->Context, &ubo, sizeof(ubo));
-        RendererInstance.UpdateFrame(RendererContext::Get());
+        // Process any messages in the queue.
+        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+        GraphicsDispatcher.Dispatch(&Manager, &PipelineObject, 1, 0, 1);
+        GraphicsDispatcher.EndPresentPassAndSubmit(&Context, &Manager);
     }
-	return 0;
+
+
+
+    //// Return this part of the WM_QUIT message to Windows.
+    //return static_cast<char>(msg.wParam);
 }

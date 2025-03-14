@@ -61,7 +61,7 @@ enum RHIImplementationSelection
 };
 
 
-extern RHIImplementationSelection GRHIImplementationSelection; /**< Specify which implementation we are currently using in the application */
+extern RHI_API RHIImplementationSelection GRHIImplementationSelection; /**< Specify which implementation we are currently using in the application */
 
 class RHIWindowManager;
 

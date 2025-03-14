@@ -23,8 +23,10 @@ add_library(RHI
 ./Private/Vulkan/RHIVulkanGraphics.cpp
 
 # D3D12 Implementation for RHI
-./Private/RHIDirect3D12.h
-./Private/RHIDirect3D12.cpp
+./Private/RHID3D12.h
+./Private/RHID3D12.cpp
+./Private/RHID3D12Impl.h
+./Private/RHID3D12Impl.cpp
 )
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/Private/Vulkan PREFIX "Implementations/Vulkan"
@@ -61,5 +63,5 @@ PRIVATE ./Private
 
 add_dependencies(RHI CoreMath CoreLog stb_image)
 
-target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog stb_image)
+target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog stb_image DirectX-Headers d3d12 dxgi d3dcompiler)
 target_link_libraries(RHI d3d12.lib)
