@@ -19,10 +19,7 @@ constexpr float4x4 iMat4x4 =	float4x4(1);
 #define CLAMP(val, min, max)	( glm::clamp(val, min, max) )
 
 
-
-
 // Transform
-
 void SDF::Transform::updateTransformationMatrix()
 {
 	m_transformationMatrix = TRANSLATE(ROTATE(SCALE(iMat4x4, m_scale), m_rotation), m_position);
@@ -47,19 +44,18 @@ void SDF::Transform::SetScale(const float3& scale)
 }
 
 
-
-
 // Sphere
-float SDF::SphereSD(const float3& measurePoint, const float4x4& shapeInvTransMat, float radius)
+float SDF::SphereSD(const float3& measurePoint, const float4x4& shapeInvMat, float radius)
 {
-	float3 pInObjSpace = shapeInvTransMat * float4(measurePoint, 1);
+	float3 pInObjSpace = shapeInvMat * float4(measurePoint, 1);
 	return LENGTH(pInObjSpace) - radius;
 }
 
-// Box
-float SDF::BoxSD(const float3& measurePoint, const float4x4& shapeInvTransMat, const float3& extent)
+
+// Box  
+float SDF::BoxSD(const float3& measurePoint, const float4x4& shapeInvMat, const float3& extent)
 {
-	float3 pInObjSpace = shapeInvTransMat * float4(measurePoint, 1);
+	float3 pInObjSpace = shapeInvMat * float4(measurePoint, 1);
 
 	float3 displacement = abs(pInObjSpace) - extent;
 
@@ -70,16 +66,18 @@ float SDF::BoxSD(const float3& measurePoint, const float4x4& shapeInvTransMat, c
 	return outsideCaseDist + insideCaseDist;
 }
 
+
 // Vertical Capsule
-float SDF::CapsuleSD(const float3& measurePoint, const float4x4& shapeInvTransMat, float halfHeight, float radius)
+float SDF::CapsuleSD(const float3& measurePoint, const float4x4& shapeInvMat, float halfHeight, float radius)
 {
-	float3 pInObjSpace = shapeInvTransMat * float4(measurePoint, 1);
+	float3 pInObjSpace = shapeInvMat * float4(measurePoint, 1);
 
 	float3 p = pInObjSpace;
 	p.y = MAX(0.f, (abs(p.y) - halfHeight));
 
 	return LENGTH(p) - radius;
 }
+
 
 // Primitive Combination
 float SDF::Union(float d1, float d2)
