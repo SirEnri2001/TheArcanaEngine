@@ -44,6 +44,7 @@ namespace SDF
 	/*****************************************************************************************************************************************/
 	/*					SDFs																												 */
 	/*****************************************************************************************************************************************/
+
 	// Sphere
 	SDF_API float SphereSD(const float3& measurePoint, const float4x4& shapeInvMat, float radius);
 
@@ -51,7 +52,7 @@ namespace SDF
 	// extent is the half size of the box's boundary
 	SDF_API float BoxSD(const float3& measurePoint, const float4x4& shapeInvMat, const float3& extent);
 
-	// Vertical Capsule
+	// Vertical CapsuleSDF
 	SDF_API float CapsuleSD(const float3& measurePoint, const float4x4& shapeInvMat, float halfHeight, float radius);
 
 	// Primitive Combination
@@ -61,3 +62,127 @@ namespace SDF
 	SDF_API float Xor(float d1, float d2);
 
 }
+
+class SDF_API ISignedDistance
+{
+public:
+	ISignedDistance() = default;
+	virtual ~ISignedDistance() = default;
+	ISignedDistance(const ISignedDistance&) = default;
+
+	virtual float Sample(float3 Point) = 0;
+	virtual float Sample(float3 Point, float4x4 InvModelMatrix) = 0;
+	virtual bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) = 0;
+	virtual bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) = 0;
+};
+
+class SDF_API BoxSDF : public ISignedDistance
+{
+public:
+	BoxSDF();
+	BoxSDF(const BoxSDF& other);
+	virtual ~BoxSDF() override;
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+};
+
+class SDF_API SphereSDF : public ISignedDistance
+{
+public:
+	SphereSDF();
+	SphereSDF(const SphereSDF& other);
+	virtual ~SphereSDF() override;
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+};
+
+class SDF_API CapsuleSDF : public ISignedDistance
+{
+public:
+	CapsuleSDF();
+	CapsuleSDF(const CapsuleSDF& other);
+	virtual ~CapsuleSDF() override;
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+};
+
+class SDF_API PlaneSDF : public ISignedDistance
+{
+public:
+	PlaneSDF();
+	PlaneSDF(const PlaneSDF& other);
+	virtual ~PlaneSDF() override;
+	
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+
+private:
+	float3 m_normal;   // 平面法线
+	float m_distance;  // 平面到原点的距离
+};
+
+class SDF_API UnionSDF : public ISignedDistance
+{
+public:
+	UnionSDF();
+	UnionSDF(const UnionSDF& other);
+	virtual ~UnionSDF() override;
+	std::vector<ISignedDistance*> Objects;
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+};
+
+class SDF_API IntersectSDF : public ISignedDistance
+{
+public:
+	IntersectSDF();
+	IntersectSDF(const IntersectSDF& other);
+	virtual ~IntersectSDF() override;
+	std::vector<ISignedDistance*> Objects;
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+};
+
+class SDF_API SubtractSDF : public ISignedDistance
+{
+public:
+	SubtractSDF();
+	SubtractSDF(const SubtractSDF& other);
+	virtual ~SubtractSDF() override;
+	std::vector<ISignedDistance*> Objects;
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+};
+
+class SDF_API XorSDF : public ISignedDistance
+{
+public:
+	XorSDF();
+	XorSDF(const XorSDF& other);
+	virtual ~XorSDF() override;
+	std::vector<ISignedDistance*> Objects;
+	float Sample(float3 Point) override;
+	float Sample(float3 Point, float4x4 InvModelMatrix) override;
+	bool IntersectRay(float& OutDistance, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+	bool IntersectRayWithNormal(float& OutDistance, float3& OutNormal, float3 Point, float3 RayDirection, bool IsBidirectional) override;
+};
+
+class SDF_API SDFRenderProxy
+{
+public:
+
+};
