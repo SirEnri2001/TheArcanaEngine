@@ -4,6 +4,8 @@ cmake_minimum_required(VERSION 3.20)
 set(SHADER_SOURCES
 ./glsl/BlinnPhong.frag
 ./glsl/BlinnPhong.vert
+./glsl/ScreenPost.frag
+./glsl/ScreenPost.vert
 )
 set(SHADER_BYTECODE_DIRECTORY ${CMAKE_SOURCE_DIR}/shaderbytecode)
 # ensure all folders

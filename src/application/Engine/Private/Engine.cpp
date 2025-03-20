@@ -184,6 +184,9 @@ int main()
     std::vector<char> VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
     std::vector<char> FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
 
+    std::vector<char> postprocessvertSPV = readFile("shaderbytecode/glsl/ScreenPost.vert");
+    std::vector<char> postprocessfragSPV = readFile("shaderbytecode/glsl/ScreenPost.frag");
+
     // Renderer
     RendererContext::Get()->Initialize(WIDTH, HEIGHT);
     Renderer RendererInstance;
@@ -197,7 +200,7 @@ int main()
     Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
     RendererInstance.SetUniform(&Uniform, 0);
     RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
-    RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV);
+    RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV, postprocessvertSPV, postprocessfragSPV);
     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy);
     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy2);
     while (RendererContext::Get()->IsWindowAlive())
