@@ -213,8 +213,8 @@ public:
     VkSampler Sampler;
     bool bHasSampler = false;
     ImageUsage Usage;
-    RHIFormat Format;
     VkDescriptorImageInfo DescriptorInfo;
+    VkFormat InnerFormat;
 
     RHIVulkanImageResource() = default;
     virtual ~RHIVulkanImageResource() override = default;
@@ -261,20 +261,41 @@ public:
 class RHIVulkanRenderPass : public RHIRenderPassBase
 {
 public:
+    VkExtent2D Extent;
     VkRenderPass RenderPass;
-    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-    std::vector<VkFramebuffer> SwapchainFramebuffers;
-    RHIVulkanImageResource ColorRenderTargetResource;
-    RHIVulkanImageResource DepthRenderTargetResource;
+    std::vector<RHIVulkanImageResource*> ColorRenderTargets;
+    RHIVulkanImageResource* DepthRenderTargets = nullptr;
+    std::vector<VkAttachmentDescription> Attachments;
+    int32_t DepthAttachmentIndex = -1;
+    VkFramebuffer FrameBuffer;
 
     RHIVulkanRenderPass() = default;
     virtual ~RHIVulkanRenderPass() override = default;
+    
+    virtual void Initialize(RHIContext* Context, uint32_t Width, uint32_t Height) override;
+    virtual void AddColorRenderTarget(RHIImageResource* ColorRT) override;
+    virtual void SetDepthRenderTarget(RHIImageResource* DepthRT) override;
+    virtual void Cleanup(RHIContext* Context) override;
+};
 
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+class RHIVulkanPresentPass : public RHIPresentPassBase
+{
+public:
+    VkRenderPass RenderPass;
+    RHIVulkanImageResource* ColorRT;
+    RHIVulkanImageResource* DepthRT;
+	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+	std::vector<VkFramebuffer> SwapchainFramebuffers;
+    RHIVulkanPresentPass();
+    virtual ~RHIVulkanPresentPass() override;
+
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT) override;
     virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void CleanupSwapchainFramebuffer(RHIContext* Context) override;
     virtual void Cleanup(RHIContext* Context) override;
+    virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) override;
 };
+
 
 class RHIVulkanPipeline : public RHIPipelineBase
 {
@@ -306,6 +327,7 @@ public:
     virtual void SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding) override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
     virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) override;
+    virtual void Initialize(RHIContext* Context, RHIPresentPass* PresentPass) override;
     virtual void Cleanup(RHIContext* Context) override;
 };
 
@@ -316,7 +338,7 @@ public:
     RHIVulkanImGUI() = default;
     virtual ~RHIVulkanImGUI() override = default;
 
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass) override;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
     virtual void Cleanup() override;
@@ -340,6 +362,7 @@ public:
 
     std::vector<BindingInfo> BindingInfos;
     BindingInfo IndexBindingInfo;
+    uint32_t CurrentImageIndex;
 
     RHIVulkanGraphicDispatcher() = default;
     virtual ~RHIVulkanGraphicDispatcher() override = default;
@@ -349,9 +372,10 @@ public:
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
     virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    //virtual void DispatchImGUI(ImDrawData* draw_data, void* RenderFunctionPointer) override;
-    virtual void PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex) override;
-    virtual void BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex) override;
-    virtual void EndRenderPass() override;
-    virtual void Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex) override;
+    virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) override;
+    virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) override;
+    virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
+    virtual void EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void BeginFrame() override;
+    virtual void WaitForGPUIdle(RHIContext* Context) override;
 };
