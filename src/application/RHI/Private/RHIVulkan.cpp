@@ -53,7 +53,8 @@ void RHIVulkanPlatformSupport::Initialize()
     }
 	PhysicalDeviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME
+		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+		VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME
 	};
 	RetrieveAvailablePhysicalDevices(AvailablePhysicalDevices, Instance, PhysicalDeviceExtensions);
 }
@@ -183,21 +184,33 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	VkFormat InVkFormat;
 	VkImageUsageFlags VkImageUsage;
 	VkImageAspectFlagBits VkImageAspectFlagBits;
+	VkImageLayout VkLayout;
 	Usage = InUsage;
 	switch (Usage)
 	{
 	case IU_COLOR_RT:
-		InVkFormat = VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat;
+		InnerFormat = VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat;
+		VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+		VkLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		CreateSampler(Sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
+		bHasSampler = true;
+		// VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL
+		break;
+	case IU_COLOR_PRESENT_RT:
+		InnerFormat = VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat;
 		VkImageUsage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+		VkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		break;
 	case IU_DEPTH_RT:
-		InVkFormat = RHIVulkanPlatformSupport::Get()->GetDepthFormat();
+		InnerFormat = RHIVulkanPlatformSupport::Get()->GetDepthFormat();
 		VkImageUsage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 		VkImageAspectFlagBits = VK_IMAGE_ASPECT_DEPTH_BIT;
+		VkLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		break;
 	default:
 		throw std::runtime_error("Invalid usage bit for init a rendertarget");
@@ -206,23 +219,23 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 	vkExtent.height = RTExtent.Height;
 	vkExtent.width = RTExtent.Width;
 	vkExtent.depth = RTExtent.Depth;
-	CreateImage(Image, VulkanContext->Device, vkExtent, 1, static_cast<VkSampleCountFlagBits>(MultiSamplesCount), InVkFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
+	CreateImage(Image, VulkanContext->Device, vkExtent, 1, static_cast<VkSampleCountFlagBits>(MultiSamplesCount), InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
     VkMemoryRequirements memRequirements;
     vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
 	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
 	vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
-	CreateImageView(ImageView, Image, VulkanContext->Device, InVkFormat, VkImageAspectFlagBits, 1);
+	CreateImageView(ImageView, Image, VulkanContext->Device, InnerFormat, VkImageAspectFlagBits, 1);
+	DescriptorInfo = { Sampler, ImageView, VkLayout };
 }
 
 
 void RHIVulkanImageResource::Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	VkFormat InVkFormat;
 	Usage = IU_GENERAL;
-	InVkFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
+	InnerFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
 	// Check if image format supports linear blitting
-	VkFormatProperties formatProperties = RHIVulkanPlatformSupport::Get()->GetFormatProperties(InVkFormat);
+	VkFormatProperties formatProperties = RHIVulkanPlatformSupport::Get()->GetFormatProperties(InnerFormat);
 	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
 		throw std::runtime_error("texture image format does not support linear blitting!");
 	}
@@ -247,11 +260,11 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, const char* ImageFi
 		ImageExtent.height = texHeight;
 		ImageExtent.width = texWidth;
 		ImageExtent.depth = 1;
-		CreateImage(Image, VulkanContext->Device, ImageExtent, MipLevel, VK_SAMPLE_COUNT_1_BIT, InVkFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+		CreateImage(Image, VulkanContext->Device, ImageExtent, MipLevel, VK_SAMPLE_COUNT_1_BIT, InnerFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 		vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
 		CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
 		vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
-		CreateImageView(ImageView, Image, VulkanContext->Device, InVkFormat, VK_IMAGE_ASPECT_COLOR_BIT, MipLevel);
+		CreateImageView(ImageView, Image, VulkanContext->Device, InnerFormat, VK_IMAGE_ASPECT_COLOR_BIT, MipLevel);
 		CreateSampler(Sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
 	}
     
@@ -510,8 +523,29 @@ void RHIVulkanPipeline::Initialize(RHIContext* Context, RHIRenderPass* RenderPas
 		DescriptorPool = nullptr;
 		DescriptorSet = nullptr;
 	}
-	CreateGraphicsPipeline(Pipeline, PipelineLayout, VulkanRenderPassResource->msaaSamples, VulkanContext->Device, VertShaderBytecode, "main", FragShaderBytecode, "main",
+	CreateGraphicsPipeline(Pipeline, PipelineLayout, VK_SAMPLE_COUNT_1_BIT, VulkanContext->Device, VertShaderBytecode, "main", FragShaderBytecode, "main",
 		BindingDescriptions, AttributeDescriptions, DescriptorSetLayout, VulkanRenderPassResource->RenderPass);
+}
+
+
+void RHIVulkanPipeline::Initialize(RHIContext* Context, RHIPresentPass* PresentPass)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanPresentPassResource = static_cast<RHIVulkanPresentPass*>(PresentPass->GetImpl());
+	if (UniformBufferDescriptorCount>0 || CombinedImageSamplerDescriptorCount > 0)
+	{
+		CreateDescriptorSetLayout(DescriptorSetLayout, DescSetLayoutBindings, VulkanContext->Device);
+		//CreateDescriptorPool(DescriptorPool, VulkanContext->Device);
+		//CreateDescriptorSet(DescriptorSet, WriteDescriptorSets, VulkanContext->Device, DescriptorPool, DescriptorSetLayout);
+	}
+	else
+	{
+		DescriptorSetLayout = nullptr;
+		DescriptorPool = nullptr;
+		DescriptorSet = nullptr;
+	}
+	CreateGraphicsPipeline(Pipeline, PipelineLayout, VulkanPresentPassResource->msaaSamples, VulkanContext->Device, VertShaderBytecode, "main", FragShaderBytecode, "main",
+		BindingDescriptions, AttributeDescriptions, DescriptorSetLayout, VulkanPresentPassResource->RenderPass);
 }
 
 
@@ -524,30 +558,108 @@ void RHIVulkanPipeline::Cleanup(RHIContext* Context)
 	vkDestroyDescriptorSetLayout(VulkanContext->Device, DescriptorSetLayout, nullptr);
 }
 
-void RHIVulkanRenderPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIVulkanRenderPass::Initialize(RHIContext* Context, uint32_t Width, uint32_t Height)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	Extent.height = Height;
+	Extent.width = Width;
+	std::vector<VkImageView> ImageViews;
+	for(size_t i = 0; i < ColorRenderTargets.size(); i++)
+	{
+		auto* VkImageResource = ColorRenderTargets[i];
+		VkAttachmentDescription AttachmentDesc{};
+		AttachmentDesc.format = VkImageResource->InnerFormat;
+		AttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
+		AttachmentDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		AttachmentDesc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		AttachmentDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		AttachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		AttachmentDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		AttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		Attachments.emplace_back(
+			AttachmentDesc
+		);
+		ImageViews.push_back(VkImageResource->ImageView);
+	}
+	if(DepthRenderTargets!=nullptr)
+	{
+		VkAttachmentDescription AttachmentDesc{};
+		AttachmentDesc.format = DepthRenderTargets->InnerFormat;
+		AttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
+		AttachmentDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		AttachmentDesc.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		AttachmentDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		AttachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		AttachmentDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		AttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		Attachments.emplace_back(
+			AttachmentDesc
+		);
+		DepthAttachmentIndex = ColorRenderTargets.size();
+		ImageViews.push_back(DepthRenderTargets->ImageView);
+	}
+	CreateRenderPassSingleSubpass(RenderPass, VulkanContext->Device, Attachments, DepthAttachmentIndex);
+	VkFramebufferCreateInfo framebufferInfo{};
+	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebufferInfo.renderPass = RenderPass;
+	framebufferInfo.attachmentCount = static_cast<uint32_t>(ImageViews.size());
+	framebufferInfo.pAttachments = ImageViews.data();
+	framebufferInfo.width = Width;
+	framebufferInfo.height = Height;
+	framebufferInfo.layers = 1;
+
+	if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &FrameBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create framebuffer!");
+	}
+}
+
+void RHIVulkanRenderPass::Cleanup(RHIContext* Context)
+{
+
+}
+
+void RHIVulkanRenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
+{
+	ColorRenderTargets.push_back(static_cast<RHIVulkanImageResource*>(ColorRT->GetImpl()));
+}
+
+void RHIVulkanRenderPass::SetDepthRenderTarget(RHIImageResource* DepthRT)
+{
+	DepthRenderTargets = static_cast<RHIVulkanImageResource*>(DepthRT->GetImpl());
+}
+
+
+// RHIVulkanPresentPass implementation
+RHIVulkanPresentPass::RHIVulkanPresentPass()
+{
+    // Initialize any necessary Vulkan-specific resources here
+}
+
+RHIVulkanPresentPass::~RHIVulkanPresentPass()
+{
+    // Cleanup any Vulkan-specific resources here
+}
+
+void RHIVulkanPresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* InColorRT, RHIImageResource* InDepthRT)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	msaaSamples = VK_SAMPLE_COUNT_4_BIT; //RHIVulkanPlatformSupport::Get()->GetMaxUsableSampleCount();
-	CreateRenderPass(RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat, msaaSamples);
-	ImageExtent3D RenderTargetExtent;
-	RenderTargetExtent.Height = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.height;
-	RenderTargetExtent.Width = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.width;
-	RenderTargetExtent.Depth = 1;
-	ColorRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, msaaSamples);
-	DepthRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, msaaSamples);
+	ColorRT = static_cast<RHIVulkanImageResource*>(InColorRT->GetImpl());
+	DepthRT = static_cast<RHIVulkanImageResource*>(InDepthRT->GetImpl());
+	msaaSamples = VK_SAMPLE_COUNT_4_BIT;
+	CreatePresentableRenderPass(RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat, msaaSamples);
 	CreateSwapchainFramebuffer(Context, WindowManager);
 }
 
-void RHIVulkanRenderPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIVulkanPresentPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
 	SwapchainFramebuffers.resize(VulkanWindowManager->CurrentSwapchain.SwapchainImageViews.size());
 	for (size_t i = 0; i < VulkanWindowManager->CurrentSwapchain.SwapchainImageViews.size(); i++) {
 		std::array<VkImageView, 3> attachments = {
-			ColorRenderTargetResource.ImageView,
-			DepthRenderTargetResource.ImageView,
+			ColorRT->ImageView,
+			DepthRT->ImageView,
 			VulkanWindowManager->CurrentSwapchain.SwapchainImageViews[i]
 		};
 
@@ -565,24 +677,36 @@ void RHIVulkanRenderPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWin
 		}
 	}
 }
-void RHIVulkanRenderPass::CleanupSwapchainFramebuffer(RHIContext* Context)
+
+void RHIVulkanPresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+    auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	for (auto framebuffer : SwapchainFramebuffers) {
 		vkDestroyFramebuffer(VulkanContext->Device, framebuffer, nullptr);
 	}
 }
 
-void RHIVulkanRenderPass::Cleanup(RHIContext* Context)
+void RHIVulkanPresentPass::Cleanup(RHIContext* Context)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	CleanupSwapchainFramebuffer(Context);
-	// clean up
-	ColorRenderTargetResource.Cleanup(Context);
-	DepthRenderTargetResource.Cleanup(Context);
 	vkDestroyRenderPass(VulkanContext->Device, RenderPass, nullptr);
 }
 
+void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)
+{
+	WindowManager->RecreateSwapchain(Context);
+	CleanupSwapchainFramebuffer(Context);
+	ColorRT->Cleanup(Context);
+	DepthRT->Cleanup(Context);
+	ImageExtent3D RenderTargetExtent;
+	RenderTargetExtent.Height = WindowManager->GetWindowHeight();
+	RenderTargetExtent.Width = WindowManager->GetWindowWidth();
+	RenderTargetExtent.Depth = 1;
+	ColorRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, msaaSamples);
+	DepthRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, msaaSamples);
+	CreateSwapchainFramebuffer(Context, WindowManager);
+}
 
 void RHIVulkanGraphicDispatcher::Initialize(RHIContext* Context)
 {
@@ -656,8 +780,12 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
 		vkCmdBindVertexBuffers(CommandBuffer, Info.BindingIndex, 1, &Info.BufferResource->Buffer, &Info.Offset);
 	}
 	vkCmdBindIndexBuffer(CommandBuffer, IndexBindingInfo.BufferResource->Buffer, IndexBindingInfo.Offset, VK_INDEX_TYPE_UINT32);
-	vkCmdPushDescriptorSetKHR(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->PipelineLayout,
-		0, VulkanPipeline->WriteDescriptorSets.size(), VulkanPipeline->WriteDescriptorSets.data());
+	if (VulkanPipeline->WriteDescriptorSets.size()>0)
+	{
+		vkCmdPushDescriptorSetKHR(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->PipelineLayout,
+			0, VulkanPipeline->WriteDescriptorSets.size(), VulkanPipeline->WriteDescriptorSets.data());
+	}
+	
 	//if (VulkanPipeline->DescriptorSet)
 	//{
 	//	
@@ -668,44 +796,55 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
 	vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
 }
 
-void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex)
+void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+
+	VkRenderPassBeginInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassInfo.renderPass = VulkanRenderPass->RenderPass;
+	renderPassInfo.framebuffer = VulkanRenderPass->FrameBuffer;
+	renderPassInfo.renderArea.offset = { 0, 0 };
+	renderPassInfo.renderArea.extent = VulkanRenderPass->Extent;
+
+	std::array<VkClearValue, 2> clearValues{};
+	clearValues[0].color = { {1.0f, 0.0f, 1.0f, 1.0f} };
+	clearValues[1].depthStencil = { 1.0f, 0 };
+
+	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+	renderPassInfo.pClearValues = clearValues.data();
+
+	vkCmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+	
+}
+
+void RHIVulkanGraphicDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
+{
+	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+	vkCmdEndRenderPass(CommandBuffer);
+}
+
+void RHIVulkanGraphicDispatcher::BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+	auto* VulkanPresentPassResource = static_cast<RHIVulkanPresentPass*>(PresentPassResource->GetImpl());
+
 	glfwPollEvents();
-	vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
+	WaitForGPUIdle(Context);
 	if (bWindowResizeLastframe)
 	{
-		WindowManager->RecreateSwapchain(Context);
-		VulkanRenderPass->CleanupSwapchainFramebuffer(Context);
-		VulkanRenderPass->ColorRenderTargetResource.Cleanup(Context);
-		VulkanRenderPass->DepthRenderTargetResource.Cleanup(Context);
-		ImageExtent3D RenderTargetExtent;
-		RenderTargetExtent.Height = WindowManager->GetWindowHeight();
-		RenderTargetExtent.Width = WindowManager->GetWindowWidth();
-		RenderTargetExtent.Depth = 1;
-		VulkanRenderPass->ColorRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, VulkanRenderPass->msaaSamples);
-		VulkanRenderPass->DepthRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, VulkanRenderPass->msaaSamples);
-		VulkanRenderPass->CreateSwapchainFramebuffer(Context, WindowManager);
+		PresentPassResource->OnWindowResize(Context, WindowManager);
 		bWindowResizeLastframe = false;
 	}
-	VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
+	VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-		WindowManager->RecreateSwapchain(Context);
-		VulkanRenderPass->CleanupSwapchainFramebuffer(Context);
-		VulkanRenderPass->ColorRenderTargetResource.Cleanup(Context);
-		VulkanRenderPass->DepthRenderTargetResource.Cleanup(Context);
-		ImageExtent3D RenderTargetExtent;
-		RenderTargetExtent.Height = WindowManager->GetWindowHeight();
-		RenderTargetExtent.Width = WindowManager->GetWindowWidth();
-		RenderTargetExtent.Depth = 1;
-		VulkanRenderPass->ColorRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, VulkanRenderPass->msaaSamples);
-		VulkanRenderPass->DepthRenderTargetResource.InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, VulkanRenderPass->msaaSamples);
-		VulkanRenderPass->CreateSwapchainFramebuffer(Context, WindowManager);
+		
+		PresentPassResource->OnWindowResize(Context, WindowManager);
 		bWindowResizeLastframe = false;
-		VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &OutImageIndex);
+		VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
 		if (result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
 			throw std::runtime_error("failed to acquire swap chain after retry!");
@@ -717,32 +856,25 @@ void RHIVulkanGraphicDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindo
 
 	vkResetFences(VulkanContext->Device, 1, &InFlightFence);
 
-	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
+	//vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
 
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	//VkCommandBufferBeginInfo beginInfo{};
+	//beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-	if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
-		throw std::runtime_error("failed to begin recording command buffer!");
-	}
-}
+	//if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
+	//	throw std::runtime_error("failed to begin recording command buffer!");
+	//}
 
-
-void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	auto* VulkanRenderPassResource = static_cast<RHIVulkanRenderPass*>(RenderPassResource->GetImpl());
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	renderPassInfo.renderPass = VulkanRenderPassResource->RenderPass;
-	renderPassInfo.framebuffer = VulkanRenderPassResource->SwapchainFramebuffers[InImageIndex];
+	renderPassInfo.renderPass = VulkanPresentPassResource->RenderPass;
+	renderPassInfo.framebuffer = VulkanPresentPassResource->SwapchainFramebuffers[CurrentImageIndex];
 	renderPassInfo.renderArea.offset = { 0, 0 };
 	renderPassInfo.renderArea.extent = VulkanWindowManager->CurrentSwapchain.SwapchainExtent;
 
 	std::array<VkClearValue, 2> clearValues{};
-	clearValues[0].color = { {1.0f, 0.0f, 1.0f, 1.0f} };
-	clearValues[1].depthStencil = { 1.0f, 0 };
+	clearValues[0].color = { {1.0f, 0.0f, 0.0f, 1.0f} };
+	clearValues[1].depthStencil = { 1000000.0f, 0 };
 
 	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	renderPassInfo.pClearValues = clearValues.data();
@@ -750,15 +882,18 @@ void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIContext* Context, RHIWindowM
 	vkCmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void RHIVulkanGraphicDispatcher::EndRenderPass()
+void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
-	vkCmdEndRenderPass(CommandBuffer);
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 }
 
-void RHIVulkanGraphicDispatcher::Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex)
+
+void RHIVulkanGraphicDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	vkCmdEndRenderPass(CommandBuffer);
 	if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
 		throw std::runtime_error("failed to record command buffer!");
 	}
@@ -786,7 +921,7 @@ void RHIVulkanGraphicDispatcher::Submit(RHIContext* Context, RHIWindowManager* W
 	presentInfo.pWaitSemaphores = &RenderFinishSemaphore;
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &VulkanWindowManager->CurrentSwapchain.Swapchain;
-	presentInfo.pImageIndices = &ImageIndex;
+	presentInfo.pImageIndices = &CurrentImageIndex;
 
 	auto result = vkQueuePresentKHR(VulkanContext->PresentQueue, &presentInfo);
 
@@ -798,12 +933,25 @@ void RHIVulkanGraphicDispatcher::Submit(RHIContext* Context, RHIWindowManager* W
 	}
 }
 
-void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass)
+void RHIVulkanGraphicDispatcher::BeginFrame()
 {
-	auto VulkanPlatform = reinterpret_cast<RHIVulkanPlatformSupport*>(RHIPlatformSupport::Get()->GetImpl());
-	auto vkWindow = reinterpret_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	auto vkContext = reinterpret_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto vkRenderPass = reinterpret_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
+		throw std::runtime_error("failed to begin recording command buffer!");
+	}
+}
+
+
+void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass)
+{
+	auto VulkanPlatform = static_cast<RHIVulkanPlatformSupport*>(RHIPlatformSupport::Get()->GetImpl());
+	auto vkWindow = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	auto vkContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto vkPresentPass = static_cast<RHIVulkanPresentPass*>(PresentPass->GetImpl());
 	
     ImGlobals.Context = ImGui::CreateContext();
 	ImGui::GetAllocatorFunctions(&ImGlobals.MemAllocFunc, &ImGlobals.MemFreeFunc, &ImGlobals.UserData);
@@ -815,10 +963,10 @@ void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMan
 	ImGuiInitInfo.Queue = vkContext->GraphicsQueue;
 	ImGuiInitInfo.DescriptorPool = nullptr;
 	ImGuiInitInfo.DescriptorPoolSize = 32;
-	ImGuiInitInfo.RenderPass = vkRenderPass->RenderPass;
+	ImGuiInitInfo.RenderPass = vkPresentPass->RenderPass;
 	ImGuiInitInfo.MinImageCount = 2;
 	ImGuiInitInfo.ImageCount = vkWindow->CurrentSwapchain.SwapchainImageViews.size();
-	ImGuiInitInfo.MSAASamples = vkRenderPass->msaaSamples;
+	ImGuiInitInfo.MSAASamples = vkPresentPass->msaaSamples;
 
 	ImGui_ImplVulkan_Init(&ImGuiInitInfo);
 	ImGui_ImplGlfw_InitForVulkan(vkWindow->pGLFWwindow, true);

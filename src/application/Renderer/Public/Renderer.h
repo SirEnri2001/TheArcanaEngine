@@ -50,11 +50,17 @@ class RENDERER_API Renderer
 public:
 	uint32_t IndexBufferSize;
 	RHIPipeline Pipeline;
+	RHIPipeline PresentPipeline;
+	RHIBufferResource RHIFullScreenQuadBuffer;
+	RHIBufferResource RHIFullScreenQuadIndexBuffer;
 	RHIGraphicsDispatcher GraphicDispatcher;
+	RHIRenderPass RenderPass;
+	RHIImageResource GBufferA;
+	RHIImageResource GBufferD;
 	std::vector<MeshRenderProxy*> MeshProxyPasses;
 	void (*pFuncImDraw)(ImGuiSharedGlobals*);
 
-	void Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS);
+	void Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS, std::vector<char> VS1, std::vector<char> PS1);
 
 	void SetUniform(RHIUniform* Uniform, uint32_t Binding);
 
@@ -71,8 +77,10 @@ public:
 	// RHI Objects
 	RHIContext Context;
 	RHIWindowManager WindowManager;
-	RHIRenderPass RenderPass;
+	RHIPresentPass PresentPass;
 	RHIImGUI ImGUI;
+	RHIImageResource ColorRenderTarget;
+	RHIImageResource DepthRenderTarget;
 
 	void Initialize(int Width, int Height);
 	bool IsWindowAlive();

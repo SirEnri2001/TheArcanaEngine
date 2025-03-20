@@ -205,25 +205,61 @@ RHIRenderPass::~RHIRenderPass()
 {
 }
 
-void RHIRenderPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIRenderPass::Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY)
 {
-	pImpl->Initialize(Context, WindowManager);
-}
-
-void RHIRenderPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
-{
-	pImpl->CreateSwapchainFramebuffer(Context, WindowManager);
-}
-
-void RHIRenderPass::CleanupSwapchainFramebuffer(RHIContext* Context)
-{
-	pImpl->CleanupSwapchainFramebuffer(Context);
+	pImpl->Initialize(Context, SizeX, SizeY);
 }
 
 void RHIRenderPass::Cleanup(RHIContext* Context)
 {
 	pImpl->Cleanup(Context);
 }
+
+void RHIRenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
+{
+	pImpl->AddColorRenderTarget(ColorRT);
+}
+
+void RHIRenderPass::SetDepthRenderTarget(RHIImageResource* DepthRT)
+{
+	pImpl->SetDepthRenderTarget(DepthRT);
+}
+
+// RHIPresentPass implementation
+RHIPresentPass::RHIPresentPass()
+{
+	pImpl = std::make_unique<RHIVulkanPresentPass>();
+}
+
+RHIPresentPass::~RHIPresentPass()
+{
+}
+
+void RHIPresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT)
+{
+	pImpl->Initialize(Context, WindowManager, MSAASamples, ColorRT, DepthRT);
+}
+
+void RHIPresentPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
+{
+	pImpl->CreateSwapchainFramebuffer(Context, WindowManager);
+}
+
+void RHIPresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
+{
+	pImpl->CleanupSwapchainFramebuffer(Context);
+}
+
+void RHIPresentPass::Cleanup(RHIContext* Context)
+{
+	pImpl->Cleanup(Context);
+}
+
+void RHIPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)
+{
+	pImpl->OnWindowResize(Context, WindowManager);
+}
+
 
 // RHIPipeline implementation
 RHIPipeline::RHIPipeline()
@@ -265,6 +301,11 @@ void RHIPipeline::Initialize(RHIContext* Context, RHIRenderPass* RenderPassResou
 	pImpl->Initialize(Context, RenderPassResource);
 }
 
+void RHIPipeline::Initialize(RHIContext* Context, RHIPresentPass* PresentPass)
+{
+	pImpl->Initialize(Context, PresentPass);
+}
+
 void RHIPipeline::Cleanup(RHIContext* Context)
 {
 	pImpl->Cleanup(Context);
@@ -280,9 +321,9 @@ RHIImGUI::~RHIImGUI()
 {
 }
 
-void RHIImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass)
+void RHIImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass)
 {
-	pImpl->Initialize(Context, WindowManager, RenderPass);
+	pImpl->Initialize(Context, WindowManager, PresentPass);
 }
 
 void RHIImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* ImGlobals))
@@ -336,22 +377,34 @@ void RHIGraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipelin
 	pImpl->Dispatch(WindowManager, Pipeline, IndexCount, IndexOffset, InstanceCount);
 }
 
-void RHIGraphicsDispatcher::PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex)
+void RHIGraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass)
 {
-	pImpl->PrepareRenderPass(Context, WindowManager, RenderPass, OutImageIndex);
+	pImpl->BeginRenderPass(Context, RenderPass);
 }
 
-void RHIGraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex)
+
+void RHIGraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource)
 {
-	pImpl->BeginRenderPass(Context, WindowManager, RenderPassResource, InImageIndex);
+	pImpl->BeginPresentPass(Context, WindowManager, PresentPassResource);
 }
 
-void RHIGraphicsDispatcher::EndRenderPass()
+void RHIGraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 {
-	pImpl->EndRenderPass();
+	pImpl->EndRenderPass(RenderPass);
 }
 
-void RHIGraphicsDispatcher::Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex)
+void RHIGraphicsDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-	pImpl->Submit(Context, WindowManager, ImageIndex);
+	pImpl->EndPresentPassAndSubmit(Context, WindowManager);
+}
+
+void RHIGraphicsDispatcher::BeginFrame()
+{
+	pImpl->BeginFrame();
+}
+
+
+void RHIGraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
+{
+	pImpl->WaitForGPUIdle(Context);
 }

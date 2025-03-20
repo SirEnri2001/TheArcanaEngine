@@ -397,8 +397,9 @@ bool PhysicalDeviceSupportSurface(
     return formatCount > 0 && presentModeCount > 0;
 }
 
-void CreateRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkFormat DepthFormat, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples) {
-    VkAttachmentDescription colorAttachment{};
+void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkFormat DepthFormat, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples)
+{
+	VkAttachmentDescription colorAttachment{};
     colorAttachment.format = SwapchainImageFormat;
     colorAttachment.samples = msaaSamples;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -460,6 +461,57 @@ void CreateRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkFormat Dep
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
     renderPassInfo.pAttachments = attachments.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+
+    if (vkCreateRenderPass(Device, &renderPassInfo, nullptr, &OutRenderPass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create render pass!");
+    }
+}
+
+
+// DepthAttachmentIndex -1 means no depth attachment
+void CreateRenderPassSingleSubpass(VkRenderPass& OutRenderPass, VkDevice Device, const std::vector<VkAttachmentDescription>& Attachments, int32_t DepthAttachementIndex)
+{
+    std::vector<VkAttachmentReference> ColorAttachmentRefs;
+
+    for(int i = 0; i < Attachments.size(); i++)
+    {
+        if(i==DepthAttachementIndex)
+        {
+	        continue;
+        }
+        ColorAttachmentRefs.push_back(VkAttachmentReference{static_cast<uint32_t>(i), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+    }
+
+    VkAttachmentReference DepthAttachmentRef;
+    if(DepthAttachementIndex>=0)
+    {
+        DepthAttachmentRef.attachment = DepthAttachementIndex;
+	    DepthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    }
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = ColorAttachmentRefs.size();
+    subpass.pColorAttachments = ColorAttachmentRefs.data();
+    subpass.pDepthStencilAttachment = DepthAttachementIndex>0?&DepthAttachmentRef:nullptr;
+    subpass.pResolveAttachments = nullptr;
+
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+	VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = Attachments.size();
+    renderPassInfo.pAttachments = Attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
     renderPassInfo.dependencyCount = 1;

@@ -34,7 +34,9 @@ enum ImageUsage
 {
     IU_GENERAL,  /**< General texture usage */
     IU_COLOR_RT, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget */
-    IU_DEPTH_RT /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget */
+    IU_DEPTH_RT, /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget */
+    IU_COLOR_PRESENT_RT, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
+    IU_DPETH_PRESENT_RT  /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
 };
 
 enum BufferType
@@ -279,10 +281,10 @@ public:
     RHIRenderPassBase() = default;
     RHIRenderPassBase(const RHIRenderPassBase&) = delete;
     virtual ~RHIRenderPassBase() = default;
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
-    virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
-    virtual void CleanupSwapchainFramebuffer(RHIContext* Context) = 0;
+    virtual void Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
+    virtual void AddColorRenderTarget(RHIImageResource* ColorRT) = 0;
+    virtual void SetDepthRenderTarget(RHIImageResource* DepthRT) = 0;
 };
 
 /**
@@ -294,11 +296,42 @@ class RHI_API RHIRenderPass : public RHIRenderPassBase
 public:
     RHIRenderPass();
     virtual ~RHIRenderPass() override;
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    virtual void AddColorRenderTarget(RHIImageResource* ColorRT) override;
+    virtual void SetDepthRenderTarget(RHIImageResource* DepthRT) override;
+    RHIRenderPassBase* GetImpl() { return pImpl.get(); }
+};
+
+
+class RHIPresentPassBase
+{
+public:
+    RHIPresentPassBase() = default;
+    RHIPresentPassBase(const RHIPresentPassBase&) = delete;
+    virtual ~RHIPresentPassBase() = default;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT) = 0;
+    virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void CleanupSwapchainFramebuffer(RHIContext* Context) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+    virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+};
+
+/**
+ * RHIRenderPass stores framebuffers, and manages rendertargets.
+ */
+class RHI_API RHIPresentPass : public RHIPresentPassBase
+{
+    std::unique_ptr<RHIPresentPassBase> pImpl = nullptr;
+public:
+    RHIPresentPass();
+    virtual ~RHIPresentPass() override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT) override;
     virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void CleanupSwapchainFramebuffer(RHIContext* Context) override;
     virtual void Cleanup(RHIContext* Context) override;
-    RHIRenderPassBase* GetImpl() { return pImpl.get(); }
+    virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    RHIPresentPassBase* GetImpl() { return pImpl.get(); }
 };
 
 class RHIPipelineBase
@@ -313,6 +346,7 @@ public:
     virtual void SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding) = 0;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) = 0;
     virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) = 0;
+    virtual void Initialize(RHIContext* Context, RHIPresentPass* PresentPass) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
 };
 
@@ -343,6 +377,7 @@ public:
     virtual void SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding) override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
     virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) override;
+    virtual void Initialize(RHIContext* Context, RHIPresentPass* PresentPass) override;
     virtual void Cleanup(RHIContext* Context) override;
     RHIPipelineBase* GetImpl() { return pImpl.get(); }
 };
@@ -358,10 +393,12 @@ public:
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
     virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
-    virtual void PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex) = 0;
-    virtual void BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex) = 0;
-    virtual void EndRenderPass() = 0;
-    virtual void Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex) = 0;
+    virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) = 0;
+    virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) = 0;
+    virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
+    virtual void EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void BeginFrame() = 0;
+    virtual void WaitForGPUIdle(RHIContext* Context) = 0;
 };
 
 /**
@@ -386,11 +423,12 @@ public:
      * @param InstanceCount 
      */
     virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    
-    virtual void PrepareRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass, uint32_t& OutImageIndex) override;
-    virtual void BeginRenderPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPassResource, uint32_t InImageIndex) override;
-    virtual void EndRenderPass() override;
-    virtual void Submit(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t ImageIndex) override;
+    virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) override;
+    virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) override;
+    virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
+    virtual void EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void BeginFrame() override;
+    virtual void WaitForGPUIdle(RHIContext* Context) override;
     RHIGraphicsDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
@@ -401,7 +439,7 @@ public:
     RHIImGUIBase() = default;
     RHIImGUIBase(const RHIImGUIBase&) = delete;
     virtual ~RHIImGUIBase() = default;
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) = 0;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass) = 0;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) = 0;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) = 0;
 	virtual void Cleanup() = 0;
@@ -417,7 +455,7 @@ public:
     RHIImGUI();
     RHIImGUI(const RHIImGUI&) = delete;
     virtual ~RHIImGUI();
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* RenderPass) override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass) override;
     /**
      * Executes drawcalls for ImGUI.
      */
