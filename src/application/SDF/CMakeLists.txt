@@ -4,8 +4,8 @@ project(SDF)
 set(SDF_MODULE_ROOT ./src/application/SDF)
 
 add_library(SDF
-    ${SDF_MODULE_ROOT}/Public/SDF.h
-    ${SDF_MODULE_ROOT}/Private/SDF.cpp
+    ./Public/SDF.h
+    ./Private/SDF.cpp
 )
 
 target_include_directories(SDF
@@ -13,11 +13,8 @@ target_include_directories(SDF
 )
 
 target_include_directories(SDF
-    PUBLIC ${SDF_MODULE_ROOT}/Public
-    PRIVATE ${SDF_MODULE_ROOT}/Private
+    PUBLIC ./Public
+    PRIVATE ./Private
 )
 
-target_include_directories(SDF 
-    PRIVATE ${CoreMath_MODULE_ROOT}/Public
-)
-
+target_link_libraries(SDF CoreMath)

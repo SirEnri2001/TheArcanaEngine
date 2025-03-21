@@ -4,19 +4,27 @@ cmake_minimum_required(VERSION 3.20)
 find_package(Vulkan REQUIRED)
 
 project(RHI)
-set(RHI_MODULE_ROOT ./src/application/RHI)
+# set(RHI_MODULE_ROOT ./src/application/RHI)
 add_library(RHI
-${RHI_MODULE_ROOT}/Public/RHI.h
-${RHI_MODULE_ROOT}/Public/RHIImGuiHelper.h
-${RHI_MODULE_ROOT}/Private/RHI.cpp
-${RHI_MODULE_ROOT}/Private/RHIOpenGL.h
-${RHI_MODULE_ROOT}/Private/RHIOpenGL.cpp
-${RHI_MODULE_ROOT}/Private/RHIVulkan.h
-${RHI_MODULE_ROOT}/Private/RHIVulkan.cpp
-${RHI_MODULE_ROOT}/Private/RHIVulkanImpl.h
-${RHI_MODULE_ROOT}/Private/RHIVulkanImpl.cpp
-${RHI_MODULE_ROOT}/Private/RHIDirect3D12.h
-${RHI_MODULE_ROOT}/Private/RHIDirect3D12.cpp
+./Public/RHI.h
+./Public/RHIImGuiHelper.h
+./Private/RHI.cpp
+./Private/RHIOpenGL.h
+./Private/RHIOpenGL.cpp
+
+# Vulkan Implementation for RHI
+./Private/Vulkan/RHIVulkan.h
+./Private/Vulkan/RHIVulkan.cpp
+./Private/Vulkan/RHIVulkanImpl.h
+./Private/Vulkan/RHIVulkanImpl.cpp
+./Private/Vulkan/RHIVulkanResource.h
+./Private/Vulkan/RHIVulkanResource.cpp
+./Private/Vulkan/RHIVulkanGraphics.h
+./Private/Vulkan/RHIVulkanGraphics.cpp
+
+# D3D12 Implementation for RHI
+./Private/RHIDirect3D12.h
+./Private/RHIDirect3D12.cpp
 )
 
 target_include_directories(RHI
@@ -27,15 +35,11 @@ PRIVATE ${Vulkan_INCLUDE_DIRS}
 )
 
 target_include_directories(RHI
-PUBLIC ${RHI_MODULE_ROOT}/Public
-PRIVATE ${RHI_MODULE_ROOT}/Private
+PUBLIC ./Public
+PRIVATE ./Private
 )
 
+add_dependencies(RHI CoreMath CoreLog stb_image)
 
-target_include_directories(RHI 
-PRIVATE ${CoreMath_MODULE_ROOT}/Public
-PRIVATE ${CoreLog_MODULE_ROOT}/Public
-)
-
-target_link_libraries(RHI Vulkan::Vulkan imgui glfw)
+target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog stb_image)
 target_link_libraries(RHI d3d12.lib)
