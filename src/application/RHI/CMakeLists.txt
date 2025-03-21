@@ -27,6 +27,26 @@ add_library(RHI
 ./Private/RHIDirect3D12.cpp
 )
 
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/Private/Vulkan PREFIX "Implementations/Vulkan"
+FILES
+# Vulkan Implementation for RHI
+./Private/Vulkan/RHIVulkan.h
+./Private/Vulkan/RHIVulkan.cpp
+./Private/Vulkan/RHIVulkanImpl.h
+./Private/Vulkan/RHIVulkanImpl.cpp
+./Private/Vulkan/RHIVulkanResource.h
+./Private/Vulkan/RHIVulkanResource.cpp
+./Private/Vulkan/RHIVulkanGraphics.h
+./Private/Vulkan/RHIVulkanGraphics.cpp
+)
+
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/Private PREFIX "Implementations/D3D12"
+FILES
+# D3D12 Implementation for RHI
+./Private/RHIDirect3D12.h
+./Private/RHIDirect3D12.cpp
+)
+
 target_include_directories(RHI
 PRIVATE ${glfw_INCLUDE_DIRS}
 PRIVATE ${glm_INCLUDE_DIRS}

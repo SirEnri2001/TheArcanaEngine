@@ -1,0 +1,224 @@
+#include <cmath>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+#define RHI_IMPLEMENT
+#include "RHIVulkan.h"
+#include "RHIVulkanImpl.h"
+
+void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	VkImageUsageFlags VkImageUsage;
+	VkImageAspectFlagBits VkImageAspectFlagBits;
+	VkImageLayout VkLayout;
+	Usage = InUsage;
+	switch (Usage)
+	{
+	case IU_COLOR_RT:
+		InnerFormat = VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat;
+		VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+		VkLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		CreateSampler(Sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
+		bHasSampler = true;
+		// VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL
+		break;
+	case IU_COLOR_PRESENT_RT:
+		InnerFormat = VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat;
+		VkImageUsage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+		VkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		break;
+	case IU_DEPTH_RT:
+		InnerFormat = RHIVulkanPlatformSupport::Get()->GetDepthFormat();
+		VkImageUsage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		VkImageAspectFlagBits = VK_IMAGE_ASPECT_DEPTH_BIT;
+		VkLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		break;
+	default:
+		throw std::runtime_error("Invalid usage bit for init a rendertarget");
+	}
+	VkExtent3D vkExtent;
+	vkExtent.height = RTExtent.Height;
+	vkExtent.width = RTExtent.Width;
+	vkExtent.depth = RTExtent.Depth;
+	CreateImage(Image, VulkanContext->Device, vkExtent, 1, static_cast<VkSampleCountFlagBits>(MultiSamplesCount), InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
+	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
+	CreateImageView(ImageView, Image, VulkanContext->Device, InnerFormat, VkImageAspectFlagBits, 1);
+	DescriptorInfo = { Sampler, ImageView, VkLayout };
+}
+
+
+void RHIVulkanImageResource::Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	Usage = IU_GENERAL;
+	InnerFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
+	// Check if image format supports linear blitting
+	VkFormatProperties formatProperties = RHIVulkanPlatformSupport::Get()->GetFormatProperties(InnerFormat);
+	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
+		throw std::runtime_error("texture image format does not support linear blitting!");
+	}
+
+	int texWidth, texHeight, texChannels;
+	stbi_uc* pixels = stbi_load(ImageFileName, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	assert(texHeight > 0 && texWidth > 0);
+	VkDeviceSize imageSize = texWidth * texHeight * 4;
+	if(MipLevel==-1)
+	{
+		MipLevel = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+	}
+
+	if (!pixels || texWidth<=0 || texHeight<=0) {
+		throw std::runtime_error("failed to load texture image!");
+	}
+	
+	VkMemoryRequirements memRequirements;
+	VkExtent3D ImageExtent;
+
+	{
+		ImageExtent.height = texHeight;
+		ImageExtent.width = texWidth;
+		ImageExtent.depth = 1;
+		CreateImage(Image, VulkanContext->Device, ImageExtent, MipLevel, VK_SAMPLE_COUNT_1_BIT, InnerFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+		vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
+		CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+		vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
+		CreateImageView(ImageView, Image, VulkanContext->Device, InnerFormat, VK_IMAGE_ASPECT_COLOR_BIT, MipLevel);
+		CreateSampler(Sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
+	}
+    
+	VkBuffer stagingBuffer;
+	VkDeviceMemory stagingBufferMemory;
+
+	{
+		CreateBuffer(stagingBuffer, VulkanContext->Device, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	    vkGetBufferMemoryRequirements(VulkanContext->Device, stagingBuffer, &memRequirements);
+		CreateDeviceMemory(stagingBufferMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+		vkBindBufferMemory(VulkanContext->Device, stagingBuffer, stagingBufferMemory, 0);
+
+		void* data;
+		vkMapMemory(VulkanContext->Device, stagingBufferMemory, 0, imageSize, 0, &data);
+		memcpy(data, pixels, static_cast<size_t>(imageSize));
+		vkUnmapMemory(VulkanContext->Device, stagingBufferMemory);
+
+		stbi_image_free(pixels);
+	}
+
+	VkCommandBuffer commandBuffer;
+	CreateCommandBuffer(commandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
+	BeginCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
+	TransitionImageLayout(Image, commandBuffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevel);
+	CopyBufferToImage(stagingBuffer, Image, commandBuffer, ImageExtent.width, ImageExtent.height);
+	CreateMipmapForImage(commandBuffer, Image, texWidth, texHeight, MipLevel);
+	EndCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->GraphicsQueue, VulkanContext->Device);
+
+	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);
+	vkFreeMemory(VulkanContext->Device, stagingBufferMemory, nullptr);
+	bHasSampler = true;
+	DescriptorInfo = {Sampler, ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+}
+
+void RHIVulkanImageResource::Cleanup(RHIContext* Context)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	vkDestroyImage(VulkanContext->Device, Image, nullptr);
+	vkDestroyImageView(VulkanContext->Device, ImageView, nullptr);
+	vkFreeMemory(VulkanContext->Device, DeviceMemory, nullptr);
+	if (bHasSampler)
+	{
+		vkDestroySampler(VulkanContext->Device, Sampler, nullptr);
+	}
+}
+
+VkBufferUsageFlags RHIVulkanBufferResource::GetVkBufferUsageFlags(BufferType Type)
+{
+	switch (Type)
+	{
+	case VERTEX:
+		return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	case INDEX:
+		return VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	case GENERAL:
+	default:
+		return 0;
+	}
+}
+
+
+void RHIVulkanBufferResource::Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType InType)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	Type = InType;
+	CreateBuffer(Buffer, VulkanContext->Device, Stride * ElementCounts, GetVkBufferUsageFlags(Type) | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	VkMemoryRequirements MemRequirements;
+	vkGetBufferMemoryRequirements(VulkanContext->Device, Buffer, &MemRequirements);
+	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, MemRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(MemRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	vkBindBufferMemory(VulkanContext->Device, Buffer, DeviceMemory, 0);
+}
+
+void RHIVulkanBufferResource::CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	VkBuffer stagingBuffer;
+	VkDeviceMemory stagingBufferMemory;
+	CreateBuffer(stagingBuffer, VulkanContext->Device, TotalBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	VkMemoryRequirements MemRequirement;
+	vkGetBufferMemoryRequirements(VulkanContext->Device, stagingBuffer, &MemRequirement);
+	CreateDeviceMemory(stagingBufferMemory, VulkanContext->Device, MemRequirement.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(MemRequirement, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+	vkBindBufferMemory(VulkanContext->Device, stagingBuffer, stagingBufferMemory, 0);
+	void* pMappedBuffer;
+	vkMapMemory(VulkanContext->Device, stagingBufferMemory, 0, TotalBytes, 0, &pMappedBuffer);
+	memcpy(pMappedBuffer, data, TotalBytes);
+	vkUnmapMemory(VulkanContext->Device, stagingBufferMemory);
+	VkCommandBuffer CommandBuffer;
+	CreateCommandBuffer(CommandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
+	BeginCommandBufferOneTimeSubmit(CommandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
+	CopyBuffer(stagingBuffer, Buffer, TotalBytes, CommandBuffer);
+	EndCommandBufferOneTimeSubmit(CommandBuffer, VulkanContext->CommandPool, VulkanContext->GraphicsQueue, VulkanContext->Device);
+
+}
+
+void RHIVulkanBufferResource::Cleanup(RHIContext* Context)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	vkDestroyBuffer(VulkanContext->Device, Buffer, nullptr);
+	vkFreeMemory(VulkanContext->Device, DeviceMemory, nullptr);
+}
+
+void RHIVulkanUniform::Initialize(RHIContext* Context, uint32_t UniformStructSize)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	CreateBuffer(Buffer, VulkanContext->Device, UniformStructSize,	VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+	VkMemoryRequirements MemRequirements;
+	vkGetBufferMemoryRequirements(VulkanContext->Device, Buffer, &MemRequirements);
+	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, MemRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(MemRequirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+	vkBindBufferMemory(VulkanContext->Device, Buffer, DeviceMemory, 0);
+	vkMapMemory(VulkanContext->Device, DeviceMemory, 0, UniformStructSize, 0, &MappedMemory);
+	DescriptorBufferInfo = {};
+	DescriptorBufferInfo.buffer = Buffer;
+	DescriptorBufferInfo.offset = 0;
+	DescriptorBufferInfo.range = UniformStructSize;
+	Size = UniformStructSize;
+}
+
+void RHIVulkanUniform::CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	memcpy(MappedMemory, data, TotalBytes);
+}
+
+void RHIVulkanUniform::Cleanup(RHIContext* Context)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	vkUnmapMemory(VulkanContext->Device, DeviceMemory);
+	vkDestroyBuffer(VulkanContext->Device, Buffer, nullptr);
+	vkFreeMemory(VulkanContext->Device, DeviceMemory, nullptr);
+}
