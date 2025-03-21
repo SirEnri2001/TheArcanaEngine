@@ -5,11 +5,6 @@
 
 #include "RHID3D12Impl.h"
 
-struct Vertex
-{
-    XMFLOAT3 position;
-    XMFLOAT4 color;
-};
 
 // RHID3D12PlatformSupport implementation
 void RHID3D12PlatformSupport::Initialize()
@@ -134,10 +129,6 @@ void RHID3D12WindowManager::Initialize(RHIPlatformSupport* PlatformSupport, uint
     );
     
     ShowWindow(hWnd, 1);
-
-    m_viewport.Width = m_width;
-    m_viewport.Height = m_height;
-    m_scissorRect = CD3DX12_RECT(0.,0., m_width, m_height);
 }
 
 void RHID3D12WindowManager::Cleanup(RHIPlatformSupport* PlatformSupport)
@@ -152,7 +143,7 @@ void RHID3D12WindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatform
     auto* D3D12PlatformSupport = static_cast<RHID3D12PlatformSupport*>(PlatformSupport->GetImpl());
     // Describe and create the swap chain.
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
-    swapChainDesc.BufferCount = FrameCount;
+    swapChainDesc.BufferCount = 2;
     swapChainDesc.Width = m_width;
     swapChainDesc.Height = m_height;
     swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -174,31 +165,6 @@ void RHID3D12WindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatform
     ThrowIfFailed(D3D12Context->factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 
     ThrowIfFailed(swapChain.As(&m_swapChain));
-    m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
-    // Create descriptor heaps.
-    {
-        // Describe and create a render target view (RTV) descriptor heap.
-        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = 2;
-        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        ThrowIfFailed(D3D12Context->m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
-
-        m_rtvDescriptorSize = D3D12Context->m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    }
-
-    // Create frame resources.
-    {
-        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
-
-        // Create a RTV for each frame.
-        for (UINT n = 0; n < FrameCount; n++)
-        {
-            ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
-            D3D12Context->m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
-            rtvHandle.Offset(1, m_rtvDescriptorSize);
-        }
-    }
     
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
@@ -244,13 +210,13 @@ bool RHID3D12WindowManager::IsAlive()
 uint32_t RHID3D12WindowManager::GetWindowHeight()
 {
     // Placeholder implementation
-    return 0;
+    return m_height;
 }
 
 uint32_t RHID3D12WindowManager::GetWindowWidth()
 {
     // Placeholder implementation
-    return 0;
+    return m_width;
 }
 
 void RHID3D12WindowManager::WaitForPreviousFrame(RHID3D12Context* D3D12Context)
@@ -271,8 +237,6 @@ void RHID3D12WindowManager::WaitForPreviousFrame(RHID3D12Context* D3D12Context)
         ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
         WaitForSingleObject(m_fenceEvent, INFINITE);
     }
-
-    m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 }
 
 
@@ -300,13 +264,35 @@ void RHID3D12ImageResource::Cleanup(RHIContext* Context)
 void RHID3D12BufferResource::Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    // Placeholder implementation
+
+    // Note: using upload heaps to transfer static data like vert buffers is not 
+    // recommended. Every time the GPU needs it, the upload heap will be marshalled 
+    // over. Please read up on Default Heap usage. An upload heap is used here for 
+    // code simplicity and because there are very few verts to actually transfer.
+    ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(ElementCounts* Stride),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_vertexBuffer)));
+
 }
 
 void RHID3D12BufferResource::CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     // Placeholder implementation
+    // Copy the triangle data to the vertex buffer.
+    UINT8* pVertexDataBegin;
+    CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+    ThrowIfFailed(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+    memcpy(pVertexDataBegin, data, TotalBytes);
+    m_vertexBuffer->Unmap(0, nullptr);
+    // Initialize the vertex buffer view.
+    m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
+    m_vertexBufferView.StrideInBytes = 28;
+    m_vertexBufferView.SizeInBytes = 84;
 }
 
 void RHID3D12BufferResource::Cleanup(RHIContext* Context)
@@ -334,14 +320,29 @@ void RHID3D12Uniform::Cleanup(RHIContext* Context)
     // Placeholder implementation
 }
 
+DXGI_FORMAT GetFormat(RHIFormat Format)
+{
+	switch (Format)
+	{
+	case R8G8B8A8_SRGB:
+        return DXGI_FORMAT_R32G32B32_FLOAT;
+	case R32G32B32_SFLOAT:
+        return DXGI_FORMAT_R32G32B32_FLOAT;
+	case R32G32B32A32_SFLOAT:
+        return DXGI_FORMAT_R32G32B32A32_FLOAT;
+	case R32G32_SFLOAT:
+        return DXGI_FORMAT_R32G32B32_FLOAT;
+	}
+}
 void RHID3D12PipelineFactory::AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset)
 {
-    // TODO: Implement D3D12 buffer layout setup
+    // Define the vertex input layout.
+    inputElementDescs.push_back({ "ATTRIBUTE", Location,
+        GetFormat(Format), BindingIndex, Offset, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0});
 }
 
 void RHID3D12PipelineFactory::AddBufferBinding(uint32_t BindingIndex, uint32_t Stride)
 {
-    // TODO: Implement D3D12 buffer binding setup
 }
 
 void RHID3D12PipelineFactory::RemoveAllBufferBindings()
@@ -366,7 +367,14 @@ void RHID3D12PipelineFactory::RemoveAllGlobalBindings()
 
 void RHID3D12PipelineFactory::SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader)
 {
-    // TODO: Implement D3D12 shader setup
+#if defined(_DEBUG)
+    // Enable better shader debugging with the graphics debugging tools.
+    UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+    UINT compileFlags = 0;
+#endif
+    ThrowIfFailed(D3DCompile(VertShader.data(), VertShader.size(), NULL, nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
+    ThrowIfFailed(D3DCompile(FragShader.data(), FragShader.size(), NULL, nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
 }
 
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
@@ -389,29 +397,10 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
 
     // Create the pipeline state, which includes compiling and loading shaders.
     {
-        ComPtr<ID3DBlob> vertexShader;
-        ComPtr<ID3DBlob> pixelShader;
-
-#if defined(_DEBUG)
-        // Enable better shader debugging with the graphics debugging tools.
-        UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-        UINT compileFlags = 0;
-#endif
-
-        ThrowIfFailed(D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
-        ThrowIfFailed(D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
-
-        // Define the vertex input layout.
-        D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-        {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-        };
 
         // Describe and create the graphics pipeline state object (PSO).
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+        psoDesc.InputLayout = D3D12_INPUT_LAYOUT_DESC{ inputElementDescs.data(), static_cast<unsigned int>(inputElementDescs.size()) };
         psoDesc.pRootSignature = D3D12PipelineObject->m_rootSignature.Get();
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
@@ -426,51 +415,6 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
         psoDesc.SampleDesc.Count = 1;
         ThrowIfFailed(D3D12Context->m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));
     }
-    // Create the vertex buffer.
-    {
-        // Define the geometry for a triangle.
-        Vertex triangleVertices[] =
-        {
-            { { 0.0f, 0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-            { { 0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-            { { -0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
-        };
-
-        const UINT vertexBufferSize = sizeof(triangleVertices);
-
-        // Note: using upload heaps to transfer static data like vert buffers is not 
-        // recommended. Every time the GPU needs it, the upload heap will be marshalled 
-        // over. Please read up on Default Heap usage. An upload heap is used here for 
-        // code simplicity and because there are very few verts to actually transfer.
-        ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-            D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&D3D12PipelineObject->m_vertexBuffer)));
-
-        // Copy the triangle data to the vertex buffer.
-        UINT8* pVertexDataBegin;
-        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
-        ThrowIfFailed(D3D12PipelineObject->m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
-        memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
-        D3D12PipelineObject->m_vertexBuffer->Unmap(0, nullptr);
-
-        // Initialize the vertex buffer view.
-        D3D12PipelineObject->m_vertexBufferView.BufferLocation = D3D12PipelineObject->m_vertexBuffer->GetGPUVirtualAddress();
-        D3D12PipelineObject->m_vertexBufferView.StrideInBytes = sizeof(Vertex);
-        D3D12PipelineObject->m_vertexBufferView.SizeInBytes = vertexBufferSize;
-    }
-    
-    ThrowIfFailed(D3D12Context->m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&D3D12PipelineObject->m_commandAllocator)));
-    // Create the command list.
-    ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12PipelineObject->m_commandAllocator.Get(), 
-        D3D12PipelineObject->m_pipelineState.Get(), IID_PPV_ARGS(&D3D12PipelineObject->m_commandList)));
-
-    // Command lists are created in the recording state, but there is nothing
-    // to record yet. The main loop expects it to be closed, so close it now.
-    ThrowIfFailed(D3D12PipelineObject->m_commandList->Close());
 }
 
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass)
@@ -501,6 +445,16 @@ void RHID3D12PipelineObject::SetImageSampler(RHIImageResource* ImageResource, ui
 void RHID3D12GraphicsDispatcher::Initialize(RHIContext* Context)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+
+    ThrowIfFailed(D3D12Context->m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
+
+    ThrowIfFailed(m_commandAllocator->Reset());
+    // Create the command list.
+    ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(),
+        NULL, IID_PPV_ARGS(&m_commandList)));
+    // Command lists are created in the recording state, but there is nothing
+    // to record yet. The main loop expects it to be closed, so close it now.
+    ThrowIfFailed(m_commandList->Close());
 }
 
 void RHID3D12GraphicsDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* WindowManager)
@@ -512,8 +466,13 @@ void RHID3D12GraphicsDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* 
 
 void RHID3D12GraphicsDispatcher::BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
 {
-    auto* D3D12BufferResource = static_cast<RHID3D12BufferResource*>(BufferResource->GetImpl());
-    // Placeholder implementation
+    auto* D3D12Buffer = static_cast<RHID3D12BufferResource*>(BufferResource->GetImpl());
+    if (BoundBufferViews.size()<=BindingIndex)
+    {
+        BoundBufferViews.resize(BindingIndex + 1);
+    }
+
+    BoundBufferViews[BindingIndex] = D3D12Buffer->m_vertexBufferView;
 }
 
 void RHID3D12GraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset)
@@ -526,44 +485,32 @@ void RHID3D12GraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
 {
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     auto* D3D12Pipeline = static_cast<RHID3D12PipelineObject*>(Pipeline->GetImpl());
-        
 
-    // Command list allocators can only be reset when the associated 
-    // command lists have finished execution on the GPU; apps should use 
-    // fences to determine GPU execution progress.
-    ThrowIfFailed(D3D12Pipeline->m_commandAllocator->Reset());
-
-    // However, when ExecuteCommandList() is called on a particular command 
-    // list, that command list can then be reset at any time and must be before 
-    // re-recording.
-    ThrowIfFailed(D3D12Pipeline->m_commandList->Reset(D3D12Pipeline->m_commandAllocator.Get(), 
-        D3D12Pipeline->m_pipelineState.Get()));
-
-    // Set necessary state.
-    D3D12Pipeline->m_commandList->SetGraphicsRootSignature( D3D12Pipeline->m_rootSignature.Get());
-    D3D12Pipeline->m_commandList->RSSetViewports(1, &D3D12WindowManager->m_viewport);
-    D3D12Pipeline->m_commandList->RSSetScissorRects(1, &D3D12WindowManager->m_scissorRect);
+    //ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), D3D12Pipeline->m_pipelineState.Get()));
+    CD3DX12_VIEWPORT m_viewport{};
+    CD3DX12_RECT m_scissorRect{};
+    m_viewport.Width = WindowManager->GetWindowWidth();
+    m_viewport.Height = WindowManager->GetWindowHeight();
+    m_scissorRect = CD3DX12_RECT(0., 0., m_viewport.Width, m_viewport.Height);
 
     // Indicate that the back buffer will be used as a render target.
-    D3D12Pipeline->m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12WindowManager->m_renderTargets[D3D12WindowManager->m_frameIndex].Get(), 
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex].Get(),
         D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(D3D12WindowManager->m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
-        D3D12WindowManager->m_frameIndex, D3D12WindowManager->m_rtvDescriptorSize);
-    D3D12Pipeline->m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+    // Set necessary state.
+    m_commandList->SetPipelineState(D3D12Pipeline->m_pipelineState.Get());
+    m_commandList->SetGraphicsRootSignature( D3D12Pipeline->m_rootSignature.Get());
+    m_commandList->RSSetViewports(1, &m_viewport);
+    m_commandList->RSSetScissorRects(1, &m_scissorRect);
+    m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
     // Record commands.
     const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
-    D3D12Pipeline->m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-    D3D12Pipeline->m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    D3D12Pipeline->m_commandList->IASetVertexBuffers(0, 1, & D3D12Pipeline->m_vertexBufferView);
-    D3D12Pipeline->m_commandList->DrawInstanced(3, 1, 0, 0);
+    m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_commandList->IASetVertexBuffers(0, BoundBufferViews.size(), BoundBufferViews.data());
+    m_commandList->DrawInstanced(3, 1, 0, 0);
+    //ThrowIfFailed(m_commandList->Close());
 
-    // Indicate that the back buffer will now be used to present.
-    D3D12Pipeline->m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12WindowManager->m_renderTargets[D3D12WindowManager->m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
-
-    ThrowIfFailed(D3D12Pipeline->m_commandList->Close());
-    CommandLists.push_back(D3D12Pipeline->m_commandList.Get());
 }
 
 void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass)
@@ -583,7 +530,9 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
-    auto* D3D12RenderPass = static_cast<RHID3D12PresentPass*>(PresentPassResource->GetImpl());
+    D3D12PresentPass = static_cast<RHID3D12PresentPass*>(PresentPassResource->GetImpl());
+
+    D3D12PresentPass->m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
     // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
     // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
     // sample illustrates how to use fences for efficient resource usage and to
@@ -601,25 +550,48 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
         WaitForSingleObject(D3D12WindowManager->m_fenceEvent, INFINITE);
     }
 
-    D3D12WindowManager->m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
-    CommandLists.clear();
+    D3D12PresentPass->m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
+    rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(D3D12PresentPass->m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+        D3D12PresentPass->m_frameIndex, D3D12PresentPass->m_rtvDescriptorSize);
+
+    ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
+
+    // Execute the command list.
+    //ID3D12CommandList* pCommandList = m_commandList.Get();
+    //ThrowIfFailed(m_commandList->Close());
+    //D3D12Context->m_commandQueue->ExecuteCommandLists(1, &pCommandList);
 }
 
 void RHID3D12GraphicsDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
 {
+    //ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
+    // Indicate that the back buffer will now be used to present.
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex].Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+
     // Execute the command list.
-    D3D12Context->m_commandQueue->ExecuteCommandLists(CommandLists.size(), CommandLists.data());
+    ID3D12CommandList* pCommandList = m_commandList.Get();
+    ThrowIfFailed(m_commandList->Close());
+    D3D12Context->m_commandQueue->ExecuteCommandLists(1, &pCommandList);
 
     // Present the frame.
     ThrowIfFailed(D3D12WindowManager->m_swapChain->Present(1, 0));
+    //Error("Error: ", D3D12Context->m_device->GetDeviceRemovedReason());
 
     D3D12WindowManager->WaitForPreviousFrame(D3D12Context);
 }
 
 void RHID3D12GraphicsDispatcher::BeginFrame()
 {
+    // Command list allocators can only be reset when the associated 
+    // command lists have finished execution on the GPU; apps should use 
+    // fences to determine GPU execution progress.
+    // However, when ExecuteCommandList() is called on a particular command 
+    // list, that command list can then be reset at any time and must be before 
+    // re-recording.
+    //ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), NULL));
 }
 
 void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
@@ -662,7 +634,33 @@ void RHID3D12PresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
 
 void RHID3D12PresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT)
 {
-	
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
+    m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
+    // Create descriptor heaps.
+    {
+        // Describe and create a render target view (RTV) descriptor heap.
+        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+        rtvHeapDesc.NumDescriptors = 2;
+        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        ThrowIfFailed(D3D12Context->m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
+
+        m_rtvDescriptorSize = D3D12Context->m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    }
+
+    // Create frame resources.
+    {
+        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+
+        // Create a RTV for each frame.
+        for (UINT n = 0; n < FrameCount; n++)
+        {
+            ThrowIfFailed(D3D12WindowManager->m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
+            D3D12Context->m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
+            rtvHandle.Offset(1, m_rtvDescriptorSize);
+        }
+    }
 }
 
 void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)

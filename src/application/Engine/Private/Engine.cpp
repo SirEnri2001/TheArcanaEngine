@@ -2,6 +2,7 @@
 #define CORESCENE_INCLUDE
 #define RENDERER_INCLUDE
 #include <chrono>
+#include <DirectXMath.h>
 #include <fstream>
 #include <windows.h>
 
@@ -214,6 +215,11 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 // 	return 0;
 // }
 
+struct DXVertex
+{
+	DirectX::XMFLOAT3 position;
+	DirectX::XMFLOAT4 color;
+};
 int main()
 {
 	GRHIImplementationSelection = RHIImplement_D3D12;
@@ -225,9 +231,27 @@ int main()
     Manager.InitializeSwapchain(&Context, RHIPlatformSupport::Get());
     RHIPipelineFactory PipelineFactory;
     RHIPipelineObject PipelineObject;
+    RHIPresentPass PresentPass;
+
+    // Define the geometry for a triangle.
+    DXVertex triangleVertices[] =
+    {
+        { { 0.0f, 0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+        { { 0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+        { { -0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+    };
+    RHIBufferResource Buffer;
+    Buffer.Initialize(&Context, sizeof(DXVertex), 3, VERTEX);
+    Buffer.CopyToBuffer(&Context, triangleVertices, sizeof(DXVertex) * 3);
+    auto ShaderSourceCode = readFile("shaders.hlsl");
+    PipelineFactory.SetShaders(ShaderSourceCode, ShaderSourceCode);
+    PipelineFactory.AddBufferBinding(0, sizeof(DXVertex));
+    PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(DXVertex, position));
+    PipelineFactory.AddBufferLayout(0, 1, R32G32B32A32_SFLOAT, offsetof(DXVertex, color));
     PipelineFactory.InitializePipelineObject(&PipelineObject, &Context, (RHIRenderPass*)nullptr);
     RHIGraphicsDispatcher GraphicsDispatcher;
     GraphicsDispatcher.Initialize(&Context);
+    PresentPass.Initialize(&Context, &Manager, 1, nullptr, nullptr);
     // Main sample loop.
     MSG msg = {};
     while (msg.message != WM_QUIT)
@@ -238,6 +262,9 @@ int main()
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+        GraphicsDispatcher.BeginFrame();
+        GraphicsDispatcher.BeginPresentPass(&Context, &Manager, &PresentPass);
+        GraphicsDispatcher.BindVertexBuffer(&Buffer, 0, 0);
         GraphicsDispatcher.Dispatch(&Manager, &PipelineObject, 1, 0, 1);
         GraphicsDispatcher.EndPresentPassAndSubmit(&Context, &Manager);
     }
