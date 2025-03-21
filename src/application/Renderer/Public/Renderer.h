@@ -48,9 +48,11 @@ class RENDERER_API UIRenderProxy : public RenderProxyBase
 class RENDERER_API Renderer
 {
 public:
+	RHIUniform* Uniform;
 	uint32_t IndexBufferSize;
-	RHIPipeline Pipeline;
-	RHIPipeline PresentPipeline;
+	RHIPipelineFactory PipelineFactory;
+	RHIPipelineObject PipelineObject;
+	RHIPipelineObject PresentPipelineObject;
 	RHIBufferResource RHIFullScreenQuadBuffer;
 	RHIBufferResource RHIFullScreenQuadIndexBuffer;
 	RHIGraphicsDispatcher GraphicDispatcher;
