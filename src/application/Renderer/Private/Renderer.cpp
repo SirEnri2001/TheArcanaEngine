@@ -37,19 +37,23 @@ void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::v
     RenderPass.AddColorRenderTarget(&GBufferA);
     RenderPass.SetDepthRenderTarget(&GBufferD);
     RenderPass.Initialize(&Context->Context, Context->WindowManager.GetWindowWidth(), Context->WindowManager.GetWindowHeight());
-    Pipeline.SetShaders(VS, PS);
-    Pipeline.AddBinding(0, sizeof(Mesh::VertexType));
-    Pipeline.AddLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
-    Pipeline.AddLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
-    Pipeline.AddLayout(0, 2, R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
-    Pipeline.AddLayout(0, 3, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
-    Pipeline.Initialize(&Context->Context, &RenderPass);
+    PipelineFactory.SetShaders(VS, PS);
+    PipelineFactory.SetUniformBinding(0);
+    PipelineFactory.SetImageSamplerBinding(1);
+    PipelineFactory.AddBufferBinding(0, sizeof(Mesh::VertexType));
+    PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
+    PipelineFactory.AddBufferLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
+    PipelineFactory.AddBufferLayout(0, 2, R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
+    PipelineFactory.AddBufferLayout(0, 3, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
+    PipelineFactory.InitializePipelineObject(&PipelineObject, &Context->Context, &RenderPass);
 
-    PresentPipeline.SetImageSamplerBinding(&GBufferA, 0);
-    PresentPipeline.SetShaders(VS1, PS1);
-    PresentPipeline.AddBinding(0, sizeof(float3));
-    PresentPipeline.AddLayout(0, 0, R32G32B32_SFLOAT, 0);
-    PresentPipeline.Initialize(&Context->Context, &Context->PresentPass);
+    PipelineFactory.RemoveAllGlobalBindings();
+    PipelineFactory.RemoveAllBufferBindings();
+    PipelineFactory.SetImageSamplerBinding(0);
+    PipelineFactory.SetShaders(VS1, PS1);
+    PipelineFactory.AddBufferBinding(0, sizeof(float3));
+    PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
+    PipelineFactory.InitializePipelineObject(&PresentPipelineObject, &Context->Context, &Context->PresentPass);
 
     GraphicDispatcher.Initialize(&Context->Context);
 
@@ -61,14 +65,15 @@ void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::v
     RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Context->Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
 }
 
-void Renderer::SetUniform(RHIUniform* Uniform, uint32_t Binding)
+void Renderer::SetUniform(RHIUniform* InUniform, uint32_t Binding)
 {
-    Pipeline.SetUniformBinding(Uniform, Binding);
+    Uniform = InUniform;
+    PipelineFactory.SetUniformBinding(Binding);
 }
 
 void Renderer::SetTextureSampler(RHIImageResource* Texture, uint32_t Binding)
 {
-    Pipeline.SetImageSamplerBinding(Texture, Binding);
+    PipelineFactory.SetImageSamplerBinding(Binding);
 }
 
 
@@ -86,19 +91,20 @@ void Renderer::UpdateFrame(RendererContext* RContext)
     GraphicDispatcher.BeginRenderPass(&Context, &RenderPass);
     for (auto& MeshProxy : MeshProxyPasses)
     {
-        Pipeline.SetImageSamplerBinding(&MeshProxy->Texture, 1);
+		PipelineObject.SetUniform(Uniform, 0);
+        PipelineObject.SetImageSampler(&MeshProxy->Texture, 1);
         GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
         GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
         IndexBufferSize = MeshProxy->IndexBufferSize;
-        GraphicDispatcher.Dispatch(&RContext->WindowManager, &Pipeline, IndexBufferSize, 0, 1);
+        GraphicDispatcher.Dispatch(&RContext->WindowManager, &PipelineObject, IndexBufferSize, 0, 1);
     }
     GraphicDispatcher.EndRenderPass(&RenderPass);
 
-    PresentPipeline.SetImageSamplerBinding(&GBufferA, 0);
+    PresentPipelineObject.SetImageSampler(&GBufferA, 0);
     GraphicDispatcher.BeginPresentPass(&Context, &RContext->WindowManager, &RContext->PresentPass);
     GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
     GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
-    GraphicDispatcher.Dispatch(&RContext->WindowManager, &PresentPipeline, 6, 0, 1);
+    GraphicDispatcher.Dispatch(&RContext->WindowManager, &PresentPipelineObject, 6, 0, 1);
     // Comment this line if you don't want ImGUI
     RContext->ImGUI.DispatchImGUI(&GraphicDispatcher);
     GraphicDispatcher.EndPresentPassAndSubmit(&Context, &RContext->WindowManager);

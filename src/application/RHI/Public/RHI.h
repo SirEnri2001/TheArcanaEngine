@@ -20,6 +20,7 @@
 #include <memory>
 #include <vector>
 
+class RHIPipelineObject;
 /** Pixel format used in all RHI implementations.
  * Every RHI implementation should always write its own convert function.
  */
@@ -334,31 +335,33 @@ public:
     RHIPresentPassBase* GetImpl() { return pImpl.get(); }
 };
 
-class RHIPipelineBase
+class RHIPipelineFactoryBase
 {
 public:
-    RHIPipelineBase() = default;
-    RHIPipelineBase(const RHIPipelineBase&) = delete;
-    virtual ~RHIPipelineBase() = default;
-    virtual void AddLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) = 0;
-    virtual void AddBinding(uint32_t BindingIndex, uint32_t Stride) = 0;
-    virtual void SetUniformBinding(RHIUniform* Uniform, uint32_t Binding) = 0;
-    virtual void SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding) = 0;
+    RHIPipelineFactoryBase() = default;
+    RHIPipelineFactoryBase(const RHIPipelineFactoryBase&) = delete;
+    virtual ~RHIPipelineFactoryBase() = default;
+    virtual void AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) = 0;
+    virtual void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) = 0;
+    virtual void RemoveAllBufferBindings() = 0;
+    virtual void SetUniformBinding(uint32_t Binding) = 0;
+    virtual void SetImageSamplerBinding(uint32_t Binding) = 0;
+    virtual void RemoveAllGlobalBindings() = 0;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) = 0;
-    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) = 0;
-    virtual void Initialize(RHIContext* Context, RHIPresentPass* PresentPass) = 0;
+    virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource) = 0;
+    virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
 };
 
 /**
- * RHIPipeline defines shader pipeline and vertex buffer descriptions. 
+ * RHIPipelineFactory defines shader pipeline and vertex buffer descriptions. 
  */
-class RHI_API RHIPipeline : public RHIPipelineBase
+class RHI_API RHIPipelineFactory : public RHIPipelineFactoryBase
 {
-    std::unique_ptr<RHIPipelineBase> pImpl = nullptr;
+    std::unique_ptr<RHIPipelineFactoryBase> pImpl = nullptr;
 public:
-    RHIPipeline();
-    virtual ~RHIPipeline() override;
+    RHIPipelineFactory();
+    virtual ~RHIPipelineFactory() override;
     /**
      * 
      * @param BindingIndex Always use AddBinding add this binding index
@@ -366,20 +369,48 @@ public:
      * @param Format size of this vertex attribute
      * @param Offset use offset() macro
      */
-    virtual void AddLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
+    virtual void AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
     /**
      * 
      * @param BindingIndex BindingIndex for buffer. Not necessarily differs from binding index of uniforms' and image samplers', but should be the same as in RHIGraphicsDispatcher::BindVertexBuffer / BindIndexBuffer
      * @param Stride 
      */
-    virtual void AddBinding(uint32_t BindingIndex, uint32_t Stride) override;
-    virtual void SetUniformBinding(RHIUniform* Uniform, uint32_t Binding) override;
-    virtual void SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding) override;
+    virtual void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) override;
+    virtual void RemoveAllBufferBindings() override;
+    virtual void SetUniformBinding(uint32_t Binding) override;
+    virtual void SetImageSamplerBinding(uint32_t Binding) override;
+    virtual void RemoveAllGlobalBindings() override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
-    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource) override;
-    virtual void Initialize(RHIContext* Context, RHIPresentPass* PresentPass) override;
+    virtual void InitializePipelineObject(::RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource) override;
+    virtual void InitializePipelineObject(::RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass) override;
     virtual void Cleanup(RHIContext* Context) override;
-    RHIPipelineBase* GetImpl() { return pImpl.get(); }
+    RHIPipelineFactoryBase* GetImpl() { return pImpl.get(); }
+};
+
+class RHIPipelineObjectBase
+{
+public:
+    RHIPipelineObjectBase() = default;
+    RHIPipelineObjectBase(const RHIPipelineObjectBase&) = delete;
+    virtual ~RHIPipelineObjectBase() = default;
+    virtual void SetUniform(RHIUniform* Uniform, uint32_t Binding) = 0;
+    virtual void SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+/**
+ * RHIPipelineFactory defines shader pipeline and vertex buffer descriptions. 
+ */
+class RHI_API RHIPipelineObject : public RHIPipelineObjectBase
+{
+    std::unique_ptr<RHIPipelineObjectBase> pImpl = nullptr;
+public:
+    RHIPipelineObject();
+    virtual ~RHIPipelineObject() override;
+    virtual void SetUniform(RHIUniform* Uniform, uint32_t Binding) override;
+    virtual void SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    RHIPipelineObjectBase* GetImpl() { return pImpl.get(); }
 };
 
 class RHIGraphicsDispatcherBase
@@ -392,7 +423,7 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
     virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) = 0;
     virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) = 0;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
@@ -417,12 +448,12 @@ public:
     /**
      * Call this between BeginRenderPass & EndRenderPass
      * @param WindowManager 
-     * @param Pipeline 
+     * @param PipelineObject 
      * @param IndexCount 
      * @param IndexOffset 
      * @param InstanceCount 
      */
-    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
     virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) override;
     virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) override;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) override;

@@ -261,52 +261,63 @@ void RHIPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* Windo
 }
 
 
-// RHIPipeline implementation
-RHIPipeline::RHIPipeline()
+// RHIPipelineFactory implementation
+RHIPipelineFactory::RHIPipelineFactory()
 {
-	pImpl = std::make_unique<RHIVulkanPipeline>();
+	pImpl = std::make_unique<RHIVulkanPipelineFactory>();
 }
 
-RHIPipeline::~RHIPipeline()
+RHIPipelineFactory::~RHIPipelineFactory()
 {
 }
 
-void RHIPipeline::AddLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset)
+void RHIPipelineFactory::AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset)
 {
-	pImpl->AddLayout(BindingIndex, Location, Format, Offset);
+	pImpl->AddBufferLayout(BindingIndex, Location, Format, Offset);
 }
 
-void RHIPipeline::AddBinding(uint32_t BindingIndex, uint32_t Stride)
+void RHIPipelineFactory::AddBufferBinding(uint32_t BindingIndex, uint32_t Stride)
 {
-	pImpl->AddBinding(BindingIndex, Stride);
+	pImpl->AddBufferBinding(BindingIndex, Stride);
 }
 
-void RHIPipeline::SetUniformBinding(RHIUniform* Uniform, uint32_t Binding)
+void RHIPipelineFactory::RemoveAllBufferBindings()
 {
-	pImpl->SetUniformBinding(Uniform, Binding);
+	pImpl->RemoveAllBufferBindings();
 }
 
-void RHIPipeline::SetImageSamplerBinding(RHIImageResource* ImageResource, uint32_t Binding)
+
+void RHIPipelineFactory::SetUniformBinding(uint32_t Binding)
 {
-	pImpl->SetImageSamplerBinding(ImageResource, Binding);
+	pImpl->SetUniformBinding(Binding);
 }
 
-void RHIPipeline::SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader)
+void RHIPipelineFactory::SetImageSamplerBinding(uint32_t Binding)
+{
+	pImpl->SetImageSamplerBinding(Binding);
+}
+
+void RHIPipelineFactory::RemoveAllGlobalBindings()
+{
+	pImpl->RemoveAllGlobalBindings();
+}
+
+void RHIPipelineFactory::SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader)
 {
 	pImpl->SetShaders(VertShader, FragShader);
 }
 
-void RHIPipeline::Initialize(RHIContext* Context, RHIRenderPass* RenderPassResource)
+void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
 {
-	pImpl->Initialize(Context, RenderPassResource);
+	pImpl->InitializePipelineObject(OutPipelineObject, Context, RenderPassResource);
 }
 
-void RHIPipeline::Initialize(RHIContext* Context, RHIPresentPass* PresentPass)
+void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass)
 {
-	pImpl->Initialize(Context, PresentPass);
+	pImpl->InitializePipelineObject(OutPipelineObject, Context, PresentPass);
 }
 
-void RHIPipeline::Cleanup(RHIContext* Context)
+void RHIPipelineFactory::Cleanup(RHIContext* Context)
 {
 	pImpl->Cleanup(Context);
 }
@@ -372,9 +383,9 @@ void RHIGraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, u
 	pImpl->BindIndexBuffer(BufferResource, Offset);
 }
 
-void RHIGraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipeline* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIGraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-	pImpl->Dispatch(WindowManager, Pipeline, IndexCount, IndexOffset, InstanceCount);
+	pImpl->Dispatch(WindowManager, PipelineObject, IndexCount, IndexOffset, InstanceCount);
 }
 
 void RHIGraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass)
@@ -407,4 +418,27 @@ void RHIGraphicsDispatcher::BeginFrame()
 void RHIGraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
 	pImpl->WaitForGPUIdle(Context);
+}
+RHIPipelineObject::RHIPipelineObject()
+{
+    pImpl = std::make_unique<RHIVulkanPipelineObject>();
+}
+
+RHIPipelineObject::~RHIPipelineObject()
+{
+}
+
+void RHIPipelineObject::SetUniform(RHIUniform* Uniform, uint32_t Binding)
+{
+    pImpl->SetUniform(Uniform, Binding);
+}
+
+void RHIPipelineObject::SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding)
+{
+    pImpl->SetImageSampler(ImageResource, Binding);
+}
+
+void RHIPipelineObject::Cleanup(RHIContext* Context)
+{
+    pImpl->Cleanup(Context);
 }
