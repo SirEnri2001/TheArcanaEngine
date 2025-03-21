@@ -15,3 +15,7 @@ set_target_properties(stb_image PROPERTIES FOLDER "Thirdparties/stb_image-2.30")
 
 add_subdirectory(./tinyobjloader-1.0.6)
 set_target_properties(tiny_obj_loader PROPERTIES FOLDER "Thirdparties/tiny_obj_loader-1.06")
+
+add_subdirectory(./DirectX-Headers-1.615.0)
+set(DirectXHeaders_INCLUDE_DIRS ${ThirdPartiesDir}/DirectX-Headers-1.615.0/include)
+set_target_properties(DirectX-Headers PROPERTIES FOLDER "Thirdparties/DirectX-Headers-1.615.0")
