@@ -3,6 +3,7 @@
 #define RHI_IMPLEMENT
 #include <dxgi1_4.h>
 #include <directx/d3dx12_core.h>
+#include <directx/d3dx12_root_signature.h>
 #include <wrl/client.h>
 
 #include "RHI.h"
@@ -44,17 +45,7 @@ public:
     HWND hWnd;
     UINT m_width = 1280;
     UINT m_height = 720;
-	const UINT FrameCount = 2;
-    UINT m_frameIndex;
-	CD3DX12_VIEWPORT m_viewport;
-	CD3DX12_RECT m_scissorRect;
-    ComPtr<IDXGISwapChain3> m_swapChain;
-    ComPtr<ID3D12Resource> m_renderTargets[2];
-    
-    ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-    UINT m_rtvDescriptorSize;
-
-    
+    ComPtr<IDXGISwapChain3> m_swapChain;    
     HANDLE m_fenceEvent;
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValue;
@@ -89,6 +80,8 @@ public:
 class RHID3D12BufferResource : public RHIBufferResourceBase
 {
 public:
+    ComPtr<ID3D12Resource> m_vertexBuffer;
+    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
     RHID3D12BufferResource() = default;
     virtual ~RHID3D12BufferResource() override = default;
 
@@ -124,6 +117,11 @@ public:
 class RHID3D12PresentPass : public RHIPresentPassBase
 {
 public:
+    ComPtr<ID3D12Resource> m_renderTargets[2];
+    ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
+    UINT m_rtvDescriptorSize;
+    const UINT FrameCount = 2;
+    UINT m_frameIndex;
 	RHID3D12PresentPass() = default;
 	virtual ~RHID3D12PresentPass() override = default;
 	virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT) override;
@@ -139,10 +137,6 @@ class RHID3D12PipelineObject : public RHIPipelineObjectBase
 public:
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
-    ComPtr<ID3D12Resource> m_vertexBuffer;
-    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-    ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
     
     RHID3D12PipelineObject() = default;
     virtual ~RHID3D12PipelineObject() override = default;
@@ -154,6 +148,9 @@ public:
 
 class RHID3D12PipelineFactory : public RHIPipelineFactoryBase
 {
+    ComPtr<ID3DBlob> vertexShader;
+    ComPtr<ID3DBlob> pixelShader;
+    std::vector<D3D12_INPUT_ELEMENT_DESC> inputElementDescs;
 public:
     RHID3D12PipelineFactory() = default;
     virtual ~RHID3D12PipelineFactory() override = default;
@@ -174,7 +171,11 @@ public:
 class RHID3D12GraphicsDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
-    std::vector<ID3D12CommandList*> CommandLists;
+    std::vector<D3D12_VERTEX_BUFFER_VIEW> BoundBufferViews;
+    ComPtr<ID3D12GraphicsCommandList> m_commandList;
+    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
+    RHID3D12PresentPass* D3D12PresentPass;
     RHID3D12GraphicsDispatcher() = default;
     virtual ~RHID3D12GraphicsDispatcher() override = default;
 

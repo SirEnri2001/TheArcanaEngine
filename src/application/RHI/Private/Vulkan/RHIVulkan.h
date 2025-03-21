@@ -173,12 +173,6 @@ public:
 	void WaitDeviceIdle() override;
 };
 
-class RHIVulkanResourceFactory
-{
-public:
-	void Initialize();
-};
-
 class RHIVulkanWindowManager : public RHIWindowManagerBase
 {
 public:
