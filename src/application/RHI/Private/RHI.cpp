@@ -3,7 +3,7 @@
 #define RHI_IMPLEMENT
 #include "RHI.h"
 
-#include "RHIVulkan.h"
+#include "Vulkan/RHIVulkan.h"
 
 RHIImplementationSelection GRHIImplementationSelection = RHIImplement_Vulkan;
 

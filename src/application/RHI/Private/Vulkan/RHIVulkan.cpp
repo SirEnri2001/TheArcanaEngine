@@ -23,8 +23,6 @@
 
 #include "RHIVulkanImpl.h"
 #include "GLFW/glfw3.h"
-#define GLM_ENABLE_EXPERIMENTAL 
-#include "glm/gtx/compatibility.hpp"
 
 RHIVulkanPlatformSupport::RHIVulkanPlatformSupport() {}
 
@@ -514,8 +512,6 @@ void RHIVulkanPipeline::Initialize(RHIContext* Context, RHIRenderPass* RenderPas
 	if (UniformBufferDescriptorCount>0 || CombinedImageSamplerDescriptorCount > 0)
 	{
 		CreateDescriptorSetLayout(DescriptorSetLayout, DescSetLayoutBindings, VulkanContext->Device);
-		//CreateDescriptorPool(DescriptorPool, VulkanContext->Device);
-		//CreateDescriptorSet(DescriptorSet, WriteDescriptorSets, VulkanContext->Device, DescriptorPool, DescriptorSetLayout);
 	}
 	else
 	{
@@ -560,6 +556,7 @@ void RHIVulkanPipeline::Cleanup(RHIContext* Context)
 
 void RHIVulkanRenderPass::Initialize(RHIContext* Context, uint32_t Width, uint32_t Height)
 {
+	// Initialize: std::vector<VkAttachmentDescription> & VkRenderPass & VkFramebuffer
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	Extent.height = Height;
 	Extent.width = Width;
@@ -855,15 +852,6 @@ void RHIVulkanGraphicDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
 	}
 
 	vkResetFences(VulkanContext->Device, 1, &InFlightFence);
-
-	//vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
-
-	//VkCommandBufferBeginInfo beginInfo{};
-	//beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-	//if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
-	//	throw std::runtime_error("failed to begin recording command buffer!");
-	//}
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
