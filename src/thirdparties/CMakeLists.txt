@@ -12,3 +12,6 @@ set_target_properties(nlohmann_json PROPERTIES FOLDER "Thirdparties/nlohmann_jso
 
 add_subdirectory(./stb_image-2.30)
 set_target_properties(stb_image PROPERTIES FOLDER "Thirdparties/stb_image-2.30")
+
+add_subdirectory(./tinyobjloader-1.0.6)
+set_target_properties(tiny_obj_loader PROPERTIES FOLDER "Thirdparties/tiny_obj_loader-1.06")

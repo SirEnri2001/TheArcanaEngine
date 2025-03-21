@@ -18,4 +18,4 @@ PUBLIC ./Public
 PRIVATE ./Private
 )
 
-target_link_libraries(CoreScene CoreGeometry CoreMath)
+target_link_libraries(CoreScene CoreGeometry CoreMath nlohmann_json)
