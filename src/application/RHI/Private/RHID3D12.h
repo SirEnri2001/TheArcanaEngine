@@ -42,6 +42,7 @@ public:
 class RHID3D12WindowManager : public RHIWindowManagerBase
 {
 public:
+    MSG msg;
     HWND hWnd;
     UINT m_width = 1280;
     UINT m_height = 720;
@@ -80,8 +81,9 @@ public:
 class RHID3D12BufferResource : public RHIBufferResourceBase
 {
 public:
-    ComPtr<ID3D12Resource> m_vertexBuffer;
+    ComPtr<ID3D12Resource> m_buffer;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+    D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
     RHID3D12BufferResource() = default;
     virtual ~RHID3D12BufferResource() override = default;
 
@@ -172,6 +174,7 @@ class RHID3D12GraphicsDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
     std::vector<D3D12_VERTEX_BUFFER_VIEW> BoundBufferViews;
+    D3D12_INDEX_BUFFER_VIEW BoundIndexBufferView;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
     ComPtr<ID3D12CommandAllocator> m_commandAllocator;
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;

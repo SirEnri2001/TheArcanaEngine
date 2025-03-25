@@ -203,8 +203,14 @@ void RHID3D12WindowManager::RecreateSwapchain(RHIContext* Context)
 
 bool RHID3D12WindowManager::IsAlive()
 {
-    // Placeholder implementation
-    return true;
+    // Process any messages in the queue.
+    if (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
+    {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    
+    return IsWindow(hWnd);
 }
 
 uint32_t RHID3D12WindowManager::GetWindowHeight()
@@ -275,7 +281,20 @@ void RHID3D12BufferResource::Initialize(RHIContext* Context, uint32_t Stride, ui
         &CD3DX12_RESOURCE_DESC::Buffer(ElementCounts* Stride),
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
-        IID_PPV_ARGS(&m_vertexBuffer)));
+        IID_PPV_ARGS(&m_buffer)));
+    if(Type==VERTEX)
+    {
+	    // Initialize the vertex buffer view.
+	    m_vertexBufferView.BufferLocation = m_buffer->GetGPUVirtualAddress();
+	    m_vertexBufferView.StrideInBytes = Stride;
+	    m_vertexBufferView.SizeInBytes = ElementCounts * Stride;
+    }else if(Type==INDEX)
+    {
+	    // Initialize the vertex buffer view.
+	    m_indexBufferView.BufferLocation = m_buffer->GetGPUVirtualAddress();
+	    m_indexBufferView.SizeInBytes = ElementCounts * Stride;
+        m_indexBufferView.Format = DXGI_FORMAT::DXGI_FORMAT_R32_UINT;
+    }
 
 }
 
@@ -286,13 +305,9 @@ void RHID3D12BufferResource::CopyToBuffer(RHIContext* Context, void* data, uint3
     // Copy the triangle data to the vertex buffer.
     UINT8* pVertexDataBegin;
     CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
-    ThrowIfFailed(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+    ThrowIfFailed(m_buffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
     memcpy(pVertexDataBegin, data, TotalBytes);
-    m_vertexBuffer->Unmap(0, nullptr);
-    // Initialize the vertex buffer view.
-    m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-    m_vertexBufferView.StrideInBytes = 28;
-    m_vertexBufferView.SizeInBytes = 84;
+    m_buffer->Unmap(0, nullptr);
 }
 
 void RHID3D12BufferResource::Cleanup(RHIContext* Context)
@@ -478,7 +493,7 @@ void RHID3D12GraphicsDispatcher::BindVertexBuffer(RHIBufferResource* BufferResou
 void RHID3D12GraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset)
 {
     auto* D3D12BufferResource = static_cast<RHID3D12BufferResource*>(BufferResource->GetImpl());
-    // Placeholder implementation
+    BoundIndexBufferView = D3D12BufferResource->m_indexBufferView;
 }
 
 void RHID3D12GraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
@@ -508,7 +523,8 @@ void RHID3D12GraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, BoundBufferViews.size(), BoundBufferViews.data());
-    m_commandList->DrawInstanced(3, 1, 0, 0);
+    m_commandList->IASetIndexBuffer(&BoundIndexBufferView);
+    m_commandList->DrawIndexedInstanced(IndexCount, InstanceCount, IndexOffset, 0, 0);
     //ThrowIfFailed(m_commandList->Close());
 
 }

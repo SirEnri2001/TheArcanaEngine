@@ -8,12 +8,6 @@
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 
-struct Vertex
-{
-    XMFLOAT3 position;
-    XMFLOAT4 color;
-};
-
 //// Pipeline objects.
 //ComPtr<IDXGISwapChain3> m_swapChain;
 //ComPtr<ID3D12Device> m_device;

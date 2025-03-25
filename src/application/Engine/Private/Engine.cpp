@@ -2,9 +2,7 @@
 #define CORESCENE_INCLUDE
 #define RENDERER_INCLUDE
 #include <chrono>
-#include <DirectXMath.h>
 #include <fstream>
-#include <windows.h>
 
 #include "CoreMath.h"
 #include "CoreMath.inl"
@@ -217,8 +215,8 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 
 struct DXVertex
 {
-	DirectX::XMFLOAT3 position;
-	DirectX::XMFLOAT4 color;
+	float3 position;
+	float4 color;
 };
 int main()
 {
@@ -236,13 +234,20 @@ int main()
     // Define the geometry for a triangle.
     DXVertex triangleVertices[] =
     {
-        { { 0.0f, 0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+        { { 0.25f, 0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
         { { 0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-        { { -0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+        { { -0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+        { { -0.25f, 0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 1.0f, 1.0f } }
     };
+
+    std::array<uint32_t, 6> Indices = {0, 1, 2, 0, 2, 3};
     RHIBufferResource Buffer;
-    Buffer.Initialize(&Context, sizeof(DXVertex), 3, VERTEX);
-    Buffer.CopyToBuffer(&Context, triangleVertices, sizeof(DXVertex) * 3);
+    RHIBufferResource IndexBuffer;
+    Buffer.Initialize(&Context, sizeof(DXVertex), 4, VERTEX);
+    Buffer.CopyToBuffer(&Context, triangleVertices, sizeof(DXVertex) * 4);
+
+    IndexBuffer.Initialize(&Context, sizeof(uint32_t), 6, INDEX);
+    IndexBuffer.CopyToBuffer(&Context, Indices.data(), Indices.size()*sizeof(uint32_t));
     auto ShaderSourceCode = readFile("shaders.hlsl");
     PipelineFactory.SetShaders(ShaderSourceCode, ShaderSourceCode);
     PipelineFactory.AddBufferBinding(0, sizeof(DXVertex));
@@ -253,19 +258,13 @@ int main()
     GraphicsDispatcher.Initialize(&Context);
     PresentPass.Initialize(&Context, &Manager, 1, nullptr, nullptr);
     // Main sample loop.
-    MSG msg = {};
-    while (msg.message != WM_QUIT)
+    while (Manager.IsAlive())
     {
-        // Process any messages in the queue.
-        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
-        {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
         GraphicsDispatcher.BeginFrame();
         GraphicsDispatcher.BeginPresentPass(&Context, &Manager, &PresentPass);
         GraphicsDispatcher.BindVertexBuffer(&Buffer, 0, 0);
-        GraphicsDispatcher.Dispatch(&Manager, &PipelineObject, 1, 0, 1);
+        GraphicsDispatcher.BindIndexBuffer(&IndexBuffer, 0);
+        GraphicsDispatcher.Dispatch(&Manager, &PipelineObject, 6, 0, 1);
         GraphicsDispatcher.EndPresentPassAndSubmit(&Context, &Manager);
     }
 
