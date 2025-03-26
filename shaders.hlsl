@@ -12,20 +12,23 @@
 struct PSInput
 {
     float4 position : SV_POSITION;
-    float4 color : COLOR;
+    float2 uv : TEXCOORD;
 };
 
-PSInput VSMain(float4 position : ATTRIBUTE0, float4 color : ATTRIBUTE1)
+Texture2D g_texture : register(t0);
+SamplerState g_sampler : register(s0);
+
+PSInput VSMain(float3 position : ATTRIBUTE0, float4 color : ATTRIBUTE1)
 {
     PSInput result;
 
-    result.position = position;
-    result.color = color;
+    result.position = float4(position, 1.);
+    result.uv = color.xy;
 
     return result;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    return input.color;
+    return g_texture.Sample(g_sampler, input.uv);
 }

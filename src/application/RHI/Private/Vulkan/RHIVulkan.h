@@ -233,6 +233,7 @@ public:
 
 	void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat,
 	                uint32_t MipLevel = -1) override;
+    void Initialize(RHIContext* Context, void* Data, uint32_t Size, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel = -1) override;
 	void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent,
 	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
 	void Cleanup(RHIContext* Context) override;

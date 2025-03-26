@@ -3,6 +3,7 @@
 #define RENDERER_INCLUDE
 #include <chrono>
 #include <fstream>
+#include <OCIdl.h>
 
 #include "CoreMath.h"
 #include "CoreMath.inl"
@@ -213,6 +214,45 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 // 	return 0;
 // }
 
+
+
+// Generate a simple black and white checkerboard texture.
+std::vector<UINT8> GenerateTextureData(uint32_t TextureWidth, uint32_t TextureHeight, uint32_t TexturePixelSize)
+{
+    const UINT rowPitch = TextureWidth * TexturePixelSize;
+    const UINT cellPitch = rowPitch >> 3;        // The width of a cell in the checkboard texture.
+    const UINT cellHeight = TextureWidth >> 3;    // The height of a cell in the checkerboard texture.
+    const UINT textureSize = rowPitch * TextureHeight;
+
+    std::vector<UINT8> data(textureSize);
+    UINT8* pData = &data[0];
+
+    for (UINT n = 0; n < textureSize; n += TexturePixelSize)
+    {
+        UINT x = n % rowPitch;
+        UINT y = n / rowPitch;
+        UINT i = x / cellPitch;
+        UINT j = y / cellHeight;
+
+        if (i % 2 == j % 2)
+        {
+            pData[n] = 0x00;        // R
+            pData[n + 1] = 0x00;    // G
+            pData[n + 2] = 0x00;    // B
+            pData[n + 3] = 0xff;    // A
+        }
+        else
+        {
+            pData[n] = 0xff;        // R
+            pData[n + 1] = 0xff;    // G
+            pData[n + 2] = 0xff;    // B
+            pData[n + 3] = 0xff;    // A
+        }
+    }
+
+    return data;
+}
+
 struct DXVertex
 {
 	float3 position;
@@ -230,14 +270,14 @@ int main()
     RHIPipelineFactory PipelineFactory;
     RHIPipelineObject PipelineObject;
     RHIPresentPass PresentPass;
-
+    auto TextureData = GenerateTextureData(256, 256, sizeof(uint8_t)*4);
     // Define the geometry for a triangle.
     DXVertex triangleVertices[] =
     {
-        { { 0.25f, 0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-        { { 0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+        { { 0.25f, 0.25f * 1.f, 0.0f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+        { { 0.25f, -0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
         { { -0.25f, -0.25f * 1.f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-        { { -0.25f, 0.25f * 1.f, 0.0f }, { 1.0f, 0.0f, 1.0f, 1.0f } }
+        { { -0.25f, 0.25f * 1.f, 0.0f }, { 0.0f, 1.0f, 1.0f, 1.0f } }
     };
 
     std::array<uint32_t, 6> Indices = {0, 1, 2, 0, 2, 3};
@@ -248,12 +288,18 @@ int main()
 
     IndexBuffer.Initialize(&Context, sizeof(uint32_t), 6, INDEX);
     IndexBuffer.CopyToBuffer(&Context, Indices.data(), Indices.size()*sizeof(uint32_t));
+
+    RHIImageResource Image;
+    Image.Initialize(&Context, TextureData.data(), TextureData.size()*sizeof(uint8_t), 256, 256, RHIFormat::R8G8B8A8_SRGB, 0);
+
     auto ShaderSourceCode = readFile("shaders.hlsl");
     PipelineFactory.SetShaders(ShaderSourceCode, ShaderSourceCode);
     PipelineFactory.AddBufferBinding(0, sizeof(DXVertex));
     PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(DXVertex, position));
     PipelineFactory.AddBufferLayout(0, 1, R32G32B32A32_SFLOAT, offsetof(DXVertex, color));
-    PipelineFactory.InitializePipelineObject(&PipelineObject, &Context, (RHIRenderPass*)nullptr);
+    PipelineFactory.SetImageSamplerBinding(0);
+	PipelineFactory.InitializePipelineObject(&PipelineObject, &Context, (RHIRenderPass*)nullptr);
+    PipelineObject.SetImageSampler(&Image, 0);
     RHIGraphicsDispatcher GraphicsDispatcher;
     GraphicsDispatcher.Initialize(&Context);
     PresentPass.Initialize(&Context, &Manager, 1, nullptr, nullptr);

@@ -30,12 +30,17 @@ public:
     ComPtr<ID3D12CommandQueue> m_commandQueue;
     ComPtr<ID3D12Device> m_device;
     ComPtr<IDXGIFactory4> factory;
+    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
+    HANDLE m_fenceEvent;
+    ComPtr<ID3D12Fence> m_fence;
+    UINT64 m_fenceValue;
     RHID3D12Context() = default;
     virtual ~RHID3D12Context() override = default;
 
     virtual void Initialize(RHIPlatformSupport* PlatformSupport) override;
     virtual void Cleanup() override;
     virtual void WaitDeviceIdle() override;
+    void WaitForPreviousFrame();
 };
 
 // RHID3D12WindowManager
@@ -46,10 +51,7 @@ public:
     HWND hWnd;
     UINT m_width = 1280;
     UINT m_height = 720;
-    ComPtr<IDXGISwapChain3> m_swapChain;    
-    HANDLE m_fenceEvent;
-    ComPtr<ID3D12Fence> m_fence;
-    UINT64 m_fenceValue;
+    ComPtr<IDXGISwapChain3> m_swapChain;
     RHID3D12WindowManager() = default;
     virtual ~RHID3D12WindowManager() override = default;
 
@@ -61,7 +63,6 @@ public:
     virtual bool IsAlive() override;
     virtual uint32_t GetWindowHeight() override;
     virtual uint32_t GetWindowWidth() override;
-    void WaitForPreviousFrame(RHID3D12Context* D3D12Context);
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 };
 
@@ -71,8 +72,14 @@ class RHID3D12ImageResource : public RHIImageResourceBase
 public:
     RHID3D12ImageResource() = default;
     virtual ~RHID3D12ImageResource() override = default;
+    uint32_t Height;
+    uint32_t Width;
+    
+    ComPtr<ID3D12Resource> m_texture;
+    ComPtr<ID3D12DescriptorHeap> m_srvHeap;
 
     virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) override;
+    virtual void Initialize(RHIContext* Context, void* Data, uint32_t Size, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel) override;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
     virtual void Cleanup(RHIContext* Context) override;
 };
@@ -139,7 +146,9 @@ class RHID3D12PipelineObject : public RHIPipelineObjectBase
 public:
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
-    
+
+    std::vector< ID3D12DescriptorHeap* > Heaps;
+
     RHID3D12PipelineObject() = default;
     virtual ~RHID3D12PipelineObject() override = default;
     
@@ -153,6 +162,9 @@ class RHID3D12PipelineFactory : public RHIPipelineFactoryBase
     ComPtr<ID3DBlob> vertexShader;
     ComPtr<ID3DBlob> pixelShader;
     std::vector<D3D12_INPUT_ELEMENT_DESC> inputElementDescs;
+    std::vector<CD3DX12_DESCRIPTOR_RANGE1> Ranges;
+    std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
+    std::vector<D3D12_STATIC_SAMPLER_DESC> Samplers;
 public:
     RHID3D12PipelineFactory() = default;
     virtual ~RHID3D12PipelineFactory() override = default;
@@ -176,7 +188,6 @@ public:
     std::vector<D3D12_VERTEX_BUFFER_VIEW> BoundBufferViews;
     D3D12_INDEX_BUFFER_VIEW BoundIndexBufferView;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
     RHID3D12PresentPass* D3D12PresentPass;
     RHID3D12GraphicsDispatcher() = default;
