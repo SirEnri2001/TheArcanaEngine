@@ -152,6 +152,12 @@ void RHIImageResource::Initialize(RHIContext* Context, const char* ImageFileName
 	pImpl->Initialize(Context, ImageFileName, InFormat, MipLevel);
 }
 
+void RHIImageResource::Initialize(RHIContext* Context, void* Data, uint32_t Size, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel)
+{
+	pImpl->Initialize(Context, Data, Size, Height, Width, InFormat, MipLevel);
+}
+
+
 void RHIImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
 {
 	pImpl->InitializeRenderTarget(Context, WindowManager, RTExtent, InUsage, MultiSamplesCount);

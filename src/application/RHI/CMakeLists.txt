@@ -63,5 +63,5 @@ PRIVATE ./Private
 
 add_dependencies(RHI CoreMath CoreLog stb_image)
 
-target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog stb_image DirectX-Headers d3d12 dxgi d3dcompiler)
+target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog stb_image DirectX-Headers d3d12 dxgi d3dcompiler dxguid)
 target_link_libraries(RHI d3d12.lib)
