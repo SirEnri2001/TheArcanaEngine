@@ -80,7 +80,16 @@ void RHID3D12Context::Initialize(RHIPlatformSupport* PlatformSupport)
 
     ThrowIfFailed(m_commandAllocator->Reset());
 
+    D3D12_DESCRIPTOR_HEAP_DESC HeapDesc = {};
+    HeapDesc.NumDescriptors = 32;
+    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_Heap)));
+    
+    hCPUHeapStart = m_Heap->GetCPUDescriptorHandleForHeapStart();
+    hGPUHeapStart = m_Heap->GetGPUDescriptorHandleForHeapStart();
 
+    HandleIncrementSize = m_device->GetDescriptorHandleIncrementSize(HeapDesc.Type);
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -250,6 +259,12 @@ void RHID3D12Context::WaitForPreviousFrame()
     }
 }
 
+void RHID3D12Context::AllocateDescriptorHeap(CD3DX12_CPU_DESCRIPTOR_HANDLE& OutCpuDescriptorHandle, CD3DX12_GPU_DESCRIPTOR_HANDLE& OutGpuDescriptorHandle)
+{
+	OutCpuDescriptorHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_Heap->GetCPUDescriptorHandleForHeapStart(), HandleIncrementSize * m_HeapSize);
+    OutGpuDescriptorHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_Heap->GetGPUDescriptorHandleForHeapStart(), HandleIncrementSize * m_HeapSize);
+    m_HeapSize++;
+}
 
 // RHID3D12ImageResource implementation
 void RHID3D12ImageResource::Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel)
@@ -275,7 +290,6 @@ void RHID3D12ImageResource::Initialize(RHIContext* Context, void* Data, uint32_t
     // Create the texture.
     {
         // Describe and create a Texture2D.
-        D3D12_RESOURCE_DESC textureDesc = {};
         textureDesc.MipLevels = 1;
         textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         textureDesc.Width = Width;
@@ -313,30 +327,28 @@ void RHID3D12ImageResource::Initialize(RHIContext* Context, void* Data, uint32_t
         UpdateSubresources(m_commandList.Get(), m_texture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
         m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
-
-        // Describe and create a shader resource view (SRV) heap for the texture.
-        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 1;
-        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ThrowIfFailed(D3D12Context->m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_srvHeap)));
-
         // Describe and create a SRV for the texture.
-        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Format = textureDesc.Format;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
-        D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, m_srvHeap->GetCPUDescriptorHandleForHeapStart());
 
+        CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(D3D12Context->m_Heap->GetCPUDescriptorHandleForHeapStart(), D3D12Context->HandleIncrementSize * D3D12Context->m_HeapSize);
+        D3D12Context->m_HeapSize++;
+        D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, CpuDescriptorHandle);
 
         // Close the command list and execute it to begin the initial GPU setup.
         ThrowIfFailed(m_commandList->Close());
         ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
         D3D12Context->m_commandQueue->ExecuteCommandLists(1, ppCommandLists);
     }
+
     D3D12Context->WaitForPreviousFrame();
     
+}
+
+void RHID3D12ImageResource::CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap)
+{
 }
 
 
@@ -406,14 +418,41 @@ void RHID3D12BufferResource::Cleanup(RHIContext* Context)
 // RHID3D12Uniform implementation
 void RHID3D12Uniform::Initialize(RHIContext* Context, uint32_t UniformStructSize)
 {
-    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    // Placeholder implementation
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());        // Describe and create a constant buffer view (CBV) descriptor heap.
+    // Flags indicate that this descriptor heap can be bound to the pipeline 
+    // and that descriptors contained in it can be referenced by a root table.
+
+    ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(UniformStructSize),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_constantBuffer)));
+
+    // Describe and create a constant buffer view.
+    cbvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
+    cbvDesc.SizeInBytes = UniformStructSize;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cbvDescriptorHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(D3D12Context->m_Heap->GetCPUDescriptorHandleForHeapStart(), D3D12Context->HandleIncrementSize * D3D12Context->m_HeapSize);
+	D3D12Context->m_HeapSize++;
+    D3D12Context->m_device->CreateConstantBufferView(&cbvDesc, cbvDescriptorHandle);
+
+    // Map and initialize the constant buffer. We don't unmap this until the
+    // app closes. Keeping things mapped for the lifetime of the resource is okay.
+    CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+    ThrowIfFailed(m_constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_pCbvDataBegin)));
+}
+
+void RHID3D12Uniform::CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap)
+{
 }
 
 void RHID3D12Uniform::CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    // Placeholder implementation
+    memcpy(m_pCbvDataBegin, data, TotalBytes);
+    D3D12Context->WaitForPreviousFrame();
 }
 
 void RHID3D12Uniform::Cleanup(RHIContext* Context)
@@ -445,23 +484,42 @@ void RHID3D12PipelineFactory::AddBufferLayout(uint32_t BindingIndex, uint32_t Lo
 
 void RHID3D12PipelineFactory::AddBufferBinding(uint32_t BindingIndex, uint32_t Stride)
 {
+
 }
 
 void RHID3D12PipelineFactory::RemoveAllBufferBindings()
 {
-    // TODO: Implement D3D12 buffer bindings cleanup
+    inputElementDescs.clear();
 }
 
 void RHID3D12PipelineFactory::SetUniformBinding(uint32_t Binding)
 {
-    // TODO: Implement D3D12 uniform binding setup
+    if (RootParameters.size()<=Binding)
+    {
+        RootParameters.resize(Binding + 1);
+    }
+    uint32_t BaseRegister = Binding>>16;
+    CD3DX12_DESCRIPTOR_RANGE1 ranges{};
+    ranges.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, BaseRegister, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+    CD3DX12_ROOT_PARAMETER1 rootParameters{};
+    rootParameters.InitAsConstantBufferView(0);
+    //rootParameters.InitAsDescriptorTable(Ranges.size(), Ranges.data(), D3D12_SHADER_VISIBILITY_PIXEL);
+    RootParameters[Binding] = rootParameters;
 }
 
 void RHID3D12PipelineFactory::SetImageSamplerBinding(uint32_t Binding)
 {
+    if (RootParameters.size() <= Binding)
+    {
+        RootParameters.resize(Binding + 1);
+    }
+    uint32_t BaseRegister = Binding>>16;
     CD3DX12_DESCRIPTOR_RANGE1 ranges{};
-    ranges.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+    ranges.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, BaseRegister, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+    CD3DX12_ROOT_PARAMETER1 rootParameters{};
     Ranges.push_back(ranges);
+    rootParameters.InitAsDescriptorTable(1, &Ranges.back(), D3D12_SHADER_VISIBILITY_PIXEL);
+    RootParameters[Binding] = rootParameters;
 
     D3D12_STATIC_SAMPLER_DESC sampler{};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
@@ -482,7 +540,9 @@ void RHID3D12PipelineFactory::SetImageSamplerBinding(uint32_t Binding)
 
 void RHID3D12PipelineFactory::RemoveAllGlobalBindings()
 {
-    // TODO: Implement D3D12 global bindings cleanup
+    Samplers.clear();
+    RootParameters.clear();
+    Ranges.clear();
 }
 
 void RHID3D12PipelineFactory::SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader)
@@ -503,7 +563,7 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
 	//auto* D3D12RenderPassResource = static_cast<RHID3D12RenderPass*>(RenderPassResource->GetImpl());
 	auto* D3D12PipelineObject = static_cast<RHID3D12PipelineObject*>(OutPipelineObject->GetImpl());
     //auto* D3D12RenderPassResource = static_cast<RHID3D12RenderPass*>(RenderPassResource->GetImpl());
-
+    D3D12PipelineObject->RootParameters = RootParameters;
 	// Create an empty root signature.
     {
         D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
@@ -515,12 +575,6 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
         {
             featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
         }
-
-
-
-        CD3DX12_ROOT_PARAMETER1 rootParameters{};
-        rootParameters.InitAsDescriptorTable(Ranges.size(), Ranges.data(), D3D12_SHADER_VISIBILITY_PIXEL);
-        RootParameters.push_back(rootParameters);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
         rootSignatureDesc.Init_1_1(RootParameters.size(), 
@@ -573,16 +627,24 @@ void RHID3D12PipelineObject::Cleanup(RHIContext* Context)
 
 void RHID3D12PipelineObject::SetUniform(RHIUniform* Uniform, uint32_t Binding)
 {
+    auto* D3D12Uniform = static_cast<RHID3D12Uniform*>(Uniform->GetImpl());
+    if(Binding>=GpuDescriptorHandles.size())
+    {
+	    GpuDescriptorHandles.resize(Binding+1);
+    }
+    GpuDescriptorHandles[Binding] = D3D12Uniform->GpuDescriptorHandle;
+    cbvDescriptions.push_back(D3D12Uniform->cbvDesc);
 }
 
 void RHID3D12PipelineObject::SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding)
 {
     auto* D3D12ImageResource = static_cast<RHID3D12ImageResource*>(ImageResource->GetImpl());
-    if (Heaps.size() <= Binding)
+    if(Binding>=GpuDescriptorHandles.size())
     {
-        Heaps.resize(Binding + 1);
+	    GpuDescriptorHandles.resize(Binding+1);
     }
-    Heaps[Binding] = D3D12ImageResource->m_srvHeap.Get();
+    GpuDescriptorHandles[Binding] = D3D12ImageResource->GpuDescriptorHandle;
+    srvDescriptions.push_back(D3D12ImageResource->srvDesc);
 }
 
 // RHID3D12GraphicsDispatcher implementation
@@ -640,14 +702,20 @@ void RHID3D12GraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
     // Set necessary state.
     m_commandList->SetPipelineState(D3D12Pipeline->m_pipelineState.Get());
     m_commandList->SetGraphicsRootSignature(D3D12Pipeline->m_rootSignature.Get());
-
-    if (D3D12Pipeline->Heaps.size() > 0)
+    m_commandList->SetDescriptorHeaps(1, &pHeaps);
+    uint32_t cbvIndex = 0;
+    for (int i = 0; i < D3D12Pipeline->RootParameters.size(); i++)
     {
-        m_commandList->SetDescriptorHeaps(D3D12Pipeline->Heaps.size(), D3D12Pipeline->Heaps.data());
-        for (int i = 0; i < D3D12Pipeline->Heaps.size(); i++)
-        {
-            m_commandList->SetGraphicsRootDescriptorTable(i, D3D12Pipeline->Heaps[i]->GetGPUDescriptorHandleForHeapStart());
-        }
+        const auto& RootParam = D3D12Pipeline->RootParameters[i];
+	    if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
+	    {
+            m_commandList->SetGraphicsRootDescriptorTable(i, CD3DX12_GPU_DESCRIPTOR_HANDLE(pHeaps->GetGPUDescriptorHandleForHeapStart(), i * DescriptorHeapOffset));
+	    }
+    	else if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV)
+	    {
+            m_commandList->SetGraphicsRootConstantBufferView(i, D3D12Pipeline->cbvDescriptions[cbvIndex].BufferLocation);
+            cbvIndex++;
+	    }
     }
 
     m_commandList->RSSetViewports(1, &m_viewport);
@@ -707,7 +775,8 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
         D3D12PresentPass->m_frameIndex, D3D12PresentPass->m_rtvDescriptorSize);
 
     ThrowIfFailed(m_commandList->Reset(D3D12Context->m_commandAllocator.Get(), nullptr));
-
+    pHeaps = D3D12Context->m_Heap.Get();
+    DescriptorHeapOffset = D3D12Context->HandleIncrementSize;
     // Execute the command list.
     //ID3D12CommandList* pCommandList = m_commandList.Get();
     //ThrowIfFailed(m_commandList->Close());
