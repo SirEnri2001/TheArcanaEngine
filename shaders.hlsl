@@ -17,7 +17,10 @@ struct PSInput
 
 Texture2D g_texture : register(t0);
 SamplerState g_sampler : register(s0);
-
+cbuffer SceneConstantBuffer : register(b0)
+{
+    float4 offset;
+};
 PSInput VSMain(float3 position : ATTRIBUTE0, float4 color : ATTRIBUTE1)
 {
     PSInput result;
@@ -30,5 +33,6 @@ PSInput VSMain(float3 position : ATTRIBUTE0, float4 color : ATTRIBUTE1)
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    return g_texture.Sample(g_sampler, input.uv);
+    //return g_texture.Sample(g_sampler, input.uv);
+    return offset + g_texture.Sample(g_sampler, input.uv);
 }

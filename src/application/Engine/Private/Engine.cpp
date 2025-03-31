@@ -283,14 +283,18 @@ int main()
     std::array<uint32_t, 6> Indices = {0, 1, 2, 0, 2, 3};
     RHIBufferResource Buffer;
     RHIBufferResource IndexBuffer;
+    RHIImageResource Image;
+    Image.Initialize(&Context, TextureData.data(), TextureData.size()*sizeof(uint8_t), 256, 256, RHIFormat::R8G8B8A8_SRGB, 0);
+    RHIUniform Uniform;
+    Uniform.Initialize(&Context, 256);
+    float4 PixelColor(1.0, 0.5, 0.0, 1.0);
+    Uniform.CopyToBuffer(&Context, &PixelColor, sizeof(float4));
     Buffer.Initialize(&Context, sizeof(DXVertex), 4, VERTEX);
     Buffer.CopyToBuffer(&Context, triangleVertices, sizeof(DXVertex) * 4);
 
     IndexBuffer.Initialize(&Context, sizeof(uint32_t), 6, INDEX);
     IndexBuffer.CopyToBuffer(&Context, Indices.data(), Indices.size()*sizeof(uint32_t));
 
-    RHIImageResource Image;
-    Image.Initialize(&Context, TextureData.data(), TextureData.size()*sizeof(uint8_t), 256, 256, RHIFormat::R8G8B8A8_SRGB, 0);
 
     auto ShaderSourceCode = readFile("shaders.hlsl");
     PipelineFactory.SetShaders(ShaderSourceCode, ShaderSourceCode);
@@ -298,7 +302,9 @@ int main()
     PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(DXVertex, position));
     PipelineFactory.AddBufferLayout(0, 1, R32G32B32A32_SFLOAT, offsetof(DXVertex, color));
     PipelineFactory.SetImageSamplerBinding(0);
+    PipelineFactory.SetUniformBinding(1);
 	PipelineFactory.InitializePipelineObject(&PipelineObject, &Context, (RHIRenderPass*)nullptr);
+    PipelineObject.SetUniform(&Uniform, 1);
     PipelineObject.SetImageSampler(&Image, 0);
     RHIGraphicsDispatcher GraphicsDispatcher;
     GraphicsDispatcher.Initialize(&Context);

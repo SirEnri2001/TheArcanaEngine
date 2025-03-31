@@ -34,6 +34,10 @@ public:
     HANDLE m_fenceEvent;
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValue;
+    ComPtr<ID3D12DescriptorHeap> m_Heap;
+    D3D12_CPU_DESCRIPTOR_HANDLE hCPUHeapStart;
+    D3D12_GPU_DESCRIPTOR_HANDLE hGPUHeapStart;
+    UINT HandleIncrementSize;
     RHID3D12Context() = default;
     virtual ~RHID3D12Context() override = default;
 
@@ -41,6 +45,9 @@ public:
     virtual void Cleanup() override;
     virtual void WaitDeviceIdle() override;
     void WaitForPreviousFrame();
+    void AllocateDescriptorHeap(CD3DX12_CPU_DESCRIPTOR_HANDLE& OutCpuDescriptorHandle, CD3DX12_GPU_DESCRIPTOR_HANDLE& OutGpuDescriptorHandle);
+    size_t m_HeapSize = 0;
+    size_t m_SamplerHeapSize = 0;
 };
 
 // RHID3D12WindowManager
@@ -74,14 +81,19 @@ public:
     virtual ~RHID3D12ImageResource() override = default;
     uint32_t Height;
     uint32_t Width;
-    
+
+    D3D12_RESOURCE_DESC textureDesc = {};
     ComPtr<ID3D12Resource> m_texture;
-    ComPtr<ID3D12DescriptorHeap> m_srvHeap;
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 
     virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) override;
     virtual void Initialize(RHIContext* Context, void* Data, uint32_t Size, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel) override;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
     virtual void Cleanup(RHIContext* Context) override;
+
+    void CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
 };
 
 // RHID3D12BufferResource
@@ -109,6 +121,14 @@ public:
     virtual void Initialize(RHIContext* Context, uint32_t UniformStructSize) override;
     virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
     virtual void Cleanup(RHIContext* Context) override;
+
+    void CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap);
+    //ComPtr<ID3D12DescriptorHeap> m_cbvHeap;
+    ComPtr<ID3D12Resource> m_constantBuffer;
+    UINT8* m_pCbvDataBegin;
+    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
 };
 
 // RHID3D12RenderPass
@@ -140,21 +160,29 @@ public:
 	virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) override;
 };
 
+enum DescriptorType
+{
+	
+};
+
 // RHID3D12Pipeline
 class RHID3D12PipelineObject : public RHIPipelineObjectBase
 {
 public:
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
-
-    std::vector< ID3D12DescriptorHeap* > Heaps;
-
+    std::vector<D3D12_CONSTANT_BUFFER_VIEW_DESC> cbvDescriptions;
+    std::vector<D3D12_SHADER_RESOURCE_VIEW_DESC> srvDescriptions;
+    std::vector<CD3DX12_GPU_DESCRIPTOR_HANDLE> GpuDescriptorHandles;
+    std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
     RHID3D12PipelineObject() = default;
     virtual ~RHID3D12PipelineObject() override = default;
     
     virtual void SetUniform(RHIUniform* Uniform, uint32_t Binding) override;
     virtual void SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
     virtual void Cleanup(RHIContext* Context) override;
+
+    bool bShouldInitHeap = false;
 };
 
 class RHID3D12PipelineFactory : public RHIPipelineFactoryBase
@@ -165,6 +193,8 @@ class RHID3D12PipelineFactory : public RHIPipelineFactoryBase
     std::vector<CD3DX12_DESCRIPTOR_RANGE1> Ranges;
     std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
     std::vector<D3D12_STATIC_SAMPLER_DESC> Samplers;
+
+    uint32_t HeapCount = 0;
 public:
     RHID3D12PipelineFactory() = default;
     virtual ~RHID3D12PipelineFactory() override = default;
@@ -185,6 +215,8 @@ public:
 class RHID3D12GraphicsDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
+    ID3D12DescriptorHeap* pHeaps;
+    uint32_t DescriptorHeapOffset;
     std::vector<D3D12_VERTEX_BUFFER_VIEW> BoundBufferViews;
     D3D12_INDEX_BUFFER_VIEW BoundIndexBufferView;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
