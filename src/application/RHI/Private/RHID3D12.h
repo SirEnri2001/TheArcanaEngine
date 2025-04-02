@@ -59,6 +59,8 @@ public:
     UINT m_width = 1280;
     UINT m_height = 720;
     ComPtr<IDXGISwapChain3> m_swapChain;
+    bool bResized = false;
+    LPARAM ResizeParam;
     RHID3D12WindowManager() = default;
     virtual ~RHID3D12WindowManager() override = default;
 
@@ -71,6 +73,7 @@ public:
     virtual uint32_t GetWindowHeight() override;
     virtual uint32_t GetWindowWidth() override;
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void SetResized(bool val, LPARAM Param){bResized = val; ResizeParam = Param; }
 };
 
 // RHID3D12ImageResource
@@ -146,7 +149,7 @@ public:
 class RHID3D12PresentPass : public RHIPresentPassBase
 {
 public:
-    ComPtr<ID3D12Resource> m_renderTargets[2];
+    ID3D12Resource* m_renderTargets[2];
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
     UINT m_rtvDescriptorSize;
     const UINT FrameCount = 2;

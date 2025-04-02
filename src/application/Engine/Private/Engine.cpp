@@ -251,6 +251,7 @@ int main()
 	// Main sample loop.
 	while (Manager.IsAlive())
 	{
+		Log("New Frame");
 		GraphicsDispatcher.BeginFrame();
 		GraphicsDispatcher.BeginPresentPass(&Context, &Manager, &PresentPass);
 		GraphicsDispatcher.BindVertexBuffer(&Buffer, 0, 0);
