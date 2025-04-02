@@ -78,9 +78,6 @@ struct ExampleDescriptorHeapAllocator
     }
 };
 
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-
 // RHID3D12PlatformSupport implementation
 void RHID3D12PlatformSupport::Initialize()
 {
@@ -200,9 +197,24 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 LRESULT CALLBACK RHID3D12WindowManager::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	RHID3D12WindowManager* WindowManager = reinterpret_cast<RHID3D12WindowManager*>(::GetWindowLongPtr(hWnd, GWLP_USERDATA));
+        
     if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
         return true;
-    // Handle any messages the switch statement didn't.
+    switch (message)
+    {
+    case WM_SIZING:
+    case WM_SIZE:
+        WindowManager->SetResized(true, lParam);
+        return 0;
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
+            return 0;
+        break;
+    case WM_DESTROY:
+        ::PostQuitMessage(0);
+        return 0;
+    }
     return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
@@ -211,12 +223,12 @@ void RHID3D12WindowManager::Initialize(RHIPlatformSupport* PlatformSupport, uint
 {
     auto* D3D12PlatformSupport = static_cast<RHID3D12PlatformSupport*>(PlatformSupport->GetImpl());
     // Use HWND for window creation
-        HINSTANCE hInstance = GetModuleHandle(NULL);
+    HINSTANCE hInstance = GetModuleHandle(NULL);
 
     // Initialize the window class.
     WNDCLASSEX windowClass = { 0 };
     windowClass.cbSize = sizeof(WNDCLASSEX);
-    windowClass.style = CS_HREDRAW | CS_VREDRAW;
+    windowClass.style = CS_CLASSDC;
     windowClass.lpfnWndProc = WindowProc;
     windowClass.hInstance = hInstance;
     windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
@@ -241,7 +253,7 @@ void RHID3D12WindowManager::Initialize(RHIPlatformSupport* PlatformSupport, uint
         hInstance,           // handle to application instance 
         (LPVOID) NULL);      // no window-creation data 
     );
-    
+    SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
     ShowWindow(hWnd, 1);
 }
 
@@ -292,18 +304,18 @@ void RHID3D12WindowManager::CleanupSwapchain(RHIContext* Context)
 void RHID3D12WindowManager::RecreateSwapchain(RHIContext* Context)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    // Placeholder implementation
+    m_swapChain->ResizeBuffers(0, (UINT)LOWORD(ResizeParam), (UINT)HIWORD(ResizeParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
 }
 
 bool RHID3D12WindowManager::IsAlive()
 {
-    // Process any messages in the queue.
-    if (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
-    {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-    
+    //// Process any messages in the queue.
+    //if (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
+    //{
+    //    TranslateMessage(&msg);
+    //    DispatchMessage(&msg);
+    //}
+    //
     return IsWindow(hWnd);
 }
 
@@ -815,6 +827,12 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     D3D12PresentPass = static_cast<RHID3D12PresentPass*>(PresentPassResource->GetImpl());
 
+    if(D3D12WindowManager->bResized)
+    {
+        PresentPassResource->OnWindowResize(Context, WindowManager);
+	    D3D12WindowManager->SetResized(false, NULL);
+    }
+
     D3D12PresentPass->m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
     // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
     // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
@@ -854,7 +872,7 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
     m_scissorRect = CD3DX12_RECT(0., 0., m_viewport.Width, m_viewport.Height);
     // Record commands.
     const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex].Get(),
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex],
         D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     m_commandList->RSSetViewports(1, &m_viewport);
@@ -869,7 +887,7 @@ void RHID3D12GraphicsDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RH
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     // Indicate that the back buffer will now be used to present.
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex].Get(),
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex],
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
     // Execute the command list.
@@ -921,47 +939,64 @@ void RHID3D12PresentPass::Cleanup(RHIContext* Context)
 
 void RHID3D12PresentPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-	
-}
-
-void RHID3D12PresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
-{
-}
-
-void RHID3D12PresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT)
-{
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
-    // Create descriptor heaps.
-    {
-        // Describe and create a render target view (RTV) descriptor heap.
-        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = 2;
-        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        ThrowIfFailed(D3D12Context->m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
-
-        m_rtvDescriptorSize = D3D12Context->m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    }
-
-    // Create frame resources.
+	// Create frame resources.
     {
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
         // Create a RTV for each frame.
         for (UINT n = 0; n < FrameCount; n++)
         {
-            ThrowIfFailed(D3D12WindowManager->m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
-            D3D12Context->m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
+			ID3D12Resource* pBackBuffer = nullptr;
+            ThrowIfFailed(D3D12WindowManager->m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pBackBuffer)));
+            D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, rtvHandle);
             rtvHandle.Offset(1, m_rtvDescriptorSize);
+            m_renderTargets[n] = pBackBuffer;
         }
     }
 }
 
+void RHID3D12PresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
+{
+    // Create a RTV for each frame.
+    for (UINT n = 0; n < FrameCount; n++)
+    {
+        m_renderTargets[n]->Release();
+    }
+}
+
+void RHID3D12PresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT)
+{
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    // Create descriptor heaps.
+    {
+        // Describe and create a render target view (RTV) descriptor heap.
+        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+        rtvHeapDesc.NumDescriptors = FrameCount;
+        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        ThrowIfFailed(D3D12Context->m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
+
+        m_rtvDescriptorSize = D3D12Context->m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    }
+    D3D12Context->WaitForPreviousFrame();
+    CreateSwapchainFramebuffer(Context, WindowManager);
+}
+
 void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-	
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
+    D3D12Context->WaitForPreviousFrame();
+	CleanupSwapchainFramebuffer(Context);
+    D3D12WindowManager->m_swapChain->ResizeBuffers(0, 
+        (UINT)LOWORD(D3D12WindowManager->ResizeParam), 
+        (UINT)HIWORD(D3D12WindowManager->ResizeParam), 
+        DXGI_FORMAT_UNKNOWN, 0);
+    D3D12Context->WaitForPreviousFrame();
+    CreateSwapchainFramebuffer(Context, WindowManager);
 }
 
 static ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
@@ -1035,12 +1070,10 @@ void RHID3D12ImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
     // Poll and handle messages (inputs, window resize, etc.)
     // See the WndProc() function below for our to dispatch events to the Win32 backend.
     MSG msg;
-    while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
+    if (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
     {
         ::TranslateMessage(&msg);
         ::DispatchMessage(&msg);
-        if (msg.message == WM_QUIT)
-            done = true;
     }
 
     // Start the Dear ImGui frame
