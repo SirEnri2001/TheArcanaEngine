@@ -201,9 +201,12 @@ LRESULT CALLBACK RHID3D12WindowManager::WindowProc(HWND hWnd, UINT message, WPAR
         
     if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
         return true;
+    RECT* rect;
     switch (message)
     {
     case WM_SIZING:
+        rect = reinterpret_cast<RECT*>(lParam); // Not being used yet
+        return 0;
     case WM_SIZE:
         WindowManager->SetResized(true, lParam);
         return 0;
@@ -991,10 +994,15 @@ void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* 
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     D3D12Context->WaitForPreviousFrame();
 	CleanupSwapchainFramebuffer(Context);
-    D3D12WindowManager->m_swapChain->ResizeBuffers(0, 
-        (UINT)LOWORD(D3D12WindowManager->ResizeParam), 
-        (UINT)HIWORD(D3D12WindowManager->ResizeParam), 
+
+	UINT width = (UINT)LOWORD(D3D12WindowManager->ResizeParam);
+    UINT height = (UINT)HIWORD(D3D12WindowManager->ResizeParam);
+
+    HRESULT hr = D3D12WindowManager->m_swapChain->ResizeBuffers(0,
+        width,
+		height, 
         DXGI_FORMAT_UNKNOWN, 0);
+    ThrowIfFailed(hr);
     D3D12Context->WaitForPreviousFrame();
     CreateSwapchainFramebuffer(Context, WindowManager);
 }
