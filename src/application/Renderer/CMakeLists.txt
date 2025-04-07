@@ -12,5 +12,5 @@ target_include_directories(Renderer
 PUBLIC ./Public
 PUBLIC ${CoreLog_MODULE_ROOT}/Public
 )
-
-target_link_libraries(Renderer RHI CoreScene)
+add_dependencies(Renderer stb_image RHI)
+target_link_libraries(Renderer RHI CoreScene stb_image)

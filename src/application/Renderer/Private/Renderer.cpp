@@ -1,6 +1,9 @@
 #define RENDERER_IMPLEMENT
 #include "Renderer.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include <chrono>
 #include <CoreLog.inl>
 
@@ -18,8 +21,13 @@ void MeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh)
 	RHIIndexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::INDEX);
 	RHIVertexBuffer.CopyToBuffer(&Context->Context, InMesh.Vertices.data(), InMesh.Vertices.size() * sizeof(Mesh::VertexType));
 	RHIIndexBuffer.CopyToBuffer(&Context->Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
-	Texture.Initialize(&Context->Context, InMesh.TexturePath.c_str(), RHIFormat::R8G8B8A8_SRGB);
+    int texWidth, texHeight, texChannels;
+	stbi_uc* pixels = stbi_load(InMesh.TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	assert(texHeight > 0 && texWidth > 0);
+    Texture.Initialize(&Context->Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB);
+	Texture.CopyToTexture(&Context->Context, pixels, 4);
     IndexBufferSize = InMesh.Indices.size();
+	stbi_image_free(pixels);
 }
 
 MeshRenderProxy::~MeshRenderProxy()

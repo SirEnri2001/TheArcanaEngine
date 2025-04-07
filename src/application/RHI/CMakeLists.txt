@@ -52,7 +52,6 @@ FILES
 target_include_directories(RHI
 PRIVATE ${glfw_INCLUDE_DIRS}
 PRIVATE ${glm_INCLUDE_DIRS}
-PRIVATE ${ThirdPartiesDir}/stb_image-2.30
 PRIVATE ${Vulkan_INCLUDE_DIRS}
 )
 
@@ -61,7 +60,7 @@ PUBLIC ./Public
 PRIVATE ./Private
 )
 
-add_dependencies(RHI CoreMath CoreLog stb_image)
+add_dependencies(RHI CoreMath CoreLog)
 
-target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog stb_image DirectX-Headers d3d12 dxgi d3dcompiler dxguid)
+target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog  DirectX-Headers d3d12 dxgi d3dcompiler dxguid)
 target_link_libraries(RHI d3d12.lib)

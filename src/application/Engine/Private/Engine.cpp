@@ -150,7 +150,7 @@ int main()
     //Log("Engine starts at ", "application mode", " ", 3);
     //Warning("This is a test warning. ");
     //Error("This is a test ERROR. ");
-    GRHIImplementationSelection = RHIImplement_D3D12;
+    GRHIImplementationSelection = RHIImplement_Vulkan;
     Scene MainScene;
     std::string TestJson = R"({
     "Children":[
