@@ -89,9 +89,9 @@ public:
     ComPtr<ID3D12Resource> m_texture;
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 
-    virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) override;
-    virtual void Initialize(RHIContext* Context, void* Data, uint32_t Size, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel) override;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel) override;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+    virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
@@ -137,6 +137,10 @@ public:
 class RHID3D12RenderPass : public RHIRenderPassBase
 {
 public:
+    uint32_t Height;
+    uint32_t Width;
+    std::vector<CD3DX12_CPU_DESCRIPTOR_HANDLE> ColorRTs;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE DepthRT;
 	RHID3D12RenderPass() = default;
 	virtual ~RHID3D12RenderPass() override = default;
 	virtual void Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY) override;
@@ -223,7 +227,7 @@ public:
     D3D12_INDEX_BUFFER_VIEW BoundIndexBufferView;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
-    RHID3D12PresentPass* D3D12PresentPass;
+    ID3D12Resource* CurrentRT;
     RHID3D12GraphicsDispatcher() = default;
     virtual ~RHID3D12GraphicsDispatcher() override = default;
 
