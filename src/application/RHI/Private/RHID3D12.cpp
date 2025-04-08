@@ -33,50 +33,43 @@ struct FrameContext
     UINT64                      FenceValue;
 };
 
-// Simple free list based allocator
-struct ExampleDescriptorHeapAllocator
-{
-    ID3D12DescriptorHeap* Heap = nullptr;
-    D3D12_DESCRIPTOR_HEAP_TYPE  HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
-    D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
-    D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
-    UINT                        HeapHandleIncrement;
-    ImVector<int>               FreeIndices;
 
-    void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap)
-    {
-        IM_ASSERT(Heap == nullptr && FreeIndices.empty());
-        Heap = heap;
-        D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
-        HeapType = desc.Type;
-        HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
-        HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
-        HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
-        FreeIndices.reserve((int)desc.NumDescriptors);
-        for (int n = desc.NumDescriptors; n > 0; n--)
-            FreeIndices.push_back(n - 1);
-    }
-    void Destroy()
-    {
-        Heap = nullptr;
-        FreeIndices.clear();
-    }
-    void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle)
-    {
-        IM_ASSERT(FreeIndices.Size > 0);
-        int idx = FreeIndices.back();
-        FreeIndices.pop_back();
-        out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
-        out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
-    }
-    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle)
-    {
-        int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
-        int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
-        IM_ASSERT(cpu_idx == gpu_idx);
-        FreeIndices.push_back(cpu_idx);
-    }
-};
+void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap)
+{
+    assert(Heap == nullptr && FreeIndices.empty());
+    Heap = heap;
+    D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
+    HeapType = desc.Type;
+    HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
+    HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+    HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
+    FreeIndices.reserve((int)desc.NumDescriptors);
+    for (int n = desc.NumDescriptors; n > 0; n--)
+        FreeIndices.push_back(n - 1);
+}
+
+void DescriptorHeapAllocator::Destroy()
+{
+    Heap = nullptr;
+    FreeIndices.clear();
+}
+
+void DescriptorHeapAllocator::Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle)
+{
+    assert(FreeIndices.size() > 0);
+    int idx = FreeIndices.back();
+    FreeIndices.pop_back();
+    out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
+    out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+}
+
+void DescriptorHeapAllocator::Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle)
+{
+    int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+    int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+    assert(cpu_idx == gpu_idx);
+    FreeIndices.push_back(cpu_idx);
+}
 
 // RHID3D12PlatformSupport implementation
 void RHID3D12PlatformSupport::Initialize()
@@ -156,12 +149,18 @@ void RHID3D12Context::Initialize(RHIPlatformSupport* PlatformSupport)
     HeapDesc.NumDescriptors = 32;
     HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_Heap)));
-    
-    hCPUHeapStart = m_Heap->GetCPUDescriptorHandleForHeapStart();
-    hGPUHeapStart = m_Heap->GetGPUDescriptorHandleForHeapStart();
-
-    HandleIncrementSize = m_device->GetDescriptorHandleIncrementSize(HeapDesc.Type);
+    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_srvheap)));
+    HeapDesc.NumDescriptors = 32;
+    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_rtvheap)));
+    HeapDesc.NumDescriptors = 32;
+    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_dsvheap)));
+    SRVHeapAllocator.Create(m_device.Get(), m_srvheap.Get());
+    RTVHeapAllocator.Create(m_device.Get(), m_rtvheap.Get());
+    DSVHeapAllocator.Create(m_device.Get(), m_dsvheap.Get());
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -354,13 +353,6 @@ void RHID3D12Context::WaitForPreviousFrame()
     }
 }
 
-void RHID3D12Context::AllocateDescriptorHeap(CD3DX12_CPU_DESCRIPTOR_HANDLE& OutCpuDescriptorHandle, CD3DX12_GPU_DESCRIPTOR_HANDLE& OutGpuDescriptorHandle)
-{
-	OutCpuDescriptorHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_Heap->GetCPUDescriptorHandleForHeapStart(), HandleIncrementSize * m_HeapSize);
-    OutGpuDescriptorHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_Heap->GetGPUDescriptorHandleForHeapStart(), HandleIncrementSize * m_HeapSize);
-    m_HeapSize++;
-}
-
 
 void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, uint32_t MipLevel)
 {
@@ -398,11 +390,8 @@ void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, u
         srvDesc.Format = textureDesc.Format;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
-
-        CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(D3D12Context->m_Heap->GetCPUDescriptorHandleForHeapStart(), D3D12Context->HandleIncrementSize * D3D12Context->m_HeapSize);
-        D3D12Context->m_HeapSize++;
+        D3D12Context->SRVHeapAllocator.Alloc(&CpuDescriptorHandle, &GpuDescriptorHandle);
         D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, CpuDescriptorHandle);
-
     }
 }
 
@@ -411,6 +400,50 @@ void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindo
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
+
+    Height = WindowManager->GetWindowHeight();
+    Width = WindowManager->GetWindowWidth();
+
+    // Create the texture.
+    // Describe and create a Texture2D.
+    textureDesc.MipLevels = 1;
+    textureDesc.Format = InUsage == ImageUsage::IU_DEPTH_RT ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDesc.Width = Width;
+    textureDesc.Height = Height;
+    textureDesc.Flags =  InUsage==ImageUsage::IU_DEPTH_RT? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    textureDesc.DepthOrArraySize = 1;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.SampleDesc.Quality = 0;
+    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+    ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &textureDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&m_texture)));
+
+    // Describe and create a SRV for the texture.
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = InUsage == ImageUsage::IU_DEPTH_RT ? DXGI_FORMAT_R32_FLOAT : textureDesc.Format;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels = 1;
+    D3D12Context->SRVHeapAllocator.Alloc(&CpuDescriptorHandle, &GpuDescriptorHandle);
+    D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, CpuDescriptorHandle);
+    if (InUsage == ImageUsage::IU_COLOR_RT || InUsage == ImageUsage::IU_COLOR_PRESENT_RT)
+    {
+        D3D12Context->RTVHeapAllocator.Alloc(&RTDSVCpuDescriptorHandle, &RTDSVGpuDescriptorHandle);
+        D3D12Context->m_device->CreateRenderTargetView(m_texture.Get(), NULL, RTDSVCpuDescriptorHandle);
+    }else
+    {
+        D3D12_DEPTH_STENCIL_VIEW_DESC ds_desc{};
+        ds_desc.Texture2D.MipSlice = 1;
+        ds_desc.Format = DXGI_FORMAT_R32_FLOAT;
+        ds_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        D3D12Context->DSVHeapAllocator.Alloc(&RTDSVCpuDescriptorHandle, &RTDSVGpuDescriptorHandle);
+        D3D12Context->m_device->CreateDepthStencilView(m_texture.Get(), NULL, RTDSVCpuDescriptorHandle);
+    }
 }
 
 void RHID3D12ImageResource::CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride)
@@ -520,10 +553,8 @@ void RHID3D12Uniform::Initialize(RHIContext* Context, uint32_t UniformStructSize
     cbvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
     cbvDesc.SizeInBytes = UniformStructSize;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cbvDescriptorHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(D3D12Context->m_Heap->GetCPUDescriptorHandleForHeapStart(), D3D12Context->HandleIncrementSize * D3D12Context->m_HeapSize);
-	D3D12Context->m_HeapSize++;
-    D3D12Context->m_device->CreateConstantBufferView(&cbvDesc, cbvDescriptorHandle);
-
+    D3D12Context->SRVHeapAllocator.Alloc(&CpuDescriptorHandle, &GpuDescriptorHandle);
+    D3D12Context->m_device->CreateConstantBufferView(&cbvDesc, CpuDescriptorHandle);
     // Map and initialize the constant buffer. We don't unmap this until the
     // app closes. Keeping things mapped for the lifetime of the resource is okay.
     CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
@@ -618,7 +649,7 @@ void RHID3D12PipelineFactory::SetImageSamplerBinding(uint32_t Binding)
     sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
     sampler.MinLOD = 0.0f;
     sampler.MaxLOD = D3D12_FLOAT32_MAX;
-    sampler.ShaderRegister = 0;
+    sampler.ShaderRegister = Binding;
     sampler.RegisterSpace = 0;
     sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     Samplers.push_back(sampler);
@@ -655,9 +686,8 @@ void RHID3D12PipelineFactory::SetShaders(const std::vector<char>& VertShader, co
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-	//auto* D3D12RenderPassResource = static_cast<RHID3D12RenderPass*>(RenderPassResource->GetImpl());
 	auto* D3D12PipelineObject = static_cast<RHID3D12PipelineObject*>(OutPipelineObject->GetImpl());
-    //auto* D3D12RenderPassResource = static_cast<RHID3D12RenderPass*>(RenderPassResource->GetImpl());
+    auto* D3D12RenderPassResource = static_cast<RHID3D12RenderPass*>(RenderPassResource->GetImpl());
     D3D12PipelineObject->RootParameters = RootParameters;
 	// Create an empty root signature.
     {
@@ -678,8 +708,13 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
 
         ComPtr<ID3DBlob> signature;
         ComPtr<ID3DBlob> error;
-        ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+        D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+        if(error.Get())
+	    {
+		    Error("D3DX12SerializeVersionedRootSignature error: ", reinterpret_cast<char*>(error->GetBufferPointer()));
+	    }
         ThrowIfFailed(D3D12Context->m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&D3D12PipelineObject->m_rootSignature)));
+        assert(D3D12PipelineObject->m_rootSignature);
     }
 
     // Create the pipeline state, which includes compiling and loading shaders.
@@ -697,16 +732,68 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
         psoDesc.DepthStencilState.StencilEnable = FALSE;
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-        psoDesc.SampleDesc.Count = 1;
+        psoDesc.NumRenderTargets = D3D12RenderPassResource->ColorRTs.size();
+        DXGI_FORMAT* PSOColorFormats = psoDesc.RTVFormats;
+        memcpy(PSOColorFormats, D3D12RenderPassResource->ColorRTFormats.data(), min(D3D12RenderPassResource->ColorRTs.size(), 8));
+        psoDesc.SampleDesc.Count = Samplers.size();
         ThrowIfFailed(D3D12Context->m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));
     }
 }
 
-void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass)
+void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPassResource)
 {
-    // TODO: Implement D3D12 pipeline object initialization for present pass
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    auto* D3D12PipelineObject = static_cast<RHID3D12PipelineObject*>(OutPipelineObject->GetImpl());
+    auto* D3D12PresentPassResource = static_cast<RHID3D12PresentPass*>(PresentPassResource->GetImpl());
+    D3D12PipelineObject->RootParameters = RootParameters;
+    // Create an empty root signature.
+    {
+        D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+
+        // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
+        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+        if (FAILED(D3D12Context->m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+        {
+            featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+        }
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(RootParameters.size(),
+            RootParameters.data(),
+            Samplers.size(), Samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+        D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+        if (error.Get())
+        {
+            Error("D3DX12SerializeVersionedRootSignature error: ", reinterpret_cast<char*>(error->GetBufferPointer()));
+        }
+        ThrowIfFailed(D3D12Context->m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&D3D12PipelineObject->m_rootSignature)));
+        assert(D3D12PipelineObject->m_rootSignature);
+    }
+
+    // Create the pipeline state, which includes compiling and loading shaders.
+    {
+
+        // Describe and create the graphics pipeline state object (PSO).
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = D3D12_INPUT_LAYOUT_DESC{ inputElementDescs.data(), static_cast<unsigned int>(inputElementDescs.size()) };
+        psoDesc.pRootSignature = D3D12PipelineObject->m_rootSignature.Get();
+        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+        psoDesc.DepthStencilState.DepthEnable = FALSE;
+        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = D3D12PresentPassResource->FrameCount;
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        psoDesc.SampleDesc.Count = Samplers.size();
+        ThrowIfFailed(D3D12Context->m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));
+    }
 }
 
 void RHID3D12PipelineFactory::Cleanup(RHIContext* Context)
@@ -728,7 +815,11 @@ void RHID3D12PipelineObject::SetUniform(RHIUniform* Uniform, uint32_t Binding)
 	    GpuDescriptorHandles.resize(Binding+1);
     }
     GpuDescriptorHandles[Binding] = D3D12Uniform->GpuDescriptorHandle;
-    cbvDescriptions.push_back(D3D12Uniform->cbvDesc);
+    if (Binding>=cbvDescriptions.size())
+    {
+        cbvDescriptions.resize(Binding + 1);
+    }
+    cbvDescriptions[Binding] = D3D12Uniform->cbvDesc;
 }
 
 void RHID3D12PipelineObject::SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding)
@@ -750,6 +841,7 @@ void RHID3D12GraphicsDispatcher::Initialize(RHIContext* Context)
     // Create the command list.
     ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12Context->m_commandAllocator.Get(),
         NULL, IID_PPV_ARGS(&m_commandList)));
+    pHeaps = D3D12Context->m_srvheap.Get();
     // Command lists are created in the recording state, but there is nothing
     // to record yet. The main loop expects it to be closed, so close it now.
     //ThrowIfFailed(m_commandList->Close());
@@ -795,11 +887,12 @@ void RHID3D12GraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
         const auto& RootParam = D3D12Pipeline->RootParameters[i];
 	    if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
 	    {
-            m_commandList->SetGraphicsRootDescriptorTable(i, CD3DX12_GPU_DESCRIPTOR_HANDLE(pHeaps->GetGPUDescriptorHandleForHeapStart(), i * DescriptorHeapOffset));
+            // set samplers
+            m_commandList->SetGraphicsRootDescriptorTable(i, D3D12Pipeline->GpuDescriptorHandles[i]);
 	    }
     	else if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV)
 	    {
-            m_commandList->SetGraphicsRootConstantBufferView(i, D3D12Pipeline->cbvDescriptions[cbvIndex].BufferLocation);
+            m_commandList->SetGraphicsRootConstantBufferView(i, D3D12Pipeline->cbvDescriptions[i].BufferLocation);
             cbvIndex++;
 	    }
     }
@@ -815,8 +908,6 @@ void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderP
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12RenderPass = static_cast<RHID3D12RenderPass*>(RenderPass->GetImpl());
-    pHeaps = D3D12Context->m_Heap.Get();
-    DescriptorHeapOffset = D3D12Context->HandleIncrementSize;
     // Execute the command list.
     //ID3D12CommandList* pCommandList = m_commandList.Get();
     //ThrowIfFailed(m_commandList->Close());
@@ -838,6 +929,14 @@ void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderP
 
 void RHID3D12GraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 {
+    //auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    //// Execute the command list.
+    //ID3D12CommandList* pCommandList = m_commandList.Get();
+    //ThrowIfFailed(m_commandList->Close());
+    //D3D12Context->m_commandQueue->ExecuteCommandLists(1, &pCommandList);
+
+    //D3D12Context->WaitForPreviousFrame();
+    //ThrowIfFailed(m_commandList->Reset(D3D12Context->m_commandAllocator.Get(), nullptr));
 }
 
 
@@ -851,33 +950,12 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
     {
         PresentPassResource->OnWindowResize(Context, WindowManager);
 	    D3D12WindowManager->SetResized(false, NULL);
+    	D3D12Context->WaitForPreviousFrame();
     }
 
     D3D12PresentPass->m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
-    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-    // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-    // sample illustrates how to use fences for efficient resource usage and to
-    // maximize GPU utilization.
+    auto RTHandle = D3D12PresentPass->m_rtvcpuhandles[D3D12PresentPass->m_frameIndex];
 
-    // Signal and increment the fence value.
-    const UINT64 fence = D3D12Context->m_fenceValue;
-    ThrowIfFailed(D3D12Context->m_commandQueue->Signal(D3D12Context->m_fence.Get(), fence));
-    D3D12Context->m_fenceValue++;
-
-    // Wait until the previous frame is finished.
-    if (D3D12Context->m_fence->GetCompletedValue() < fence)
-    {
-        ThrowIfFailed(D3D12Context->m_fence->SetEventOnCompletion(fence, D3D12Context->m_fenceEvent));
-        WaitForSingleObject(D3D12Context->m_fenceEvent, INFINITE);
-    }
-
-    D3D12PresentPass->m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
-    rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(D3D12PresentPass->m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
-        D3D12PresentPass->m_frameIndex, D3D12PresentPass->m_rtvDescriptorSize);
-
-    //ThrowIfFailed(m_commandList->Reset(D3D12Context->m_commandAllocator.Get(), nullptr));
-    pHeaps = D3D12Context->m_Heap.Get();
-    DescriptorHeapOffset = D3D12Context->HandleIncrementSize;
     // Execute the command list.
     //ID3D12CommandList* pCommandList = m_commandList.Get();
     //ThrowIfFailed(m_commandList->Close());
@@ -895,10 +973,10 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
     CurrentRT = D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex];
     m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentRT,
         D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-    m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    m_commandList->ClearRenderTargetView(RTHandle, clearColor, 0, nullptr);
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
-    m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+    m_commandList->OMSetRenderTargets(1, &RTHandle, FALSE, nullptr);
 
 }
 
@@ -935,20 +1013,23 @@ void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 
 void RHID3D12RenderPass::Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY)
 {
-	
+    Height = SizeY;
+    Width = SizeX;
 }
 
 
 void RHID3D12RenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
 {
     auto* D3D12ColorRT = static_cast<RHID3D12ImageResource*>(ColorRT->GetImpl());
-    ColorRTs.push_back(D3D12ColorRT->CpuDescriptorHandle);
+    ColorRTs.push_back(D3D12ColorRT->RTDSVCpuDescriptorHandle);
+    ColorRTFormats.push_back(DXGI_FORMAT_R8G8B8A8_UNORM);
 }
 
 void RHID3D12RenderPass::SetDepthRenderTarget(RHIImageResource* InDepthRT)
 {
     auto* D3D12DepthRT = static_cast<RHID3D12ImageResource*>(InDepthRT->GetImpl());
-    DepthRT = D3D12DepthRT->CpuDescriptorHandle;
+    DepthRT = D3D12DepthRT->RTDSVCpuDescriptorHandle;
+    DepthRTFormat = DXGI_FORMAT_R32_FLOAT;
 }
 
 void RHID3D12RenderPass::Cleanup(RHIContext* Context)
@@ -967,15 +1048,13 @@ void RHID3D12PresentPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWin
     m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
 	// Create frame resources.
     {
-        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
-
         // Create a RTV for each frame.
         for (UINT n = 0; n < FrameCount; n++)
         {
 			ID3D12Resource* pBackBuffer = nullptr;
             ThrowIfFailed(D3D12WindowManager->m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pBackBuffer)));
-            D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, rtvHandle);
-            rtvHandle.Offset(1, m_rtvDescriptorSize);
+            D3D12Context->RTVHeapAllocator.Alloc(&m_rtvcpuhandles[n], &m_rtvgpuhandles[n]);
+            D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, m_rtvcpuhandles[n]);
             m_renderTargets[n] = pBackBuffer;
         }
     }
@@ -993,17 +1072,6 @@ void RHID3D12PresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
 void RHID3D12PresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    // Create descriptor heaps.
-    {
-        // Describe and create a render target view (RTV) descriptor heap.
-        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = FrameCount;
-        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        ThrowIfFailed(D3D12Context->m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
-
-        m_rtvDescriptorSize = D3D12Context->m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    }
     D3D12Context->WaitForPreviousFrame();
     CreateSwapchainFramebuffer(Context, WindowManager);
 }
@@ -1027,7 +1095,7 @@ void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* 
     CreateSwapchainFramebuffer(Context, WindowManager);
 }
 
-static ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
+static DescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
 static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
 // RHID3D12ImGUI implementation
 void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass)
@@ -1054,7 +1122,7 @@ void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMana
     init_info.CommandQueue = D3D12Context->m_commandQueue.Get();
     init_info.NumFramesInFlight = APP_NUM_FRAMES_IN_FLIGHT;
     init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-    init_info.DSVFormat = DXGI_FORMAT_UNKNOWN;
+    init_info.DSVFormat = DXGI_FORMAT_R32_FLOAT;
     // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
     // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
 

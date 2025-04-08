@@ -27,6 +27,7 @@ class RHIPipelineObject;
 enum RHIFormat
 {
 	R8G8B8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
+	R8G8B8A8_UNORM, /**< float4 in hlsl, used in color rendertargets */
     R32G32B32A32_SFLOAT, /**< float3 */
     R32G32B32_SFLOAT, /**< float3 */
     R32G32_SFLOAT /**< float2, uv coords */
