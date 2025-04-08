@@ -11,6 +11,7 @@
 #include "imgui_impl_dx12.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
+#include <stb_image.h>
 #include <tchar.h>
 
 #ifdef _DEBUG
@@ -237,8 +238,8 @@ void RHID3D12WindowManager::Initialize(RHIPlatformSupport* PlatformSupport, uint
     windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
     windowClass.lpszClassName = "DXSampleClass";
     CHECK_SYSTEM_ERROR(RegisterClassEx(&windowClass));
-    RECT windowRect = { 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
-    AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
+    //RECT windowRect = { 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
+    //AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
 
  
     // Create the main window. 
@@ -365,7 +366,11 @@ void RHID3D12Context::AllocateDescriptorHeap(CD3DX12_CPU_DESCRIPTOR_HANDLE& OutC
 void RHID3D12ImageResource::Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    // Placeholder implementation
+    int texWidth, texHeight, texChannels;
+	stbi_uc* pixels = stbi_load(ImageFileName, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	assert(texHeight > 0 && texWidth > 0);
+	uint32_t imageSize = texHeight * texWidth * 4;
+	Initialize(Context, pixels, imageSize, texHeight, texWidth, InFormat, MipLevel);
 }
 
 void RHID3D12ImageResource::Initialize(RHIContext* Context, void* Data, uint32_t Size, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, uint32_t MipLevel)
@@ -442,16 +447,11 @@ void RHID3D12ImageResource::Initialize(RHIContext* Context, void* Data, uint32_t
     
 }
 
-void RHID3D12ImageResource::CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap)
-{
-}
-
 
 void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
-    // Placeholder implementation
 }
 
 void RHID3D12ImageResource::Cleanup(RHIContext* Context)
@@ -516,7 +516,7 @@ void RHID3D12Uniform::Initialize(RHIContext* Context, uint32_t UniformStructSize
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());        // Describe and create a constant buffer view (CBV) descriptor heap.
     // Flags indicate that this descriptor heap can be bound to the pipeline 
     // and that descriptors contained in it can be referenced by a root table.
-
+    UniformStructSize = (UniformStructSize - 1)/256 * 256 + 256;
     ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
         D3D12_HEAP_FLAG_NONE,
@@ -648,8 +648,17 @@ void RHID3D12PipelineFactory::SetShaders(const std::vector<char>& VertShader, co
 #else
     UINT compileFlags = 0;
 #endif
-    ThrowIfFailed(D3DCompile(VertShader.data(), VertShader.size(), NULL, nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
-    ThrowIfFailed(D3DCompile(FragShader.data(), FragShader.size(), NULL, nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
+    ComPtr<ID3DBlob> ErrorMsg;
+    D3DCompile(VertShader.data(), VertShader.size(), NULL, nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, &ErrorMsg);
+    if(ErrorMsg.Get())
+    {
+	    Error("Compile vertex shader error: ", reinterpret_cast<char*>(ErrorMsg->GetBufferPointer()));
+    }
+    D3DCompile(FragShader.data(), FragShader.size(), NULL, nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, &ErrorMsg);
+    if(ErrorMsg.Get())
+    {
+	    Error("Compile fragment shader error: ", reinterpret_cast<char*>(ErrorMsg->GetBufferPointer()));
+    }
 }
 
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
