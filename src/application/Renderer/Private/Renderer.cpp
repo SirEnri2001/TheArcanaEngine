@@ -76,12 +76,11 @@ void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::v
 void Renderer::SetUniform(RHIUniform* InUniform, uint32_t Binding)
 {
     Uniform = InUniform;
-    PipelineFactory.SetUniformBinding(Binding);
 }
 
 void Renderer::SetTextureSampler(RHIImageResource* Texture, uint32_t Binding)
 {
-    PipelineFactory.SetImageSamplerBinding(Binding);
+    //PipelineFactory.SetImageSamplerBinding(Binding);
 }
 
 

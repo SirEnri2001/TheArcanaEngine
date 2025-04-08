@@ -15,7 +15,7 @@ struct PSInput
 };
 
 Texture2D g_texture : register(t0);
-SamplerState texSampler : register(s0);
+SamplerState texSampler : register(s1);
 cbuffer SceneConstantBuffer : register(b0)
 {
     float4x4 model;

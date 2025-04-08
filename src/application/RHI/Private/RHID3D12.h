@@ -10,6 +10,21 @@
 
 using Microsoft::WRL::ComPtr;
 
+struct DescriptorHeapAllocator
+{
+    ID3D12DescriptorHeap* Heap = nullptr;
+    D3D12_DESCRIPTOR_HEAP_TYPE  HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
+    D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
+    D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
+    UINT                        HeapHandleIncrement;
+    std::vector<int>               FreeIndices;
+
+    void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap);
+    void Destroy();
+    void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle);
+    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle);
+};
+
 // RHID3D12PlatformSupport
 class RHID3D12PlatformSupport : public RHIPlatformSupportBase
 {
@@ -34,10 +49,14 @@ public:
     HANDLE m_fenceEvent;
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValue;
-    ComPtr<ID3D12DescriptorHeap> m_Heap;
-    D3D12_CPU_DESCRIPTOR_HANDLE hCPUHeapStart;
-    D3D12_GPU_DESCRIPTOR_HANDLE hGPUHeapStart;
-    UINT HandleIncrementSize;
+    DescriptorHeapAllocator SRVHeapAllocator;
+    DescriptorHeapAllocator RTVHeapAllocator;
+    DescriptorHeapAllocator DSVHeapAllocator;
+
+    ComPtr<ID3D12DescriptorHeap> m_srvheap;
+    ComPtr<ID3D12DescriptorHeap> m_rtvheap;
+    ComPtr<ID3D12DescriptorHeap> m_dsvheap;
+
     RHID3D12Context() = default;
     virtual ~RHID3D12Context() override = default;
 
@@ -45,9 +64,6 @@ public:
     virtual void Cleanup() override;
     virtual void WaitDeviceIdle() override;
     void WaitForPreviousFrame();
-    void AllocateDescriptorHeap(CD3DX12_CPU_DESCRIPTOR_HANDLE& OutCpuDescriptorHandle, CD3DX12_GPU_DESCRIPTOR_HANDLE& OutGpuDescriptorHandle);
-    size_t m_HeapSize = 0;
-    size_t m_SamplerHeapSize = 0;
 };
 
 // RHID3D12WindowManager
@@ -96,6 +112,8 @@ public:
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE RTDSVGpuDescriptorHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE RTDSVCpuDescriptorHandle;
 };
 
 // RHID3D12BufferResource
@@ -140,7 +158,9 @@ public:
     uint32_t Height;
     uint32_t Width;
     std::vector<CD3DX12_CPU_DESCRIPTOR_HANDLE> ColorRTs;
+    std::vector<DXGI_FORMAT> ColorRTFormats;
     CD3DX12_CPU_DESCRIPTOR_HANDLE DepthRT;
+    DXGI_FORMAT DepthRTFormat;
 	RHID3D12RenderPass() = default;
 	virtual ~RHID3D12RenderPass() override = default;
 	virtual void Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY) override;
@@ -153,8 +173,8 @@ class RHID3D12PresentPass : public RHIPresentPassBase
 {
 public:
     ID3D12Resource* m_renderTargets[2];
-    ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-    UINT m_rtvDescriptorSize;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE m_rtvcpuhandles[2];
+    CD3DX12_GPU_DESCRIPTOR_HANDLE m_rtvgpuhandles[2];
     const UINT FrameCount = 2;
     UINT m_frameIndex;
 	RHID3D12PresentPass() = default;
@@ -221,13 +241,11 @@ public:
 class RHID3D12GraphicsDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
-    ID3D12DescriptorHeap* pHeaps;
-    uint32_t DescriptorHeapOffset;
     std::vector<D3D12_VERTEX_BUFFER_VIEW> BoundBufferViews;
     D3D12_INDEX_BUFFER_VIEW BoundIndexBufferView;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
     ID3D12Resource* CurrentRT;
+    ID3D12DescriptorHeap* pHeaps;
     RHID3D12GraphicsDispatcher() = default;
     virtual ~RHID3D12GraphicsDispatcher() override = default;
 

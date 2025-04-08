@@ -47,6 +47,7 @@ struct UniformBufferObject {
     alignas(16) float4x4 view;
     alignas(16) float4x4 proj;
     alignas(16) float4 viewPosition;
+    alignas(16) float4x4 modelInv;
 };
 
 void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float WindowHeight, float WindowWidth, glm::mat4 viewMat, float4 ViewPos) {
@@ -60,6 +61,7 @@ void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float Wind
     OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), WindowWidth / WindowHeight, 0.1f, 10.0f);
     OutUniformBufferObject.proj[1][1] *= -1;
     OutUniformBufferObject.viewPosition = ViewPos;
+    OutUniformBufferObject.modelInv = glm::inverse(OutUniformBufferObject.model);
 }
 auto viewMat = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 float4 ViewPos = { 2.,2.,2.,1. };
@@ -150,7 +152,7 @@ int main()
     //Log("Engine starts at ", "application mode", " ", 3);
     //Warning("This is a test warning. ");
     //Error("This is a test ERROR. ");
-    GRHIImplementationSelection = RHIImplement_Vulkan;
+    GRHIImplementationSelection = RHIImplement_D3D12;
     Scene MainScene;
     std::string TestJson = R"({
     "Children":[
@@ -203,7 +205,7 @@ int main()
     RHIUniform Uniform;
     Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
     RendererInstance.SetUniform(&Uniform, 0);
-    RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
+    //RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
     if(GRHIImplementationSelection==RHIImplement_Vulkan)
     {
 		RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV, postprocessvertSPV, postprocessfragSPV);
