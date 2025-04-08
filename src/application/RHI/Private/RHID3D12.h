@@ -94,7 +94,6 @@ public:
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
     virtual void Cleanup(RHIContext* Context) override;
 
-    void CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap);
     CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
 };
