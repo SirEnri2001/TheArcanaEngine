@@ -3,7 +3,7 @@
 #  cd build
 #  cmake -g "Visual Studio 14 2015" ..
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.10)
 project(imgui C CXX)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -34,6 +34,8 @@ include_directories(${GLFW_DIR}/deps)
 add_library(imgui STATIC
 ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp 
 ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp 
+${IMGUI_DIR}/backends/imgui_impl_dx12.cpp 
+${IMGUI_DIR}/backends/imgui_impl_win32.cpp 
 ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp 
 ${IMGUI_DIR}/imgui_demo.cpp 
 ${IMGUI_DIR}/imgui_tables.cpp 

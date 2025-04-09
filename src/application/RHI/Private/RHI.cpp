@@ -4,13 +4,18 @@
 #include "RHI.h"
 
 #include "Vulkan/RHIVulkan.h"
+#include "RHID3D12.h"
 
 RHIImplementationSelection GRHIImplementationSelection = RHIImplement_Vulkan;
 
 // RHIPlatformSupport implementation
 RHIPlatformSupport::RHIPlatformSupport()
 {
-	pImpl = std::make_unique<RHIVulkanPlatformSupport>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanPlatformSupport>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12PlatformSupport>();
+	}
 }
 
 RHIPlatformSupport::~RHIPlatformSupport()
@@ -46,7 +51,11 @@ void RHIPlatformSupport::InitializePhysicalDevice(RHIWindowManager* WindowManage
 // RHIContext implementation
 RHIContext::RHIContext()
 {
-	pImpl = std::make_unique<RHIVulkanContext>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanContext>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12Context>();
+	}
 }
 
 RHIContext::~RHIContext()
@@ -71,7 +80,11 @@ void RHIContext::WaitDeviceIdle()
 // RHIWindowManager implementation
 RHIWindowManager::RHIWindowManager()
 {
-	pImpl = std::make_unique<RHIVulkanWindowManager>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanWindowManager>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12WindowManager>();
+	}
 }
 
 RHIWindowManager::~RHIWindowManager()
@@ -123,21 +136,31 @@ uint32_t RHIWindowManager::GetWindowWidth()
 // RHIImageResource implementation
 RHIImageResource::RHIImageResource()
 {
-	pImpl = std::make_unique<RHIVulkanImageResource>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanImageResource>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12ImageResource>();
+	}
 }
 
 RHIImageResource::~RHIImageResource()
 {
 }
 
-void RHIImageResource::Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel)
+void RHIImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel)
 {
-	pImpl->Initialize(Context, ImageFileName, InFormat, MipLevel);
+	pImpl->Initialize(Context, Height, Width, InFormat, MipLevel);
 }
+
 
 void RHIImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
 {
 	pImpl->InitializeRenderTarget(Context, WindowManager, RTExtent, InUsage, MultiSamplesCount);
+}
+
+void RHIImageResource::CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride)
+{
+	pImpl->CopyToTexture(Context, Data, Stride);
 }
 
 void RHIImageResource::Cleanup(RHIContext* Context)
@@ -148,7 +171,11 @@ void RHIImageResource::Cleanup(RHIContext* Context)
 // RHIBufferResource implementation
 RHIBufferResource::RHIBufferResource()
 {
-	pImpl = std::make_unique<RHIVulkanBufferResource>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanBufferResource>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12BufferResource>();
+	}
 }
 
 RHIBufferResource::~RHIBufferResource()
@@ -173,7 +200,11 @@ void RHIBufferResource::Cleanup(RHIContext* Context)
 // RHIUniform implementation
 RHIUniform::RHIUniform()
 {
-	pImpl = std::make_unique<RHIVulkanUniform>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanUniform>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12Uniform>();
+	}
 }
 
 RHIUniform::~RHIUniform()
@@ -198,7 +229,11 @@ void RHIUniform::Cleanup(RHIContext* Context)
 // RHIRenderPass implementation
 RHIRenderPass::RHIRenderPass()
 {
-	pImpl = std::make_unique<RHIVulkanRenderPass>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanRenderPass>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12RenderPass>();
+	}
 }
 
 RHIRenderPass::~RHIRenderPass()
@@ -228,7 +263,12 @@ void RHIRenderPass::SetDepthRenderTarget(RHIImageResource* DepthRT)
 // RHIPresentPass implementation
 RHIPresentPass::RHIPresentPass()
 {
-	pImpl = std::make_unique<RHIVulkanPresentPass>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanPresentPass>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12PresentPass>();
+	}
+	
 }
 
 RHIPresentPass::~RHIPresentPass()
@@ -264,7 +304,11 @@ void RHIPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* Windo
 // RHIPipelineFactory implementation
 RHIPipelineFactory::RHIPipelineFactory()
 {
+		if (GRHIImplementationSelection == RHIImplement_Vulkan) {
 	pImpl = std::make_unique<RHIVulkanPipelineFactory>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+	pImpl = std::make_unique<RHID3D12PipelineFactory>();
+	}
 }
 
 RHIPipelineFactory::~RHIPipelineFactory()
@@ -325,7 +369,11 @@ void RHIPipelineFactory::Cleanup(RHIContext* Context)
 // RHIImGUI implementation
 RHIImGUI::RHIImGUI()
 {
-	pImpl = std::make_unique<RHIVulkanImGUI>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanImGUI>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12ImGUI>();
+	}
 }
 
 RHIImGUI::~RHIImGUI()
@@ -356,7 +404,11 @@ void RHIImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
 // RHIGraphicsDispatcher implementation
 RHIGraphicsDispatcher::RHIGraphicsDispatcher()
 {
-	pImpl = std::make_unique<RHIVulkanGraphicDispatcher>();
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanGraphicDispatcher>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12GraphicsDispatcher>();
+	}
 }
 
 RHIGraphicsDispatcher::~RHIGraphicsDispatcher()
@@ -421,7 +473,11 @@ void RHIGraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 }
 RHIPipelineObject::RHIPipelineObject()
 {
+		if (GRHIImplementationSelection == RHIImplement_Vulkan) {
     pImpl = std::make_unique<RHIVulkanPipelineObject>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+    pImpl = std::make_unique<RHID3D12PipelineObject>();
+	}
 }
 
 RHIPipelineObject::~RHIPipelineObject()

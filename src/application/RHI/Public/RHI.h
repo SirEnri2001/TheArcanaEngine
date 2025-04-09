@@ -27,6 +27,8 @@ class RHIPipelineObject;
 enum RHIFormat
 {
 	R8G8B8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
+	R8G8B8A8_UNORM, /**< float4 in hlsl, used in color rendertargets */
+    R32G32B32A32_SFLOAT, /**< float3 */
     R32G32B32_SFLOAT, /**< float3 */
     R32G32_SFLOAT /**< float2, uv coords */
 };
@@ -61,7 +63,7 @@ enum RHIImplementationSelection
 };
 
 
-extern RHIImplementationSelection GRHIImplementationSelection; /**< Specify which implementation we are currently using in the application */
+extern RHI_API RHIImplementationSelection GRHIImplementationSelection; /**< Specify which implementation we are currently using in the application */
 
 class RHIWindowManager;
 
@@ -187,8 +189,9 @@ public:
     RHIImageResourceBase() = default;
     RHIImageResourceBase(const RHIImageResourceBase&) = delete;
     virtual ~RHIImageResourceBase() = default;
-    virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) = 0;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel = -1) = 0;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) = 0;
+    virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
 };
 
@@ -202,14 +205,8 @@ class RHI_API RHIImageResource : public RHIImageResourceBase
 public:
     RHIImageResource();
     virtual ~RHIImageResource() override;
-	/**
-     * Initialize and create image resource. 
-     * @param Context 
-     * @param ImageFileName Image file name stored on disk
-     * @param InFormat 
-     * @param MipLevel How many levels in mip. -1 means maximum levels.
-     */
-    virtual void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat, uint32_t MipLevel = -1) override;
+
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel = -1) override;
     /**
      * Create a rendertarget that can be displayed on screen.
      * @param Context 
@@ -220,6 +217,7 @@ public:
      * @see RHIRenderPass::Initialize()
      */
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+    virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
     RHIImageResourceBase* GetImpl() { return pImpl.get(); }
 };

@@ -173,12 +173,6 @@ public:
 	void WaitDeviceIdle() override;
 };
 
-class RHIVulkanResourceFactory
-{
-public:
-	void Initialize();
-};
-
 class RHIVulkanWindowManager : public RHIWindowManagerBase
 {
 public:
@@ -233,14 +227,16 @@ public:
 	ImageUsage Usage;
 	VkDescriptorImageInfo DescriptorInfo;
 	VkFormat InnerFormat;
+	VkExtent3D ImageExtent;
+	uint32_t MipLevel = -1;
 
 	RHIVulkanImageResource() = default;
 	~RHIVulkanImageResource() override = default;
 
-	void Initialize(RHIContext* Context, const char* ImageFileName, RHIFormat InFormat,
-	                uint32_t MipLevel = -1) override;
+    void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t InMipLevel = -1) override;
 	void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent,
 	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+    void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
 	void Cleanup(RHIContext* Context) override;
 };
 

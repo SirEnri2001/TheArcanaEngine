@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 
 #define Warning(...) BasicWarning(__FILE__, "(", __LINE__, "): Warning: ", __VA_ARGS__)
