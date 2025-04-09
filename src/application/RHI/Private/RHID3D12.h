@@ -1,11 +1,12 @@
 #pragma once
 
-#define RHI_IMPLEMENT
 #include <dxgi1_4.h>
 #include <directx/d3dx12_core.h>
 #include <directx/d3dx12_root_signature.h>
 #include <wrl/client.h>
 
+#include "RHIImGuiHelper.h"
+#define RHI_IMPLEMENT
 #include "RHI.h"
 
 using Microsoft::WRL::ComPtr;
@@ -266,6 +267,7 @@ public:
 class RHID3D12ImGUI : public RHIImGUIBase
 {
 public:
+	ImGuiSharedGlobals ImGlobals;
     RHID3D12ImGUI() = default;
     virtual ~RHID3D12ImGUI() override = default;
 

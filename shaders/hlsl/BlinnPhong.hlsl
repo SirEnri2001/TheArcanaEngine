@@ -30,6 +30,7 @@ PSInput VSMain(VSInput input)
     PSInput result;
     float4x4 mpv = mul(proj, mul(view, model));
     result.position = mul(mpv, float4(input.inPosition, 1.0));
+    result.position /= result.position.w;
     result.fragPos = mul(model, float4(input.inPosition, 1.)).xyz;
     result.fragColor = input.inColor;
     result.fragNormal = mul(transpose(modelInv), float4(input.inNormal, 0.)).xyz;
