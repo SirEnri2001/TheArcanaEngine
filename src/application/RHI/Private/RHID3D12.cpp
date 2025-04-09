@@ -5,7 +5,6 @@
 
 #include "RHID3D12Impl.h"
 
-
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
@@ -415,13 +414,23 @@ void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindo
     textureDesc.SampleDesc.Count = 1;
     textureDesc.SampleDesc.Quality = 0;
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	D3D12_CLEAR_VALUE ColorRTClearValue;
+	D3D12_CLEAR_VALUE DSClearValue;
+    ColorRTClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    ColorRTClearValue.Color[0] = 1.0;
+    ColorRTClearValue.Color[1] = 0.0;
+    ColorRTClearValue.Color[2] = 1.0;
+    ColorRTClearValue.Color[3] = 1.0;
+    DSClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+    DSClearValue.DepthStencil.Depth = 1.0;
+    DSClearValue.DepthStencil.Stencil = 0;
 
     ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &textureDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
+        InUsage == ImageUsage::IU_DEPTH_RT ? D3D12_RESOURCE_STATE_DEPTH_WRITE: D3D12_RESOURCE_STATE_RENDER_TARGET,
+        InUsage == ImageUsage::IU_DEPTH_RT ? &DSClearValue : &ColorRTClearValue,
         IID_PPV_ARGS(&m_texture)));
 
     // Describe and create a SRV for the texture.
@@ -439,7 +448,7 @@ void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindo
     {
         D3D12_DEPTH_STENCIL_VIEW_DESC ds_desc{};
         ds_desc.Texture2D.MipSlice = 1;
-        ds_desc.Format = DXGI_FORMAT_R32_FLOAT;
+        ds_desc.Format = DXGI_FORMAT_D32_FLOAT;
         ds_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         D3D12Context->DSVHeapAllocator.Alloc(&RTDSVCpuDescriptorHandle, &RTDSVGpuDescriptorHandle);
         D3D12Context->m_device->CreateDepthStencilView(m_texture.Get(), NULL, RTDSVCpuDescriptorHandle);
@@ -728,13 +737,13 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthEnable = FALSE;
-        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         psoDesc.NumRenderTargets = D3D12RenderPassResource->ColorRTs.size();
         DXGI_FORMAT* PSOColorFormats = psoDesc.RTVFormats;
         memcpy(PSOColorFormats, D3D12RenderPassResource->ColorRTFormats.data(), min(D3D12RenderPassResource->ColorRTs.size(), 8));
+        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         psoDesc.SampleDesc.Count = Samplers.size();
         ThrowIfFailed(D3D12Context->m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));
     }
@@ -915,16 +924,20 @@ void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderP
         // Indicate that the back buffer will be used as a render target.
 
 
-    CD3DX12_VIEWPORT m_viewport{};
+    CD3DX12_VIEWPORT m_viewport(0., 0., D3D12RenderPass->Width, D3D12RenderPass->Height);
     CD3DX12_RECT m_scissorRect{};
-    m_viewport.Width = D3D12RenderPass->Width;
-    m_viewport.Height = D3D12RenderPass->Height;
-    m_scissorRect = CD3DX12_RECT(0., 0., m_viewport.Width, m_viewport.Height);
+    m_scissorRect = CD3DX12_RECT(0., 0., D3D12RenderPass->Width, D3D12RenderPass->Height);
     // Record commands.
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
     m_commandList->OMSetRenderTargets(D3D12RenderPass->ColorRTs.size(), D3D12RenderPass->ColorRTs.data(), 
         FALSE, &D3D12RenderPass->DepthRT);
+    const float clearColor[] = { 1.0f, 0.0f, 1.0f, 1.0f };
+    for(auto& ColorRT : D3D12RenderPass->ColorRTs)
+    {
+		m_commandList->ClearRenderTargetView(ColorRT, clearColor, 0, nullptr);
+    }
+	m_commandList->ClearDepthStencilView(D3D12RenderPass->DepthRT, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0, 0, 0, NULL);
 }
 
 void RHID3D12GraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
@@ -968,11 +981,11 @@ void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindow
     m_viewport.Width = WindowManager->GetWindowWidth();
     m_viewport.Height = WindowManager->GetWindowHeight();
     m_scissorRect = CD3DX12_RECT(0., 0., m_viewport.Width, m_viewport.Height);
-    // Record commands.
-    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
     CurrentRT = D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex];
     m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentRT,
         D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    // Record commands.
+    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
     m_commandList->ClearRenderTargetView(RTHandle, clearColor, 0, nullptr);
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
@@ -1029,7 +1042,7 @@ void RHID3D12RenderPass::SetDepthRenderTarget(RHIImageResource* InDepthRT)
 {
     auto* D3D12DepthRT = static_cast<RHID3D12ImageResource*>(InDepthRT->GetImpl());
     DepthRT = D3D12DepthRT->RTDSVCpuDescriptorHandle;
-    DepthRTFormat = DXGI_FORMAT_R32_FLOAT;
+    DepthRTFormat = DXGI_FORMAT_D32_FLOAT;
 }
 
 void RHID3D12RenderPass::Cleanup(RHIContext* Context)
@@ -1105,7 +1118,9 @@ void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMana
     auto* D3D12PresentPass = static_cast<RHID3D12PresentPass*>(PresentPass->GetImpl());
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    ImGlobals.Context = ImGui::CreateContext();
+	ImGui::GetAllocatorFunctions(&ImGlobals.MemAllocFunc, &ImGlobals.MemFreeFunc, &ImGlobals.UserData);
+
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
@@ -1122,7 +1137,7 @@ void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMana
     init_info.CommandQueue = D3D12Context->m_commandQueue.Get();
     init_info.NumFramesInFlight = APP_NUM_FRAMES_IN_FLIGHT;
     init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-    init_info.DSVFormat = DXGI_FORMAT_R32_FLOAT;
+    init_info.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
     // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
 
@@ -1153,77 +1168,25 @@ void RHID3D12ImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
 {
     auto* D3D12Dispatcher = static_cast<RHID3D12GraphicsDispatcher*>(Dispatcher->GetImpl());
 
-    // Our state
-    bool show_demo_window = true;
-    bool show_another_window = false;
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-
-    // Main loop
-    bool done = false;
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-    // Poll and handle messages (inputs, window resize, etc.)
-    // See the WndProc() function below for our to dispatch events to the Win32 backend.
     MSG msg;
     if (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
     {
         ::TranslateMessage(&msg);
         ::DispatchMessage(&msg);
     }
-
-    // Start the Dear ImGui frame
-    ImGui_ImplDX12_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-
-    // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-    if (show_demo_window)
-        ImGui::ShowDemoWindow(&show_demo_window);
-
-    // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-    {
-        static float f = 0.0f;
-        static int counter = 0;
-
-        ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-        ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-        ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-        ImGui::Checkbox("Another Window", &show_another_window);
-
-        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-        ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-        if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-            counter++;
-        ImGui::SameLine();
-        ImGui::Text("counter = %d", counter);
-
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-        ImGui::End();
-    }
-
-    // 3. Show another simple window.
-    if (show_another_window)
-    {
-        ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-        ImGui::Text("Hello from another window!");
-        if (ImGui::Button("Close Me"))
-            show_another_window = false;
-        ImGui::End();
-    }
-
-    // Rendering
-    ImGui::Render();
-    
     D3D12Dispatcher->m_commandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), D3D12Dispatcher->m_commandList.Get());
 }
 
 void RHID3D12ImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context))
 {
-    // Placeholder implementation
+    // Start the Dear ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+	pFuncDrawUI(&ImGlobals);
+    // Rendering
+    ImGui::Render();
 }
 
 void RHID3D12ImGUI::Cleanup()
