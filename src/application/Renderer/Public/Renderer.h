@@ -57,6 +57,7 @@ public:
 	RHIBufferResource RHIFullScreenQuadIndexBuffer;
 	RHIGraphicsDispatcher GraphicDispatcher;
 	RHIRenderPass RenderPass;
+	RHIRenderPass PresentPass;
 	RHIImageResource GBufferA;
 	RHIImageResource GBufferD;
 	std::vector<MeshRenderProxy*> MeshProxyPasses;
@@ -79,7 +80,6 @@ public:
 	// RHI Objects
 	RHIContext Context;
 	RHIWindowManager WindowManager;
-	RHIPresentPass PresentPass;
 	RHIImGUI ImGUI;
 	RHIImageResource ColorRenderTarget;
 	RHIImageResource DepthRenderTarget;

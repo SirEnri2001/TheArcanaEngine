@@ -47,5 +47,6 @@ float4 PSMain(PSInput input) : SV_TARGET
     float spec = pow(max(dot(input.fragNormal, halfwayDir), 0.), 16.);
     float ambient = 0.1;
     float diffuse = max(dot(input.fragNormal, lightDir), 0.);
-    return (ambient + diffuse + spec) * g_texture.Sample(texSampler, input.fragTexCoord);
+    float4 outColor = (ambient + diffuse + spec) * g_texture.Sample(texSampler, input.fragTexCoord);
+    return outColor;
 }
