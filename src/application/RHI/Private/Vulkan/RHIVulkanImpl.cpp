@@ -676,7 +676,8 @@ void CreateGraphicsPipeline(VkPipeline& OutGraphicsPipeline, VkPipelineLayout& O
     pipelineInfo.renderPass = RenderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &OutGraphicsPipeline) != VK_SUCCESS) {
+    VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &OutGraphicsPipeline);
+    if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
     }
 
