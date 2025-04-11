@@ -1,14 +1,13 @@
 #include "Numeric.hlsli"
-#include "Light.hlsl"
 
 struct PBRSurfaceOutputStandard
 {
     float3  albedo;
     float3  normalWS;
-    float3  emission;
+    // float3  emission;
     float   smoothness;
     float   metalness;
-    float   occlusion;
+    // float   occlusion;
 };
 
 // PBR Shading from Unreal Engine 4 https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf

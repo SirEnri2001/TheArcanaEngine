@@ -1,6 +1,8 @@
 #define COREGEOMETRY_INCLUDE
 #define CORESCENE_INCLUDE
 #define RENDERER_INCLUDE
+#define PBR_RENDERER_INCLUDE
+
 #include <chrono>
 #include <fstream>
 
@@ -9,6 +11,7 @@
 #include "CoreGeometry.h"
 #include "CoreScene.h"
 #include "CoreLog.inl"
+#include "PBRRenderer.h"
 #include "Renderer.h"
 #include "RHIImGuiHelper.h"
 
@@ -149,10 +152,11 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 
 int main()
 {
+#if 0
     //Log("Engine starts at ", "application mode", " ", 3);
     //Warning("This is a test warning. ");
     //Error("This is a test ERROR. ");
-    GRHIImplementationSelection = RHIImplement_D3D12;
+    GRHIImplementationSelection = RHIImplement_Vulkan;
     Scene MainScene;
     std::string TestJson = R"({
     "Children":[
@@ -223,4 +227,76 @@ int main()
         RendererInstance.UpdateFrame(RendererContext::Get());
     }
 	return 0;
+#else
+    GRHIImplementationSelection = RHIImplement_Vulkan;
+    Scene MainScene;
+    std::string TestJson = R"({
+    "Children":[
+        {
+            "Type":"Primitive",
+            "Mesh":"cube.obj",
+			"Transform":{
+		        "Location":{
+		            "x":1.0,
+		            "y":2.0,
+		            "z":3.0
+		        },
+		        "Rotation":{
+		            "x":0.0,
+		            "y":20.0,
+		            "z":30.0
+		        },
+		        "Scale":{
+		            "x":1.0,
+		            "y":2.0,
+		            "z":1.0
+		        }
+		    }
+        }
+    ]
+})";
+
+    RendererContext::Get()->Initialize(WIDTH, HEIGHT);
+
+    Scene::LoadSceneJson(MainScene, TestJson);
+    Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
+    StaticMesh.TexturePath = TEXTURE_PATH;
+
+    PBR::MaterialPropertyData roughBluePlastic  {{0.f, 0.f, 1.f}, 0.1f, 0.f};
+    PBR::MaterialPropertyData shinyRedMetal     {{1.f, 0.f, 0.f}, 0.9f, 1.0f};
+
+    PBR::PBRMeshRenderProxy MeshProxy;
+    MeshProxy.Initialize(RendererContext::Get(), StaticMesh, &roughBluePlastic);
+    // MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2, &shinyRedMetal);
+
+        
+    // Renderer
+    std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVert.spv");
+    std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFrag.spv");
+    PBRRenderer RendererInstance;    RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
+
+
+    // Draw
+    RendererInstance.AddSceneObject(MeshProxy);
+
+    UniformBufferObject ubo;
+    PBR::LightingData lightingData{glm::normalize(float3(0, -1, -1))};
+    PBR::TransformationData transformationData;
+    while (RendererContext::Get()->IsWindowAlive())
+    {
+        // calculate camera
+        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(), RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
+        transformationData.model = ubo.model;
+        transformationData.view = ubo.view;
+        transformationData.viewPosition = ubo.viewPosition;
+        transformationData.proj = ubo.proj;
+
+        // update uniform buffer
+        RendererInstance.SetUniform(PBR::RendererUniformType::Transformation, &transformationData);
+        RendererInstance.SetUniform(PBR::RendererUniformType::Lighting, &lightingData);
+
+        RendererInstance.UpdateFrame();
+    }
+    return 0;
+#endif
 }
