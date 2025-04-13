@@ -19,3 +19,15 @@ set_target_properties(tiny_obj_loader PROPERTIES FOLDER "Thirdparties/tiny_obj_l
 add_subdirectory(./DirectX-Headers-1.615.0)
 set(DirectXHeaders_INCLUDE_DIRS ${ThirdPartiesDir}/DirectX-Headers-1.615.0/include)
 set_target_properties(DirectX-Headers PROPERTIES FOLDER "Thirdparties/DirectX-Headers-1.615.0")
+
+# DXC EXE
+file(GLOB _dxc_path "${CMAKE_SOURCE_DIR}/src/thirdparties/dxc_2025_02_20")
+file(GLOB _dxc_exe_path "${_dxc_path}/bin/x64/dxc.exe")
+
+if(_dxc_exe_path)
+    list(GET _dxc_exe_path 0 _first_match)
+    set(DXC_EXE_PATH "${_first_match}" CACHE FILEPATH "Path to DirectX Shader Compiler with SPIRV CodeGen enabled")
+else()
+    message(WARNING "DXC not found")
+endif()
+
