@@ -25,7 +25,7 @@ float3 BRDF(PBRSurfaceOutputStandard surfaceOutput, float3 viewDirectionWS, floa
     
     /* Specular Part*/
     float roughness = 1 - surfaceOutput.smoothness;
-    roughness = clamp(roughness, 0.25f, 1.f - 0.25f);   
+    roughness = clamp(roughness, 0.25f, 1.f - 0.025f);   
     float alpha = roughness;
     float alphaSqr = alpha * alpha;
     
