@@ -3,12 +3,12 @@
 #define CORESCENE_INCLUDE
 
 #if defined(PBR_RENDERER_IMPLEMENT)
-#define PBR_RENDERER_API _declspec(dllexport)
+    #define PBR_RENDERER_API _declspec(dllexport)
 #elif defined(PBR_RENDERER_INCLUDE)
-#define PBR_RENDERER_API _declspec(dllimport)
+    #define PBR_RENDERER_API _declspec(dllimport)
 #else
-#error Please Specify API Linkage PBR_RENDERER
-#define PBR_RENDERER_API
+    #error Please Specify API Linkage PBR_RENDERER
+    #define PBR_RENDERER_API
 #endif
 
 

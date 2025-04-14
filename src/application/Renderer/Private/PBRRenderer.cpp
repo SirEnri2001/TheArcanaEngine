@@ -79,23 +79,30 @@ void PBRRenderer::Initialize(RendererContext* rendererContext, std::vector<char>
 bool PBRRenderer::SetUniform(RendererUniformType uniformType, void* data)
 {
 	bool success = false;
+    uint32_t bindingLocation;
 	TransformationData*		transformData;
     LightingData*			lightingData;
+    MaterialPropertyData*   materialData;
     switch (uniformType)
     {
-    
     case RendererUniformType::Transformation:
         transformData = static_cast<TransformationData*>(data);
         TransformationRelatedUniform.CopyToBuffer(&RContext->Context, transformData, sizeof(*transformData));
+        PresentPipelineObject.SetUniform(&TransformationRelatedUniform, GetUniformBinding(RendererUniformType::Transformation));
         success = true;
         break;
     case RendererUniformType::Lighting:
         lightingData = static_cast<LightingData*>(data);
         LightingRelatedUniform.CopyToBuffer(&RContext->Context, lightingData, sizeof(*lightingData));
+        PresentPipelineObject.SetUniform(&LightingRelatedUniform, GetUniformBinding(RendererUniformType::Lighting));
         success = true;
         break;
     case RendererUniformType::MaterialProperty:
-        // Material bound with PBRMeshProxy, shouldn't set manually (yet)
+        // TODO: Remove the following, material bound with PBRMeshProxy, shouldn't set manually
+        materialData = static_cast<MaterialPropertyData*>(data);
+        MaterialPropertyRelatedUniform.CopyToBuffer(&RContext->Context, materialData, sizeof(*materialData));
+        PresentPipelineObject.SetUniform(&MaterialPropertyRelatedUniform, GetUniformBinding(RendererUniformType::MaterialProperty));
+        break;
     default:
         break;
     }
@@ -104,8 +111,11 @@ bool PBRRenderer::SetUniform(RendererUniformType uniformType, void* data)
 
 void PBRRenderer::BindMaterial(PBR::MaterialPropertyData* materialData)
 {
-    MaterialPropertyRelatedUniform.CopyToBuffer(&RContext->Context, materialData, sizeof(*materialData));
-    PresentPipelineObject.SetUniform(&MaterialPropertyRelatedUniform, GetUniformBinding(RendererUniformType::MaterialProperty));
+    // TODO: change to descriptor binding instead of coherent mapped memory?
+    /*MaterialPropertyRelatedUniform.CopyToBuffer(&RContext->Context, materialData, sizeof(*materialData));
+    uint32_t bindingLocation = GetUniformBinding(RendererUniformType::MaterialProperty);
+    PresentPipelineObject.SetUniform(&MaterialPropertyRelatedUniform, bindingLocation);*/
+    SetUniform(RendererUniformType::MaterialProperty, materialData);
 }
 
 void PBRRenderer::UpdateFrame()
@@ -116,8 +126,7 @@ void PBRRenderer::UpdateFrame()
     GraphicDispatcher.BeginPresentPass(&rhiContext, &RContext->WindowManager, &RContext->PresentPass);
     for (const auto& [material, meshProxyList] : MaterialMap)
     {
-        BindMaterial(material);
-
+        BindMaterial(material); 
         // TODO: replace the following with draw instanced (batch?)
         for (PBRMeshRenderProxy* meshProxy : meshProxyList)
         {
@@ -125,8 +134,9 @@ void PBRRenderer::UpdateFrame()
             GraphicDispatcher.BindVertexBuffer(&meshProxy->RHIVertexBuffer, 0, 0);
             GraphicDispatcher.Dispatch(&RContext->WindowManager, &PresentPipelineObject, meshProxy->IndexBufferSize, 0, 1);
         }
-        GraphicDispatcher.EndPresentPassAndSubmit(&rhiContext, &RContext->WindowManager);
+        // break;  // TODO: remove the break for multiple materials (currently bugged)
     }
+    GraphicDispatcher.EndPresentPassAndSubmit(&rhiContext, &RContext->WindowManager);
 }
 
 

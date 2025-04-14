@@ -82,7 +82,7 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         ImGui::ShowDemoWindow(&show_demo_window);
     }
 
-    // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+    // 2. Show a simple window that we create ourselves. W e use a Begin/End pair to create a named window.
     {
         static float f = 0.0f;
         static int counter = 0;
@@ -149,6 +149,8 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.1f) * viewMat;
     }
 }
+
+int PBRRendererTest();
 
 int main()
 {
@@ -228,6 +230,13 @@ int main()
     }
 	return 0;
 #else
+    return PBRRendererTest();
+#endif
+}
+
+
+int PBRRendererTest()
+{
     GRHIImplementationSelection = RHIImplement_Vulkan;
     Scene MainScene;
     std::string TestJson = R"({
@@ -243,8 +252,8 @@ int main()
 		        },
 		        "Rotation":{
 		            "x":0.0,
-		            "y":20.0,
-		            "z":30.0
+		            "y":0.0,
+		            "z":0.0
 		        },
 		        "Scale":{
 		            "x":1.0,
@@ -260,27 +269,30 @@ int main()
 
     Scene::LoadSceneJson(MainScene, TestJson);
     Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
+    Mesh StaticMesh2 = Mesh::LoadObj(MODEL2_PATH);
     StaticMesh.TexturePath = TEXTURE_PATH;
 
-    PBR::MaterialPropertyData roughBluePlastic  {{0.f, 0.f, 1.f}, 0.1f, 0.f};
-    PBR::MaterialPropertyData shinyRedMetal     {{1.f, 0.f, 0.f}, 0.9f, 1.0f};
+    PBR::MaterialPropertyData roughBluePlastic{ {0.f, 0.f, 1.f}, 0.01f, 0.01f };
+    PBR::MaterialPropertyData shinyRedMetal{ {1.f, 0.f, 0.f}, 0.9f, 1.0f };
 
     PBR::PBRMeshRenderProxy MeshProxy;
-    MeshProxy.Initialize(RendererContext::Get(), StaticMesh, &roughBluePlastic);
-    // MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2, &shinyRedMetal);
+    PBR::PBRMeshRenderProxy MeshProxy2;
+    MeshProxy.Initialize(RendererContext::Get(), StaticMesh, &shinyRedMetal);
+    MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2, &roughBluePlastic);
 
-        
+
     // Renderer
-    std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVert.spv");
-    std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFrag.spv");
+    std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVertDebug.spv");
+    std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFragDebug.spv");
     PBRRenderer RendererInstance;    RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
 
 
     // Draw
     RendererInstance.AddSceneObject(MeshProxy);
+    RendererInstance.AddSceneObject(MeshProxy2);
 
     UniformBufferObject ubo;
-    PBR::LightingData lightingData{glm::normalize(float3(0, -1, -1))};
+    PBR::LightingData lightingData{ glm::normalize(float3(0, 0, 1)) };
     PBR::TransformationData transformationData;
     while (RendererContext::Get()->IsWindowAlive())
     {
@@ -294,9 +306,9 @@ int main()
         // update uniform buffer
         RendererInstance.SetUniform(PBR::RendererUniformType::Transformation, &transformationData);
         RendererInstance.SetUniform(PBR::RendererUniformType::Lighting, &lightingData);
+        // RendererInstance.SetUniform(PBR::RendererUniformType::MaterialProperty, &roughBluePlastic);
 
         RendererInstance.UpdateFrame();
     }
     return 0;
-#endif
 }
