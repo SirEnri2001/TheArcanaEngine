@@ -91,7 +91,7 @@ void RHIVulkanPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPi
 		CreateDescriptorSetLayout(VulkanPipelineObject->DescriptorSetLayout, DescSetLayoutBindings, VulkanContext->Device);
 		//CreateDescriptorPool(DescriptorPool, VulkanContext->Device);
 		//CreateDescriptorSet(DescriptorSet, WriteDescriptorSets, VulkanContext->Device, DescriptorPool, DescriptorSetLayout);
-	}
+	} 
 	else
 	{
 		VulkanPipelineObject->DescriptorSetLayout = nullptr;

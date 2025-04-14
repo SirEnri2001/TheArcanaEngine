@@ -1,6 +1,8 @@
 #define COREGEOMETRY_INCLUDE
 #define CORESCENE_INCLUDE
 #define RENDERER_INCLUDE
+#define PBR_RENDERER_INCLUDE
+
 #include <chrono>
 #include <fstream>
 
@@ -9,6 +11,7 @@
 #include "CoreGeometry.h"
 #include "CoreScene.h"
 #include "CoreLog.inl"
+#include "PBRRenderer.h"
 #include "Renderer.h"
 #include "RHIImGuiHelper.h"
 
@@ -79,7 +82,7 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         ImGui::ShowDemoWindow(&show_demo_window);
     }
 
-    // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+    // 2. Show a simple window that we create ourselves. W e use a Begin/End pair to create a named window.
     {
         static float f = 0.0f;
         static int counter = 0;
@@ -147,12 +150,15 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
     }
 }
 
+int PBRRendererTest();
+
 int main()
 {
+#if 0
     //Log("Engine starts at ", "application mode", " ", 3);
     //Warning("This is a test warning. ");
     //Error("This is a test ERROR. ");
-    GRHIImplementationSelection = RHIImplement_D3D12;
+    GRHIImplementationSelection = RHIImplement_Vulkan;
     Scene MainScene;
     std::string TestJson = R"({
     "Children":[
@@ -223,4 +229,86 @@ int main()
         RendererInstance.UpdateFrame(RendererContext::Get());
     }
 	return 0;
+#else
+    return PBRRendererTest();
+#endif
+}
+
+
+int PBRRendererTest()
+{
+    GRHIImplementationSelection = RHIImplement_Vulkan;
+    Scene MainScene;
+    std::string TestJson = R"({
+    "Children":[
+        {
+            "Type":"Primitive",
+            "Mesh":"cube.obj",
+			"Transform":{
+		        "Location":{
+		            "x":1.0,
+		            "y":2.0,
+		            "z":3.0
+		        },
+		        "Rotation":{
+		            "x":0.0,
+		            "y":0.0,
+		            "z":0.0
+		        },
+		        "Scale":{
+		            "x":1.0,
+		            "y":2.0,
+		            "z":1.0
+		        }
+		    }
+        }
+    ]
+})";
+
+    RendererContext::Get()->Initialize(WIDTH, HEIGHT);
+
+    Scene::LoadSceneJson(MainScene, TestJson);
+    Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
+    Mesh StaticMesh2 = Mesh::LoadObj(MODEL2_PATH);
+    StaticMesh.TexturePath = TEXTURE_PATH;
+
+    PBR::MaterialPropertyData roughBluePlastic{ {0.f, 0.f, 1.f}, 0.01f, 0.01f };
+    PBR::MaterialPropertyData shinyRedMetal{ {1.f, 0.f, 0.f}, 0.9f, 1.0f };
+
+    PBR::PBRMeshRenderProxy MeshProxy;
+    PBR::PBRMeshRenderProxy MeshProxy2;
+    MeshProxy.Initialize(RendererContext::Get(), StaticMesh, &shinyRedMetal);
+    MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2, &roughBluePlastic);
+
+
+    // Renderer
+    std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVertDebug.spv");
+    std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFragDebug.spv");
+    PBRRenderer RendererInstance;    RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
+
+
+    // Draw
+    RendererInstance.AddSceneObject(MeshProxy);
+    RendererInstance.AddSceneObject(MeshProxy2);
+
+    UniformBufferObject ubo;
+    PBR::LightingData lightingData{ glm::normalize(float3(0, 0, 1)) };
+    PBR::TransformationData transformationData;
+    while (RendererContext::Get()->IsWindowAlive())
+    {
+        // calculate camera
+        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(), RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
+        transformationData.model = ubo.model;
+        transformationData.view = ubo.view;
+        transformationData.viewPosition = ubo.viewPosition;
+        transformationData.proj = ubo.proj;
+
+        // update uniform buffer
+        RendererInstance.SetUniform(PBR::RendererUniformType::Transformation, &transformationData);
+        RendererInstance.SetUniform(PBR::RendererUniformType::Lighting, &lightingData);
+        // RendererInstance.SetUniform(PBR::RendererUniformType::MaterialProperty, &roughBluePlastic);
+
+        RendererInstance.UpdateFrame();
+    }
+    return 0;
 }

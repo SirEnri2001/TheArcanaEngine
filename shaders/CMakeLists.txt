@@ -23,3 +23,51 @@ foreach(SHADER_FILE ${SHADER_SOURCES})
     )
 endforeach()
 
+
+# -------------------------------------------------- HLSL ---------------------------------------------------------------------------
+set(HLSL_SHADER_VERT_SOURCES
+    ./hlsl/PBRVert.hlsl
+)
+set(HLSL_SHADER_FRAG_SOURCES
+    ./hlsl/PBRFrag.hlsl
+)
+
+make_directory(${SHADER_BYTECODE_DIRECTORY}/hlsl)
+add_custom_target(hlslCompile 
+    DEPENDS ${HLSL_SHADER_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# compile vertex shaders
+foreach(SHADER_FILE ${HLSL_SHADER_VERT_SOURCES})
+    get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WLE)
+
+    add_custom_command(TARGET hlslCompile
+    COMMAND
+        ${DXC_EXE_PATH} 
+            ${SHADER_FILE} 
+            -spirv 
+            -Zi 
+            -T vs_6_0 
+            -E main 
+            -Fo "${SHADER_BYTECODE_DIRECTORY}/hlsl/${SHADER_NAME}Debug.spv"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+    ) 
+endforeach()
+
+# compile pixel shaders
+foreach(SHADER_FILE ${HLSL_SHADER_FRAG_SOURCES})
+    get_filename_component(SHADER_NAME ${SHADER_FILE} NAME_WLE)
+
+    add_custom_command(TARGET hlslCompile
+    COMMAND
+        ${DXC_EXE_PATH} 
+            ${SHADER_FILE} 
+            -spirv 
+            -Zi 
+            -T ps_6_0 
+            -E main 
+            -Fo "${SHADER_BYTECODE_DIRECTORY}/hlsl/${SHADER_NAME}Debug.spv"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+    ) 
+endforeach()

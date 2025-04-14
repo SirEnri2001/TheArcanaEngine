@@ -6,6 +6,8 @@ set(Renderer_MODULE_ROOT ./src/application/Renderer)
 add_library(Renderer
 ./Public/Renderer.h
 ./Private/Renderer.cpp
+./Public/PBRRenderer.h
+./Private/PBRRenderer.cpp
 )
 
 target_include_directories(Renderer
