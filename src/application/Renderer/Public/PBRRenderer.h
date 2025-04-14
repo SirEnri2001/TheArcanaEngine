@@ -47,14 +47,14 @@ namespace PBR
     };
 
     /* render objects */
-    PBR_RENDERER_API struct PBRMeshRenderProxy
+    struct PBR_RENDERER_API PBRMeshRenderProxy
     {
         MaterialPropertyData* material;	// TODO: to a universal material type
 
         RHIBufferResource RHIVertexBuffer;
         RHIBufferResource RHIIndexBuffer;
         uint32_t IndexBufferSize;
-        PBR_RENDERER_API void Initialize(RendererContext* Context, Mesh& InMesh, MaterialPropertyData* InMaterial);
+        void Initialize(RendererContext* Context, Mesh& InMesh, MaterialPropertyData* InMaterial);
     };
 
     enum class RendererUniformType
@@ -67,7 +67,7 @@ namespace PBR
 
 
 
-PBR_RENDERER_API class PBRRenderer
+class PBR_RENDERER_API PBRRenderer
 {
 private:
     void BindMaterial(PBR::MaterialPropertyData* materialData);
@@ -87,11 +87,11 @@ public:
     RHIPipelineObject PresentPipelineObject;
     RHIGraphicsDispatcher GraphicDispatcher;
 
-    PBR_RENDERER_API void AddSceneObject(PBR::PBRMeshRenderProxy& MeshProxy);
+    void AddSceneObject(PBR::PBRMeshRenderProxy& MeshProxy);
 
-    PBR_RENDERER_API void Initialize(RendererContext* rendererContext, std::vector<char>& vs, std::vector<char>& ps);
+    void Initialize(RendererContext* rendererContext, std::vector<char>& vs, std::vector<char>& ps);
 
-    PBR_RENDERER_API bool SetUniform(PBR::RendererUniformType uniformType, void* data);
+    bool SetUniform(PBR::RendererUniformType uniformType, void* data);
 
-    PBR_RENDERER_API void UpdateFrame();
+    void UpdateFrame();
 };

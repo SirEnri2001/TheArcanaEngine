@@ -10,6 +10,8 @@ PUBLIC ./Public
 )
 
 add_dependencies(Engine glslCompile)
+add_dependencies(Engine hlslCompile)
+
 
 target_link_libraries(Engine CoreGeometry CoreScene Renderer CoreMath CoreLog CoreGeometry)
 
