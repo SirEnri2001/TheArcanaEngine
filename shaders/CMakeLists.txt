@@ -46,12 +46,12 @@ foreach(SHADER_FILE ${HLSL_SHADER_VERT_SOURCES})
     add_custom_command(TARGET hlslCompile
     COMMAND
         ${DXC_EXE_PATH} 
-            ${SHADER_FILE} 
             -spirv 
-            -Zi 
+            -fspv-extension=SPV_KHR_non_semantic_info
+            -fspv-debug=vulkan-with-source
             -T vs_6_0 
             -E main 
-            -Fo "${SHADER_BYTECODE_DIRECTORY}/hlsl/${SHADER_NAME}Debug.spv"
+            ${SHADER_FILE} -Fo "${SHADER_BYTECODE_DIRECTORY}/hlsl/${SHADER_NAME}Debug.spv"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
     ) 
 endforeach()
@@ -63,12 +63,12 @@ foreach(SHADER_FILE ${HLSL_SHADER_FRAG_SOURCES})
     add_custom_command(TARGET hlslCompile
     COMMAND
         ${DXC_EXE_PATH} 
-            ${SHADER_FILE} 
             -spirv 
-            -Zi 
+            -fspv-extension=SPV_KHR_non_semantic_info
+            -fspv-debug=vulkan-with-source
             -T ps_6_0 
             -E main 
-            -Fo "${SHADER_BYTECODE_DIRECTORY}/hlsl/${SHADER_NAME}Debug.spv"
+            ${SHADER_FILE} -Fo "${SHADER_BYTECODE_DIRECTORY}/hlsl/${SHADER_NAME}Debug.spv"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
     ) 
 endforeach()

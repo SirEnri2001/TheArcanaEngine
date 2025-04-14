@@ -41,7 +41,8 @@ void RHIVulkanPlatformSupport::Initialize()
 	PhysicalDeviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-		VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME
+		VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME,
+		VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME
 	};
 	RetrieveAvailablePhysicalDevices(AvailablePhysicalDevices, Instance, PhysicalDeviceExtensions);
 }
