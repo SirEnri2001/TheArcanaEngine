@@ -224,57 +224,19 @@ void RHIVulkanPresentPass::Initialize(RHIContext* Context, RHIWindowManager* Win
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
 	ColorRT = static_cast<RHIVulkanImageResource*>(InColorRT->GetImpl());
 	DepthRT = static_cast<RHIVulkanImageResource*>(InDepthRT->GetImpl());
-	msaaSamples = VK_SAMPLE_COUNT_4_BIT;
+	msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 	CreatePresentableRenderPass(RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat, msaaSamples);
-	CreateSwapchainFramebuffer(Context, WindowManager);
-}
-
-void RHIVulkanPresentPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	SwapchainFramebuffers.resize(VulkanWindowManager->CurrentSwapchain.SwapchainImageViews.size());
-	for (size_t i = 0; i < VulkanWindowManager->CurrentSwapchain.SwapchainImageViews.size(); i++) {
-		std::array<VkImageView, 3> attachments = {
-			ColorRT->ImageView,
-			DepthRT->ImageView,
-			VulkanWindowManager->CurrentSwapchain.SwapchainImageViews[i]
-		};
-
-		VkFramebufferCreateInfo framebufferInfo{};
-		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		framebufferInfo.renderPass = RenderPass;
-		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-		framebufferInfo.pAttachments = attachments.data();
-		framebufferInfo.width = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.width;
-		framebufferInfo.height = VulkanWindowManager->CurrentSwapchain.SwapchainExtent.height;
-		framebufferInfo.layers = 1;
-
-		if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &SwapchainFramebuffers[i]) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create framebuffer!");
-		}
-	}
-}
-
-void RHIVulkanPresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
-{
-    auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	for (auto framebuffer : SwapchainFramebuffers) {
-		vkDestroyFramebuffer(VulkanContext->Device, framebuffer, nullptr);
-	}
 }
 
 void RHIVulkanPresentPass::Cleanup(RHIContext* Context)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	CleanupSwapchainFramebuffer(Context);
 	vkDestroyRenderPass(VulkanContext->Device, RenderPass, nullptr);
 }
 
 void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)
 {
 	WindowManager->RecreateSwapchain(Context);
-	CleanupSwapchainFramebuffer(Context);
 	ColorRT->Cleanup(Context);
 	DepthRT->Cleanup(Context);
 	ImageExtent3D RenderTargetExtent;
@@ -283,7 +245,6 @@ void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager*
 	RenderTargetExtent.Depth = 1;
 	ColorRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, msaaSamples);
 	DepthRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, msaaSamples);
-	CreateSwapchainFramebuffer(Context, WindowManager);
 }
 
 void RHIVulkanGraphicDispatcher::Initialize(RHIContext* Context)
@@ -333,30 +294,16 @@ void RHIVulkanGraphicDispatcher::BindIndexBuffer(RHIBufferResource* BufferResour
 	IndexBindingInfo.Offset = Offset;
 }
 
-void RHIVulkanGraphicDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIVulkanGraphicDispatcher::Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
 	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject->GetImpl());
 	vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->Pipeline);
-
-	VkViewport viewport{};
-	viewport.x = 0.0f;
-	viewport.y = 0.0f;
-	viewport.width = (float)VulkanWindowManager->CurrentSwapchain.SwapchainExtent.width;
-	viewport.height = (float)VulkanWindowManager->CurrentSwapchain.SwapchainExtent.height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-	vkCmdSetViewport(CommandBuffer, 0, 1, &viewport);
-
-	VkRect2D scissor{};
-	scissor.offset = { 0, 0 };
-	scissor.extent = VulkanWindowManager->CurrentSwapchain.SwapchainExtent;
-	vkCmdSetScissor(CommandBuffer, 0, 1, &scissor);
 
 	for (auto& Info : BindingInfos)
 	{
 		vkCmdBindVertexBuffers(CommandBuffer, Info.BindingIndex, 1, &Info.BufferResource->Buffer, &Info.Offset);
 	}
+	BindingInfos.clear();
 	vkCmdBindIndexBuffer(CommandBuffer, IndexBindingInfo.BufferResource->Buffer, IndexBindingInfo.Offset, VK_INDEX_TYPE_UINT32);
 	if (VulkanPipeline->WriteDescriptorSets.size()>0)
 	{
@@ -374,9 +321,8 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
 	vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
 }
 
-void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass)
+void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
 
 	VkRenderPassBeginInfo renderPassInfo{};
@@ -394,61 +340,25 @@ void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderP
 	renderPassInfo.pClearValues = clearValues.data();
 
 	vkCmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-	
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = (float)VulkanRenderPass->Extent.width;
+	viewport.height = (float)VulkanRenderPass->Extent.height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(CommandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = VulkanRenderPass->Extent;
+	vkCmdSetScissor(CommandBuffer, 0, 1, &scissor);
 }
 
 void RHIVulkanGraphicDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 {
 	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
 	vkCmdEndRenderPass(CommandBuffer);
-}
-
-void RHIVulkanGraphicDispatcher::BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	auto* VulkanPresentPassResource = static_cast<RHIVulkanPresentPass*>(PresentPassResource->GetImpl());
-
-	glfwPollEvents();
-	WaitForGPUIdle(Context);
-	if (bWindowResizeLastframe)
-	{
-		PresentPassResource->OnWindowResize(Context, WindowManager);
-		bWindowResizeLastframe = false;
-	}
-	VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
-
-	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-		
-		PresentPassResource->OnWindowResize(Context, WindowManager);
-		bWindowResizeLastframe = false;
-		VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain, UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
-		if (result == VK_ERROR_OUT_OF_DATE_KHR)
-		{
-			throw std::runtime_error("failed to acquire swap chain after retry!");
-		}
-	}
-	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-		throw std::runtime_error("failed to acquire swap chain image!");
-	}
-
-	vkResetFences(VulkanContext->Device, 1, &InFlightFence);
-
-	VkRenderPassBeginInfo renderPassInfo{};
-	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	renderPassInfo.renderPass = VulkanPresentPassResource->RenderPass;
-	renderPassInfo.framebuffer = VulkanPresentPassResource->SwapchainFramebuffers[CurrentImageIndex];
-	renderPassInfo.renderArea.offset = { 0, 0 };
-	renderPassInfo.renderArea.extent = VulkanWindowManager->CurrentSwapchain.SwapchainExtent;
-
-	std::array<VkClearValue, 2> clearValues{};
-	clearValues[0].color = { {1.0f, 0.0f, 0.0f, 1.0f} };
-	clearValues[1].depthStencil = { 1000000.0f, 0 };
-
-	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-	renderPassInfo.pClearValues = clearValues.data();
-
-	vkCmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
 void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
@@ -458,14 +368,11 @@ void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
 }
 
 
-void RHIVulkanGraphicDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIVulkanGraphicDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	vkCmdEndRenderPass(CommandBuffer);
-	if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
-		throw std::runtime_error("failed to record command buffer!");
-	}
+
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -479,6 +386,10 @@ void RHIVulkanGraphicDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RH
 
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &RenderFinishSemaphore;
+
+	if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to record command buffer!");
+	}
 
 	if (vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence) != VK_SUCCESS) {
 		throw std::runtime_error("failed to submit draw command buffer!");
@@ -502,8 +413,64 @@ void RHIVulkanGraphicDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RH
 	}
 }
 
-void RHIVulkanGraphicDispatcher::BeginFrame()
+
+void RHIVulkanGraphicDispatcher::BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
 {
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	auto* VulkanPresentPass = static_cast<RHIVulkanRenderPass*>(PresentRenderPass->GetImpl());
+
+	glfwPollEvents();
+	WaitForGPUIdle(Context);
+	if (bWindowResizeLastframe)
+	{
+		//PresentPassResource->OnWindowResize(Context, WindowManager);
+		bWindowResizeLastframe = false;
+	}
+	VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain,
+		UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
+
+	while (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+
+		vkResetFences(VulkanContext->Device, 1, &InFlightFence);
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_ALL_COMMANDS_BIT };
+		if(result==VK_SUBOPTIMAL_KHR)
+		{
+			submitInfo.waitSemaphoreCount = 1;
+			submitInfo.pWaitSemaphores = &ImageAvailableSemaphore;
+		}
+		submitInfo.pWaitDstStageMask = waitStages;
+
+		submitInfo.commandBufferCount = 0;
+		submitInfo.pCommandBuffers = nullptr;
+
+		submitInfo.signalSemaphoreCount = 0;
+		submitInfo.pSignalSemaphores = nullptr;
+
+		if (vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence) != VK_SUCCESS) {
+			throw std::runtime_error("failed to submit draw command buffer!");
+		}
+
+		VulkanWindowManager->RecreateSwapchain(Context);
+		bWindowResizeLastframe = false;
+
+		result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain,
+			UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
+	}
+
+	if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+		throw std::runtime_error("failed to acquire swap chain image!");
+	}
+
+	VulkanPresentPass->FrameBuffer = VulkanWindowManager->CurrentSwapchain.SwapchainFramebuffers[CurrentImageIndex];
+	VulkanPresentPass->Extent.height = VulkanWindowManager->GetWindowHeight();
+	VulkanPresentPass->Extent.width = VulkanWindowManager->GetWindowWidth();
+
+	vkResetFences(VulkanContext->Device, 1, &InFlightFence);
+
 	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
 
 	VkCommandBufferBeginInfo beginInfo{};
@@ -515,12 +482,12 @@ void RHIVulkanGraphicDispatcher::BeginFrame()
 }
 
 
-void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass)
+void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
 {
 	auto VulkanPlatform = static_cast<RHIVulkanPlatformSupport*>(RHIPlatformSupport::Get()->GetImpl());
 	auto vkWindow = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
 	auto vkContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto vkPresentPass = static_cast<RHIVulkanPresentPass*>(PresentPass->GetImpl());
+	auto vkPresentPass = static_cast<RHIVulkanRenderPass*>(PresentRenderPass->GetImpl());
 	
     ImGlobals.Context = ImGui::CreateContext();
 	ImGui::GetAllocatorFunctions(&ImGlobals.MemAllocFunc, &ImGlobals.MemFreeFunc, &ImGlobals.UserData);
@@ -535,7 +502,7 @@ void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMan
 	ImGuiInitInfo.RenderPass = vkPresentPass->RenderPass;
 	ImGuiInitInfo.MinImageCount = 2;
 	ImGuiInitInfo.ImageCount = vkWindow->CurrentSwapchain.SwapchainImageViews.size();
-	ImGuiInitInfo.MSAASamples = vkPresentPass->msaaSamples;
+	ImGuiInitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
 	ImGui_ImplVulkan_Init(&ImGuiInitInfo);
 	ImGui_ImplGlfw_InitForVulkan(vkWindow->pGLFWwindow, true);
@@ -611,3 +578,4 @@ void RHIVulkanPipelineObject::Cleanup(RHIContext* Context)
 	vkDestroyPipelineLayout(VulkanContext->Device, PipelineLayout, nullptr);
 	vkDestroyDescriptorSetLayout(VulkanContext->Device, DescriptorSetLayout, nullptr);
 }
+

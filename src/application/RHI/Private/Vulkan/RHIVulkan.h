@@ -176,6 +176,7 @@ public:
 class RHIVulkanWindowManager : public RHIWindowManagerBase
 {
 public:
+	RHIRenderPass* PresentRenderPass;
 	RHIPlatformSupport* PlatformSupport;
 	GLFWwindow* pGLFWwindow;
 	VkSurfaceKHR Surface;
@@ -188,6 +189,7 @@ public:
 		VkSwapchainKHR Swapchain;
 		std::vector<VkImage> SwapchainImages;
 		std::vector<VkImageView> SwapchainImageViews;
+		std::vector<VkFramebuffer> SwapchainFramebuffers;
 		VkExtent2D SwapchainExtent;
 		VkFormat SwapchainImageFormat;
 	} CurrentSwapchain;
@@ -201,6 +203,9 @@ public:
 	void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) override;
 	void CleanupSwapchain(RHIContext* Context) override;
 	void RecreateSwapchain(RHIContext* Context) override;
+	void AddScreenSizeTexture(RHIImageResource* ImageResource) override;
+	void RemoveScreenSizeTexture(RHIImageResource* ImageResource) override;
+	void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) override;
 	bool IsAlive() override;
 
 	uint32_t GetWindowHeight() override
@@ -301,14 +306,11 @@ public:
 	RHIVulkanImageResource* ColorRT;
 	RHIVulkanImageResource* DepthRT;
 	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	std::vector<VkFramebuffer> SwapchainFramebuffers;
 	RHIVulkanPresentPass();
 	~RHIVulkanPresentPass() override;
 
 	void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples,
 	                RHIImageResource* ColorRT, RHIImageResource* DepthRT) override;
-	void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) override;
-	void CleanupSwapchainFramebuffer(RHIContext* Context) override;
 	void Cleanup(RHIContext* Context) override;
 	void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) override;
 };
@@ -368,10 +370,11 @@ class RHIVulkanImGUI : public RHIImGUIBase
 {
 public:
 	ImGuiSharedGlobals ImGlobals;
+	bool initialized = false;
 	RHIVulkanImGUI() = default;
 	~RHIVulkanImGUI() override = default;
 
-	void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass) override;
+	void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
 	void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
 	void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
 	void Cleanup() override;
@@ -404,13 +407,11 @@ public:
 	void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
 	void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
 	void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
-	void Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount,
+	void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount,
 	              uint32_t IndexOffset, uint32_t InstanceCount) override;
-	void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) override;
-	void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager,
-	                      RHIPresentPass* PresentPassResource) override;
+	void BeginRenderPass(RHIRenderPass* RenderPass) override;
 	void EndRenderPass(RHIRenderPass* RenderPass) override;
-	void EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
-	void BeginFrame() override;
+	void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
+	void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
 	void WaitForGPUIdle(RHIContext* Context) override;
 };

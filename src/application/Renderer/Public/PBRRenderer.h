@@ -3,7 +3,7 @@
 #define CORESCENE_INCLUDE
 
 #if defined(PBR_RENDERER_IMPLEMENT)
-    #define PBR_RENDERER_API _declspec(dllexport)
+#define PBR_RENDERER_API _declspec(dllexport)
 #elif defined(PBR_RENDERER_INCLUDE)
     #define PBR_RENDERER_API _declspec(dllimport)
 #else
@@ -27,29 +27,30 @@ class RendererContext;
 namespace PBR
 {
     /* cbuffers */
-    struct TransformationData {
-        float4x4	model;
-        float4x4	view;
-        float4x4    proj;
-        float4      viewPosition;
+    struct TransformationData
+    {
+        float4x4 model;
+        float4x4 view;
+        float4x4 proj;
+        float4 viewPosition;
     };
 
     struct MaterialPropertyData
     {
-        float3		Albedo;
-        float		Smoothness;
-        float		Metalness;
+        float3 Albedo;
+        float Smoothness;
+        float Metalness;
     };
 
     struct LightingData
     {
-        float3		LightDirection;
+        float3 LightDirection;
     };
 
     /* render objects */
     PBR_RENDERER_API struct PBRMeshRenderProxy
     {
-        MaterialPropertyData* material;	// TODO: to a universal material type
+        MaterialPropertyData* material; // TODO: to a universal material type
 
         RHIBufferResource RHIVertexBuffer;
         RHIBufferResource RHIIndexBuffer;
@@ -64,7 +65,6 @@ namespace PBR
         Lighting
     };
 }
-
 
 
 PBR_RENDERER_API class PBRRenderer
@@ -82,6 +82,8 @@ public:
     RHIUniform TransformationRelatedUniform;
     RHIUniform MaterialPropertyRelatedUniform;
     RHIUniform LightingRelatedUniform;
+
+    RHIRenderPass PresentPass;
 
     RHIPipelineFactory PipelineFactory;
     RHIPipelineObject PresentPipelineObject;

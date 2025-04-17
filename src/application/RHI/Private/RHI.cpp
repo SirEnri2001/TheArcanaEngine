@@ -116,6 +116,21 @@ void RHIWindowManager::RecreateSwapchain(RHIContext* Context)
 	pImpl->RecreateSwapchain(Context);
 }
 
+void RHIWindowManager::AddScreenSizeTexture(RHIImageResource* ImageResource)
+{
+	pImpl->AddScreenSizeTexture(ImageResource);
+}
+
+void RHIWindowManager::RemoveScreenSizeTexture(RHIImageResource* ImageResource)
+{
+	pImpl->RemoveScreenSizeTexture(ImageResource);
+}
+
+void RHIWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context)
+{
+	pImpl->InitializeRenderPassAsPresent(OutRenderPass, Context);
+}
+
 
 bool RHIWindowManager::IsAlive()
 {
@@ -280,16 +295,6 @@ void RHIPresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowMan
 	pImpl->Initialize(Context, WindowManager, MSAASamples, ColorRT, DepthRT);
 }
 
-void RHIPresentPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
-{
-	pImpl->CreateSwapchainFramebuffer(Context, WindowManager);
-}
-
-void RHIPresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
-{
-	pImpl->CleanupSwapchainFramebuffer(Context);
-}
-
 void RHIPresentPass::Cleanup(RHIContext* Context)
 {
 	pImpl->Cleanup(Context);
@@ -380,9 +385,9 @@ RHIImGUI::~RHIImGUI()
 {
 }
 
-void RHIImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass)
+void RHIImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
 {
-	pImpl->Initialize(Context, WindowManager, PresentPass);
+	pImpl->Initialize(Context, WindowManager, PresentRenderPass);
 }
 
 void RHIImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* ImGlobals))
@@ -435,36 +440,32 @@ void RHIGraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, u
 	pImpl->BindIndexBuffer(BufferResource, Offset);
 }
 
-void RHIGraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIGraphicsDispatcher::Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-	pImpl->Dispatch(WindowManager, PipelineObject, IndexCount, IndexOffset, InstanceCount);
+	pImpl->Dispatch(PipelineObject, IndexCount, IndexOffset, InstanceCount);
 }
 
-void RHIGraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass)
+void RHIGraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
 {
-	pImpl->BeginRenderPass(Context, RenderPass);
+	pImpl->BeginRenderPass(RenderPass);
 }
 
-
-void RHIGraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource)
-{
-	pImpl->BeginPresentPass(Context, WindowManager, PresentPassResource);
-}
 
 void RHIGraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 {
 	pImpl->EndRenderPass(RenderPass);
 }
 
-void RHIGraphicsDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIGraphicsDispatcher::BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
 {
-	pImpl->EndPresentPassAndSubmit(Context, WindowManager);
+	pImpl->BeginFrame(Context, WindowManager, PresentRenderPass);
 }
 
-void RHIGraphicsDispatcher::BeginFrame()
+void RHIGraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-	pImpl->BeginFrame();
+	pImpl->EndFrameAndSubmit(Context, WindowManager);
 }
+
 
 
 void RHIGraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)

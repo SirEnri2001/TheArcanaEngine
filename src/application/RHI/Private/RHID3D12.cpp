@@ -59,14 +59,15 @@ void DescriptorHeapAllocator::Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_ha
     int idx = FreeIndices.back();
     FreeIndices.pop_back();
     out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
-    out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+    if(out_gpu_desc_handle)
+    {
+		out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+    }
 }
 
-void DescriptorHeapAllocator::Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle)
+void DescriptorHeapAllocator::Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle)
 {
     int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
-    int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
-    assert(cpu_idx == gpu_idx);
     FreeIndices.push_back(cpu_idx);
 }
 
@@ -256,6 +257,8 @@ void RHID3D12WindowManager::Initialize(RHIPlatformSupport* PlatformSupport, uint
     );
     SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
     ShowWindow(hWnd, 1);
+
+
 }
 
 void RHID3D12WindowManager::Cleanup(RHIPlatformSupport* PlatformSupport)
@@ -292,6 +295,45 @@ void RHID3D12WindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatform
     ThrowIfFailed(D3D12Context->factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 
     ThrowIfFailed(swapChain.As(&m_swapChain));
+    // Create frame resources.
+    // Create a RTV for each frame.
+    m_rtvHandles.resize(FrameCount);
+
+    for (UINT n = 0; n < FrameCount; n++)
+    {
+        ID3D12Resource* pBackBuffer = nullptr;
+        ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pBackBuffer)));
+        D3D12Context->RTVHeapAllocator.Alloc(&m_rtvHandles[n], nullptr);
+        D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, m_rtvHandles[n]);
+        m_renderTargets[n] = pBackBuffer;
+    }
+        // Create the texture.
+    // Describe and create a Texture2D.
+    D3D12_RESOURCE_DESC textureDesc{};
+    textureDesc.MipLevels = 1;
+    textureDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    textureDesc.Width = m_width;
+    textureDesc.Height = m_height;
+    textureDesc.Flags =  D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+    textureDesc.DepthOrArraySize = 1;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.SampleDesc.Quality = 0;
+    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	D3D12_CLEAR_VALUE DSClearValue;
+    DSClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+    DSClearValue.DepthStencil.Depth = 1.0;
+    DSClearValue.DepthStencil.Stencil = 0;
+
+    ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &textureDesc,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        &DSClearValue,
+        IID_PPV_ARGS(&m_dsRenderTarget)));
+    
+    D3D12Context->DSVHeapAllocator.Alloc(&dsvHandle, nullptr);
+    D3D12Context->m_device->CreateDepthStencilView(m_dsRenderTarget.Get(), NULL, dsvHandle);
 }
 
 void RHID3D12WindowManager::CleanupSwapchain(RHIContext* Context)
@@ -300,13 +342,88 @@ void RHID3D12WindowManager::CleanupSwapchain(RHIContext* Context)
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
     D3D12Context->WaitForPreviousFrame();
+    for(auto* rt_buffer : m_renderTargets)
+    {
+	    rt_buffer->Release();
+    }
+    //m_dsRenderTarget->Release();
 }
 
 void RHID3D12WindowManager::RecreateSwapchain(RHIContext* Context)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    m_swapChain->ResizeBuffers(0, (UINT)LOWORD(ResizeParam), (UINT)HIWORD(ResizeParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+    D3D12Context->WaitForPreviousFrame();
+    CleanupSwapchain(Context);
+    m_width = (UINT)LOWORD(ResizeParam);
+    m_height = (UINT)HIWORD(ResizeParam);
+
+    HRESULT hr = m_swapChain->ResizeBuffers(0,
+        m_width,
+        m_height,
+        DXGI_FORMAT_UNKNOWN, 0);
+    ThrowIfFailed(hr);
+
+    for (UINT n = 0; n < FrameCount; n++)
+    {
+        ID3D12Resource* pBackBuffer = nullptr;
+        ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pBackBuffer)));
+        D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, m_rtvHandles[n]);
+        m_renderTargets[n] = pBackBuffer;
+    }
+    // Create the texture.
+    // Describe and create a Texture2D.
+    D3D12_RESOURCE_DESC textureDesc{};
+    textureDesc.MipLevels = 1;
+    textureDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    textureDesc.Width = m_width;
+    textureDesc.Height = m_height;
+    textureDesc.Flags =  D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+    textureDesc.DepthOrArraySize = 1;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.SampleDesc.Quality = 0;
+    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	D3D12_CLEAR_VALUE DSClearValue;
+    DSClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+    DSClearValue.DepthStencil.Depth = 1.0;
+    DSClearValue.DepthStencil.Stencil = 0;
+
+    ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &textureDesc,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        &DSClearValue,
+        IID_PPV_ARGS(&m_dsRenderTarget)));
+    
+    D3D12Context->m_device->CreateDepthStencilView(m_dsRenderTarget.Get(), NULL, dsvHandle);
+
+    D3D12Context->WaitForPreviousFrame();
+
 }
+
+void RHID3D12WindowManager::AddScreenSizeTexture(RHIImageResource* ImageResource)
+{
+	
+}
+
+void RHID3D12WindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context)
+{
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    auto* D3D12RenderPass = static_cast<RHID3D12RenderPass*>(OutRenderPass->GetImpl());
+    m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+    D3D12RenderPass->ColorRTs.resize(1);
+    D3D12RenderPass->ColorRTs[0] = m_rtvHandles[0];
+    D3D12RenderPass->ColorRTFormats.resize(1);
+    D3D12RenderPass->ColorRTFormats[0] = RTFormat;
+    D3D12RenderPass->Height = m_height;
+    D3D12RenderPass->Width = m_width;
+}
+
+void RHID3D12WindowManager::RemoveScreenSizeTexture(RHIImageResource* ImageResource)
+{
+	
+}
+
 
 bool RHID3D12WindowManager::IsAlive()
 {
@@ -383,7 +500,7 @@ void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, u
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
             IID_PPV_ARGS(&m_texture)));
-
+        ResourceStates = D3D12_RESOURCE_STATE_COPY_DEST;
         // Describe and create a SRV for the texture.
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Format = textureDesc.Format;
@@ -424,15 +541,16 @@ void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindo
     DSClearValue.Format = DXGI_FORMAT_D32_FLOAT;
     DSClearValue.DepthStencil.Depth = 1.0;
     DSClearValue.DepthStencil.Stencil = 0;
-
+    
+    ResourceStates = InUsage == ImageUsage::IU_DEPTH_RT ? D3D12_RESOURCE_STATE_DEPTH_WRITE: D3D12_RESOURCE_STATE_RENDER_TARGET;
     ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &textureDesc,
-        InUsage == ImageUsage::IU_DEPTH_RT ? D3D12_RESOURCE_STATE_DEPTH_WRITE: D3D12_RESOURCE_STATE_RENDER_TARGET,
+        ResourceStates,
         InUsage == ImageUsage::IU_DEPTH_RT ? &DSClearValue : &ColorRTClearValue,
         IID_PPV_ARGS(&m_texture)));
-
+    
     // Describe and create a SRV for the texture.
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Format = InUsage == ImageUsage::IU_DEPTH_RT ? DXGI_FORMAT_R32_FLOAT : textureDesc.Format;
@@ -751,58 +869,7 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
 
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPassResource)
 {
-    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    auto* D3D12PipelineObject = static_cast<RHID3D12PipelineObject*>(OutPipelineObject->GetImpl());
-    auto* D3D12PresentPassResource = static_cast<RHID3D12PresentPass*>(PresentPassResource->GetImpl());
-    D3D12PipelineObject->RootParameters = RootParameters;
-    // Create an empty root signature.
-    {
-        D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
-
-        // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
-        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
-
-        if (FAILED(D3D12Context->m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
-        {
-            featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
-        }
-
-        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init_1_1(RootParameters.size(),
-            RootParameters.data(),
-            Samplers.size(), Samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-        ComPtr<ID3DBlob> signature;
-        ComPtr<ID3DBlob> error;
-        D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
-        if (error.Get())
-        {
-            Error("D3DX12SerializeVersionedRootSignature error: ", reinterpret_cast<char*>(error->GetBufferPointer()));
-        }
-        ThrowIfFailed(D3D12Context->m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&D3D12PipelineObject->m_rootSignature)));
-        assert(D3D12PipelineObject->m_rootSignature);
-    }
-
-    // Create the pipeline state, which includes compiling and loading shaders.
-    {
-
-        // Describe and create the graphics pipeline state object (PSO).
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.InputLayout = D3D12_INPUT_LAYOUT_DESC{ inputElementDescs.data(), static_cast<unsigned int>(inputElementDescs.size()) };
-        psoDesc.pRootSignature = D3D12PipelineObject->m_rootSignature.Get();
-        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthEnable = FALSE;
-        psoDesc.DepthStencilState.StencilEnable = FALSE;
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.NumRenderTargets = D3D12PresentPassResource->FrameCount;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-        psoDesc.SampleDesc.Count = Samplers.size();
-        ThrowIfFailed(D3D12Context->m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));
-    }
+    
 }
 
 void RHID3D12PipelineFactory::Cleanup(RHIContext* Context)
@@ -840,6 +907,7 @@ void RHID3D12PipelineObject::SetImageSampler(RHIImageResource* ImageResource, ui
     }
     GpuDescriptorHandles[Binding] = D3D12ImageResource->GpuDescriptorHandle;
     srvDescriptions.push_back(D3D12ImageResource->srvDesc);
+    ImageToTransition.push_back(D3D12ImageResource);
 }
 
 // RHID3D12GraphicsDispatcher implementation
@@ -880,11 +948,20 @@ void RHID3D12GraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResour
     BoundIndexBufferView = D3D12BufferResource->m_indexBufferView;
 }
 
-void RHID3D12GraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHID3D12GraphicsDispatcher::Dispatch(RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     auto* D3D12Pipeline = static_cast<RHID3D12PipelineObject*>(Pipeline->GetImpl());
 
+    for(auto* ImageResource : D3D12Pipeline->ImageToTransition)
+    {
+        if(ImageResource->ResourceStates != D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+        {
+	        m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				ImageResource->m_texture.Get(),
+				ImageResource->ResourceStates, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE));
+	        ImageResource->ResourceStates = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+        }
+    }
     //ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), D3D12Pipeline->m_pipelineState.Get()));
     // Set necessary state.
     m_commandList->SetPipelineState(D3D12Pipeline->m_pipelineState.Get());
@@ -913,9 +990,8 @@ void RHID3D12GraphicsDispatcher::Dispatch(RHIWindowManager* WindowManager, RHIPi
 
 }
 
-void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass)
+void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
 {
-    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12RenderPass = static_cast<RHID3D12RenderPass*>(RenderPass->GetImpl());
     // Execute the command list.
     //ID3D12CommandList* pCommandList = m_commandList.Get();
@@ -927,6 +1003,18 @@ void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderP
     CD3DX12_VIEWPORT m_viewport(0., 0., D3D12RenderPass->Width, D3D12RenderPass->Height);
     CD3DX12_RECT m_scissorRect{};
     m_scissorRect = CD3DX12_RECT(0., 0., D3D12RenderPass->Width, D3D12RenderPass->Height);
+
+    for(auto* ImageResource : D3D12RenderPass->TransitionList)
+    {
+        if(ImageResource->ResourceStates != D3D12_RESOURCE_STATE_RENDER_TARGET)
+        {
+	        m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+				ImageResource->m_texture.Get(),
+				ImageResource->ResourceStates, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	        ImageResource->ResourceStates = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        }
+    }
+
     // Record commands.
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
@@ -940,66 +1028,14 @@ void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIContext* Context, RHIRenderP
 	m_commandList->ClearDepthStencilView(D3D12RenderPass->DepthRT, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0, 0, 0, NULL);
 }
 
-void RHID3D12GraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
+void RHID3D12GraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-    //auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    //// Execute the command list.
-    //ID3D12CommandList* pCommandList = m_commandList.Get();
-    //ThrowIfFailed(m_commandList->Close());
-    //D3D12Context->m_commandQueue->ExecuteCommandLists(1, &pCommandList);
-
-    //D3D12Context->WaitForPreviousFrame();
-    //ThrowIfFailed(m_commandList->Reset(D3D12Context->m_commandAllocator.Get(), nullptr));
-}
-
-
-void RHID3D12GraphicsDispatcher::BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource)
-{
-    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
-    auto* D3D12PresentPass = static_cast<RHID3D12PresentPass*>(PresentPassResource->GetImpl());
-
-    if(D3D12WindowManager->bResized)
-    {
-        PresentPassResource->OnWindowResize(Context, WindowManager);
-	    D3D12WindowManager->SetResized(false, NULL);
-    	D3D12Context->WaitForPreviousFrame();
-    }
-
-    D3D12PresentPass->m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
-    auto RTHandle = D3D12PresentPass->m_rtvcpuhandles[D3D12PresentPass->m_frameIndex];
-
-    // Execute the command list.
-    //ID3D12CommandList* pCommandList = m_commandList.Get();
-    //ThrowIfFailed(m_commandList->Close());
-    //D3D12Context->m_commandQueue->ExecuteCommandLists(1, &pCommandList);
-        // Indicate that the back buffer will be used as a render target.
-    
-    
-    CD3DX12_VIEWPORT m_viewport{};
-    CD3DX12_RECT m_scissorRect{};
-    m_viewport.Width = WindowManager->GetWindowWidth();
-    m_viewport.Height = WindowManager->GetWindowHeight();
-    m_scissorRect = CD3DX12_RECT(0., 0., m_viewport.Width, m_viewport.Height);
-    CurrentRT = D3D12PresentPass->m_renderTargets[D3D12PresentPass->m_frameIndex];
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentRT,
-        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-    // Record commands.
-    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
-    m_commandList->ClearRenderTargetView(RTHandle, clearColor, 0, nullptr);
-    m_commandList->RSSetViewports(1, &m_viewport);
-    m_commandList->RSSetScissorRects(1, &m_scissorRect);
-    m_commandList->OMSetRenderTargets(1, &RTHandle, FALSE, nullptr);
-
-}
-
-void RHID3D12GraphicsDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
-{
-    //ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
+	//ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     // Indicate that the back buffer will now be used to present.
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentRT,
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+        D3D12WindowManager->m_renderTargets[D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex()],
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
     // Execute the command list.
@@ -1016,8 +1052,34 @@ void RHID3D12GraphicsDispatcher::EndPresentPassAndSubmit(RHIContext* Context, RH
     ThrowIfFailed(m_commandList->Reset(D3D12Context->m_commandAllocator.Get(), nullptr));
 }
 
-void RHID3D12GraphicsDispatcher::BeginFrame()
+
+void RHID3D12GraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 {
+}
+
+
+void RHID3D12GraphicsDispatcher::BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
+{
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
+    auto* D3D12PresentRenderPass = static_cast<RHID3D12RenderPass*>(PresentRenderPass->GetImpl());
+
+    if (D3D12WindowManager->bResized)
+    {
+        D3D12WindowManager->RecreateSwapchain(Context);
+        D3D12WindowManager->SetResized(false, NULL);
+        D3D12Context->WaitForPreviousFrame();
+    }
+    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+        D3D12WindowManager->m_renderTargets[D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex()],
+        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    D3D12PresentRenderPass->ColorRTs.resize(1);
+    D3D12PresentRenderPass->ColorRTs[0] = D3D12WindowManager->m_rtvHandles[D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex()];
+    D3D12PresentRenderPass->ColorRTFormats.resize(1);
+    D3D12PresentRenderPass->ColorRTFormats[0] = D3D12WindowManager->RTFormat;
+    D3D12PresentRenderPass->DepthRT = D3D12WindowManager->dsvHandle;
+    D3D12PresentRenderPass->Height = D3D12WindowManager->m_height;
+    D3D12PresentRenderPass->Width = D3D12WindowManager->m_width;
 }
 
 void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
@@ -1036,6 +1098,7 @@ void RHID3D12RenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
     auto* D3D12ColorRT = static_cast<RHID3D12ImageResource*>(ColorRT->GetImpl());
     ColorRTs.push_back(D3D12ColorRT->RTDSVCpuDescriptorHandle);
     ColorRTFormats.push_back(DXGI_FORMAT_R8G8B8A8_UNORM);
+    TransitionList.push_back(D3D12ColorRT);
 }
 
 void RHID3D12RenderPass::SetDepthRenderTarget(RHIImageResource* InDepthRT)
@@ -1054,39 +1117,10 @@ void RHID3D12PresentPass::Cleanup(RHIContext* Context)
 {
 }
 
-void RHID3D12PresentPass::CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager)
-{
-    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
-    m_frameIndex = D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex();
-	// Create frame resources.
-    {
-        // Create a RTV for each frame.
-        for (UINT n = 0; n < FrameCount; n++)
-        {
-			ID3D12Resource* pBackBuffer = nullptr;
-            ThrowIfFailed(D3D12WindowManager->m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pBackBuffer)));
-            D3D12Context->RTVHeapAllocator.Alloc(&m_rtvcpuhandles[n], &m_rtvgpuhandles[n]);
-            D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, m_rtvcpuhandles[n]);
-            m_renderTargets[n] = pBackBuffer;
-        }
-    }
-}
-
-void RHID3D12PresentPass::CleanupSwapchainFramebuffer(RHIContext* Context)
-{
-    // Create a RTV for each frame.
-    for (UINT n = 0; n < FrameCount; n++)
-    {
-        m_renderTargets[n]->Release();
-    }
-}
-
 void RHID3D12PresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     D3D12Context->WaitForPreviousFrame();
-    CreateSwapchainFramebuffer(Context, WindowManager);
 }
 
 void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)
@@ -1094,7 +1128,6 @@ void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* 
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
     D3D12Context->WaitForPreviousFrame();
-	CleanupSwapchainFramebuffer(Context);
 
 	UINT width = (UINT)LOWORD(D3D12WindowManager->ResizeParam);
     UINT height = (UINT)HIWORD(D3D12WindowManager->ResizeParam);
@@ -1105,17 +1138,16 @@ void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* 
         DXGI_FORMAT_UNKNOWN, 0);
     ThrowIfFailed(hr);
     D3D12Context->WaitForPreviousFrame();
-    CreateSwapchainFramebuffer(Context, WindowManager);
 }
 
 static DescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
 static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
 // RHID3D12ImGUI implementation
-void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass)
+void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
-    auto* D3D12PresentPass = static_cast<RHID3D12PresentPass*>(PresentPass->GetImpl());
+    //auto* D3D12PresentPass = static_cast<RHID3D12PresentPass*>(PresentPass->GetImpl());
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGlobals.Context = ImGui::CreateContext();
@@ -1159,7 +1191,7 @@ void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMana
     };
     init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle)
     {
-	    return g_pd3dSrvDescHeapAlloc.Free(cpu_handle, gpu_handle);
+	    return g_pd3dSrvDescHeapAlloc.Free(cpu_handle);
     };
     ImGui_ImplDX12_Init(&init_info);
 }
