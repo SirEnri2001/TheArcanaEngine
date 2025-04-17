@@ -28,6 +28,6 @@ if(_dxc_exe_path)
     list(GET _dxc_exe_path 0 _first_match)
     set(DXC_EXE_PATH "${_first_match}" CACHE FILEPATH "Path to DirectX Shader Compiler with SPIRV CodeGen enabled")
 else()
-    message(WARNING "DXC not found")
+    message(WARNING "DXC not found! Need to manually set DXC_EXE_PATH or run the batch script under ./src/thirdparties/dxc_2025_02_20 to download one.")
+    set(DXC_EXE_PATH "" CACHE FILEPATH "Path to DirectX Shader Compiler with SPIRV CodeGen enabled")
 endif()
-
