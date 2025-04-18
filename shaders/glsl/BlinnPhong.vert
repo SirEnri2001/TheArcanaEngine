@@ -1,11 +1,17 @@
 #version 450
 
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
-    mat4 view;
-    mat4 proj;
-    vec4 viewPosition;
-} ubo;
+layout(binding = 0) uniform ViewObject {
+    mat4 View;
+    mat4 Projection;
+    vec4 ViewPosition;
+} View;
+
+layout(binding = 1) uniform MeshTransformObject {
+    mat4 Model;
+    mat4 ModelInv;
+} MeshTransform;
+
+layout(binding = 2) uniform sampler2D MeshTexture;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
@@ -18,9 +24,9 @@ layout(location = 2) out vec3 fragNormal;
 layout(location = 3) out vec3 fragPos;
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
-    fragPos = (ubo.model * vec4(inPosition, 1.0)).xyz;
+    gl_Position = View.Projection * View.View * MeshTransform.ModelInv * vec4(inPosition, 1.0);
+    fragPos = (MeshTransform.Model * vec4(inPosition, 1.0)).xyz;
     fragColor = inColor;
-    fragNormal = (transpose( inverse( ubo.model) ) * vec4(inNormal, 0.)).xyz;
+    fragNormal = (transpose( MeshTransform.ModelInv ) * vec4(inNormal, 0.)).xyz;
     fragTexCoord = inTexCoord;
 }

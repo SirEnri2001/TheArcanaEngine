@@ -44,28 +44,6 @@ std::vector<char> readFile(const std::string& filename) {
     return buffer;
 }
 
-
-struct UniformBufferObject {
-    alignas(16) float4x4 model;
-    alignas(16) float4x4 view;
-    alignas(16) float4x4 proj;
-    alignas(16) float4 viewPosition;
-    alignas(16) float4x4 modelInv;
-};
-
-void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float WindowHeight, float WindowWidth, glm::mat4 viewMat, float4 ViewPos) {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    OutUniformBufferObject.model = glm::mat4(1.0f);//glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    OutUniformBufferObject.view = viewMat;
-    OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), WindowWidth / WindowHeight, 0.1f, 10.0f);
-    OutUniformBufferObject.proj[1][1] *= -1;
-    OutUniformBufferObject.viewPosition = ViewPos;
-    OutUniformBufferObject.modelInv = glm::inverse(OutUniformBufferObject.model);
-}
 auto viewMat = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 float4 ViewPos = { 2.,2.,2.,1. };
 void DrawUI(ImGuiSharedGlobals* ImGlobals)
@@ -146,7 +124,7 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         {
             PlayerMove += float3(0., 1., 0.);
         }
-        viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.1f) * viewMat;
+        viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.01f) * viewMat;
     }
 }
 
@@ -154,7 +132,7 @@ int PBRRendererTest();
 
 int main()
 {
-#if 0
+#if 1
     //Log("Engine starts at ", "application mode", " ", 3);
     //Warning("This is a test warning. ");
     //Error("This is a test ERROR. ");
@@ -205,13 +183,8 @@ int main()
     RendererInstance.pFuncImDraw = DrawUI;
     MeshRenderProxy MeshProxy;
     MeshRenderProxy MeshProxy2;
-    MeshProxy.Initialize(RendererContext::Get(), StaticMesh);
-    MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2);
-    UniformBufferObject ubo;
-    RHIUniform Uniform;
-    Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
-    RendererInstance.SetUniform(&Uniform, 0);
-    //RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
+    MeshProxy.Initialize(RendererContext::Get(), StaticMesh, float4x4(1.0));
+    MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2, float4x4(1.0));
     if(GRHIImplementationSelection==RHIImplement_Vulkan)
     {
 		RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV, postprocessvertSPV, postprocessfragSPV);
@@ -224,8 +197,8 @@ int main()
     RendererInstance.DrawScene(RendererContext::Get(), MeshProxy2);
     while (RendererContext::Get()->IsWindowAlive())
     {
-        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(),  RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
-        Uniform.CopyToBuffer(&RendererContext::Get()->Context, &ubo, sizeof(ubo));
+        RendererInstance.UpdateViewMatrix(ViewPos, viewMat);
+        RendererInstance.UpdateViewport(glm::radians(45.), (float)RendererContext::Get()->WindowManager.GetWindowWidth() / RendererContext::Get()->WindowManager.GetWindowHeight());
         RendererInstance.UpdateFrame(RendererContext::Get());
     }
 	return 0;
@@ -284,24 +257,25 @@ int PBRRendererTest()
     // Renderer
     std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVertDebug.spv");
     std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFragDebug.spv");
-    PBRRenderer RendererInstance;    RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
+    PBRRenderer RendererInstance;
+	RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
 
 
     // Draw
     RendererInstance.AddSceneObject(MeshProxy);
     RendererInstance.AddSceneObject(MeshProxy2);
 
-    UniformBufferObject ubo;
+    //UniformBufferObject ubo;
     PBR::LightingData lightingData{ glm::normalize(float3(0, 0, 1)) };
     PBR::TransformationData transformationData;
     while (RendererContext::Get()->IsWindowAlive())
     {
         // calculate camera
-        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(), RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
-        transformationData.model = ubo.model;
-        transformationData.view = ubo.view;
-        transformationData.viewPosition = ubo.viewPosition;
-        transformationData.proj = ubo.proj;
+        //updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(), RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
+        //transformationData.model = ubo.model;
+        //transformationData.view = ubo.view;
+        //transformationData.viewPosition = ubo.viewPosition;
+        //transformationData.proj = ubo.proj;
 
         // update uniform buffer
         RendererInstance.SetUniform(PBR::RendererUniformType::Transformation, &transformationData);

@@ -6,6 +6,7 @@
 
 #include <stdexcept>
 #include <vector>
+#include <array>
 #include <cstdint>
 #include <cassert>
 #include <iostream>
@@ -114,6 +115,7 @@ void RHIVulkanWindowManager::Initialize(RHIPlatformSupport* InPlatformSupport, u
 	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
 	CreateVkSurface(VulkanPlatformSupport->Instance, pGLFWwindow, Surface);
 	PresentRenderPass = new RHIRenderPass();
+	DepthTarget = new RHIVulkanImageResource();
 }
 
 void RHIVulkanWindowManager::CleanupSwapchain(RHIContext* Context)
@@ -123,6 +125,7 @@ void RHIVulkanWindowManager::CleanupSwapchain(RHIContext* Context)
 		vkDestroyImageView(VulkanContext->Device, imageView, nullptr);
 	}
 	vkDestroySwapchainKHR(VulkanContext->Device, CurrentSwapchain.Swapchain, nullptr);
+	DepthTarget->Cleanup(Context);
 }
 
 void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport)
@@ -141,6 +144,11 @@ void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatfor
 		CurrentSwapchain.Swapchain, CurrentSwapchain.SwapchainImages, CurrentSwapchain.SwapchainImageViews, CurrentSwapchain.SwapchainImageFormat, CurrentSwapchain.SwapchainExtent,
 		VulkanContext->Device, Surface, SurfaceCapabilities, SurfaceFormats, PresentModes, 
 		VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex, VulkanPlatformSupport->CurrentPhysicalDevice.PresentQueueFamilyIndex);
+	VkExtent3D vkExtent;
+	vkExtent.height = CurrentSwapchain.SwapchainExtent.height;
+	vkExtent.width = CurrentSwapchain.SwapchainExtent.width;
+	vkExtent.depth = 1;
+	DepthTarget->InitializeRenderTarget(VulkanContext, this, vkExtent, IU_DEPTH_RT, 1);
 }
 
 void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context)
@@ -151,17 +159,16 @@ void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRen
 	CreatePresentableRenderPass(VulkanRenderPass->RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), CurrentSwapchain.SwapchainImageFormat, VK_SAMPLE_COUNT_1_BIT);
 	CurrentSwapchain.SwapchainFramebuffers.resize(CurrentSwapchain.SwapchainImageViews.size());
 	for (size_t i = 0; i < CurrentSwapchain.SwapchainImageViews.size(); i++) {
-		//std::array<VkImageView, 1> attachments = {
-		//	ColorRT->ImageView,
-		//	DepthRT->ImageView,
-		//	CurrentSwapchain.SwapchainImageViews[i]
-		//};
+		std::array<VkImageView, 2> attachments = {
+			CurrentSwapchain.SwapchainImageViews[i],
+			DepthTarget->ImageView
+		};
 
 		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = VulkanRenderPass->RenderPass;
-		framebufferInfo.attachmentCount = 1;//static_cast<uint32_t>(attachments.size());
-		framebufferInfo.pAttachments = &CurrentSwapchain.SwapchainImageViews[i];//attachments.data();
+		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		framebufferInfo.pAttachments = attachments.data();
 		framebufferInfo.width = CurrentSwapchain.SwapchainExtent.width;
 		framebufferInfo.height = CurrentSwapchain.SwapchainExtent.height;
 		framebufferInfo.layers = 1;
@@ -180,17 +187,16 @@ void RHIVulkanWindowManager::RecreateSwapchain(RHIContext* Context)
 	CleanupSwapchain(Context);
 	InitializeSwapchain(Context, PlatformSupport);
 	for (size_t i = 0; i < CurrentSwapchain.SwapchainImageViews.size(); i++) {
-		//std::array<VkImageView, 1> attachments = {
-		//	ColorRT->ImageView,
-		//	DepthRT->ImageView,
-		//	CurrentSwapchain.SwapchainImageViews[i]
-		//};
+		std::array<VkImageView, 2> attachments = {
+			CurrentSwapchain.SwapchainImageViews[i],
+			DepthTarget->ImageView
+		};
 
 		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = VulkanRenderPass->RenderPass;
-		framebufferInfo.attachmentCount = 1;//static_cast<uint32_t>(attachments.size());
-		framebufferInfo.pAttachments = &CurrentSwapchain.SwapchainImageViews[i];//attachments.data();
+		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		framebufferInfo.pAttachments = attachments.data();
 		framebufferInfo.width = CurrentSwapchain.SwapchainExtent.width;
 		framebufferInfo.height = CurrentSwapchain.SwapchainExtent.height;
 		framebufferInfo.layers = 1;

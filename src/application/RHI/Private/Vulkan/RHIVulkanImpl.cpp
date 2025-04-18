@@ -445,7 +445,7 @@ void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, V
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
-    //subpass.pDepthStencilAttachment = &depthAttachmentRef;
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;
     //subpass.pResolveAttachments = &colorAttachmentResolveRef;
 
     VkSubpassDependency dependency{};
@@ -457,7 +457,7 @@ void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, V
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
     //std::array<VkAttachmentDescription, 3> attachments = { colorAttachment, depthAttachment, colorAttachmentResolve 
-    std::array<VkAttachmentDescription, 1> attachments = { colorAttachment };
+    std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
@@ -964,5 +964,4 @@ void CreateMipmapForImage(VkCommandBuffer& InCommandBuffer, VkImage Image, int32
 		0, nullptr,
 		0, nullptr,
 		1, &barrier);
-
 }

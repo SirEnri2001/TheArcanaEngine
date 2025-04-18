@@ -29,9 +29,11 @@ class RENDERER_API MeshRenderProxy : public RenderProxyBase
 public:
 	RHIBufferResource RHIVertexBuffer;
 	RHIBufferResource RHIIndexBuffer;
-	RHIImageResource Texture;
+	RHIImageResource MeshTexture;
+	RHIUniform MeshTransformUniform;
 	uint32_t IndexBufferSize;
-	void Initialize(RendererContext* Context, Mesh& InMesh);
+	void Initialize(RendererContext* Context, Mesh& InMesh, float4x4 WorldTransformMatrix);
+	void SetViewMatrix(float4x4 ViewMatrix);
 	~MeshRenderProxy();
 };
 
@@ -48,7 +50,16 @@ class RENDERER_API UIRenderProxy : public RenderProxyBase
 class RENDERER_API Renderer
 {
 public:
-	RHIUniform* Uniform;
+	struct ViewObject
+	{
+	    alignas(16) float4x4 View;
+	    alignas(16) float4x4 Projection;
+	    alignas(16) float4 ViewPosition;
+	};
+
+	ViewObject VO;
+
+	RHIUniform ViewUniform;
 	uint32_t IndexBufferSize;
 	RHIPipelineFactory PipelineFactory;
 	RHIPipelineObject PipelineObject;
@@ -64,13 +75,11 @@ public:
 	void (*pFuncImDraw)(ImGuiSharedGlobals*);
 
 	void Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS, std::vector<char> VS1, std::vector<char> PS1);
-
-	void SetUniform(RHIUniform* Uniform, uint32_t Binding);
-
-	void SetTextureSampler(RHIImageResource* Texture, uint32_t Binding);
-
+	//void SetUniform(RHIUniform* Uniform, uint32_t Binding);
+	void UpdateViewMatrix(float4 CameraPosition, float4x4 ViewMatrix);
+	void UpdateViewport(float fovRadian, float AspectRatio);
+	//void SetTextureSampler(RHIImageResource* Texture, uint32_t Binding);
 	void DrawScene(RendererContext* Context, MeshRenderProxy& MeshProxy);
-
 	void UpdateFrame(RendererContext* RContext);
 };
 

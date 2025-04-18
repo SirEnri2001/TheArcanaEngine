@@ -8,6 +8,15 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	VkExtent3D vkExtent;
+	vkExtent.height = RTExtent.Height;
+	vkExtent.width = RTExtent.Width;
+	vkExtent.depth = RTExtent.Depth;
+	InitializeRenderTarget(VulkanContext, VulkanWindowManager, vkExtent, InUsage, MultiSamplesCount);
+}
+
+void RHIVulkanImageResource::InitializeRenderTarget(RHIVulkanContext* VulkanContext, RHIVulkanWindowManager* VulkanWindowManager, VkExtent3D vkExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
+{
 	VkImageUsageFlags VkImageUsage;
 	VkImageAspectFlagBits VkImageAspectFlagBits;
 	VkImageLayout VkLayout;
@@ -39,10 +48,6 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 	default:
 		throw std::runtime_error("Invalid usage bit for init a rendertarget");
 	}
-	VkExtent3D vkExtent;
-	vkExtent.height = RTExtent.Height;
-	vkExtent.width = RTExtent.Width;
-	vkExtent.depth = RTExtent.Depth;
 	CreateImage(Image, VulkanContext->Device, vkExtent, 1, static_cast<VkSampleCountFlagBits>(MultiSamplesCount), InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
     VkMemoryRequirements memRequirements;
     vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
@@ -66,7 +71,7 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, ui
 	MipLevel = InMipLevel;
 	if(InMipLevel==-1)
 	{
-		InMipLevel = static_cast<uint32_t>(std::floor(std::log2(std::max(Width, Height)))) + 1;
+		MipLevel = static_cast<uint32_t>(std::floor(std::log2(std::max(Width, Height)))) + 1;
 	}
 
 	if (Width<=0 || Height<=0) {
@@ -75,17 +80,16 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, ui
 	
 	VkMemoryRequirements memRequirements;
 
-	{
-		ImageExtent.height = Height;
-		ImageExtent.width = Width;
-		ImageExtent.depth = 1;
-		CreateImage(Image, VulkanContext->Device, ImageExtent, InMipLevel, VK_SAMPLE_COUNT_1_BIT, InnerFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-		vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
-		CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-		vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
-		CreateImageView(ImageView, Image, VulkanContext->Device, InnerFormat, VK_IMAGE_ASPECT_COLOR_BIT, InMipLevel);
-		CreateSampler(Sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
-	}
+	ImageExtent.height = Height;
+	ImageExtent.width = Width;
+	ImageExtent.depth = 1;
+	CreateImage(Image, VulkanContext->Device, ImageExtent, MipLevel, VK_SAMPLE_COUNT_1_BIT, InnerFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
+	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
+	CreateImageView(ImageView, Image, VulkanContext->Device, InnerFormat, VK_IMAGE_ASPECT_COLOR_BIT, MipLevel);
+	CreateSampler(Sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
+
 	bHasSampler = true;
 	DescriptorInfo = {Sampler, ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
 }
@@ -115,8 +119,7 @@ void RHIVulkanImageResource::CopyToTexture(RHIContext* Context, void* Data, uint
 	BeginCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
 	TransitionImageLayout(Image, commandBuffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevel);
 	CopyBufferToImage(stagingBuffer, Image, commandBuffer, ImageExtent.width, ImageExtent.height);
-	//CreateMipmapForImage(commandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
-	TransitionImageLayout(Image, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevel);
+	CreateMipmapForImage(commandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
 	EndCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->GraphicsQueue, VulkanContext->Device);
 
 	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);

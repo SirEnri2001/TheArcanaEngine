@@ -12,6 +12,7 @@
 #include "RHI.h"
 #include "RHIImGuiHelper.h"
 
+class RHIVulkanImageResource;
 // Forward declarations
 class RHIVulkanWindowManager;
 struct GLFWwindow;
@@ -183,6 +184,7 @@ public:
 	VkSurfaceCapabilitiesKHR SurfaceCapabilities;
 	std::vector<VkSurfaceFormatKHR> SurfaceFormats;
 	std::vector<VkPresentModeKHR> PresentModes;
+	RHIVulkanImageResource* DepthTarget;
 
 	struct SwapchainDesc
 	{
@@ -241,6 +243,8 @@ public:
     void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t InMipLevel = -1) override;
 	void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent,
 	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+	void InitializeRenderTarget(RHIVulkanContext* Context, RHIVulkanWindowManager* WindowManager, VkExtent3D vkExtent,
+	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1);
     void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
 	void Cleanup(RHIContext* Context) override;
 };
