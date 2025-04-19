@@ -18,5 +18,7 @@ PSInput VSMain(VSInput input){
 }
 
 float4 PSMain(PSInput input) : SV_TARGET{
-    return 1. - screen_texture.Sample(texSampler, input.position);
+    float4 outColor = 1. - screen_texture.Sample(texSampler, input.position.xy);
+    outColor.w = 1.;
+    return outColor;
 }

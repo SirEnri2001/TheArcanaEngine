@@ -23,7 +23,7 @@ struct DescriptorHeapAllocator
     void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap);
     void Destroy();
     void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle);
-    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle);
+    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle);
 };
 
 // RHID3D12PlatformSupport
@@ -78,6 +78,13 @@ public:
     ComPtr<IDXGISwapChain3> m_swapChain;
     bool bResized = false;
     LPARAM ResizeParam;
+    ID3D12Resource* m_renderTargets[2];
+    ComPtr<ID3D12Resource> m_dsRenderTarget;
+    std::vector<CD3DX12_CPU_DESCRIPTOR_HANDLE> m_rtvHandles;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle;
+    const UINT FrameCount = 2;
+    UINT m_frameIndex;
+    DXGI_FORMAT RTFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     RHID3D12WindowManager() = default;
     virtual ~RHID3D12WindowManager() override = default;
 
@@ -86,6 +93,9 @@ public:
     virtual void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) override;
     virtual void CleanupSwapchain(RHIContext* Context) override;
     virtual void RecreateSwapchain(RHIContext* Context) override;
+    virtual void AddScreenSizeTexture(RHIImageResource* ImageResource) override;
+    virtual void RemoveScreenSizeTexture(RHIImageResource* ImageResource) override;
+    virtual void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) override;
     virtual bool IsAlive() override;
     virtual uint32_t GetWindowHeight() override;
     virtual uint32_t GetWindowWidth() override;
@@ -115,6 +125,8 @@ public:
     CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
     CD3DX12_GPU_DESCRIPTOR_HANDLE RTDSVGpuDescriptorHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE RTDSVCpuDescriptorHandle;
+
+    D3D12_RESOURCE_STATES ResourceStates;
 };
 
 // RHID3D12BufferResource
@@ -160,6 +172,7 @@ public:
     uint32_t Width;
     std::vector<CD3DX12_CPU_DESCRIPTOR_HANDLE> ColorRTs;
     std::vector<DXGI_FORMAT> ColorRTFormats;
+    std::vector<RHID3D12ImageResource*> TransitionList;
     CD3DX12_CPU_DESCRIPTOR_HANDLE DepthRT;
     DXGI_FORMAT DepthRTFormat;
 	RHID3D12RenderPass() = default;
@@ -173,16 +186,9 @@ public:
 class RHID3D12PresentPass : public RHIPresentPassBase
 {
 public:
-    ID3D12Resource* m_renderTargets[2];
-    CD3DX12_CPU_DESCRIPTOR_HANDLE m_rtvcpuhandles[2];
-    CD3DX12_GPU_DESCRIPTOR_HANDLE m_rtvgpuhandles[2];
-    const UINT FrameCount = 2;
-    UINT m_frameIndex;
 	RHID3D12PresentPass() = default;
 	virtual ~RHID3D12PresentPass() override = default;
 	virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT) override;
-	virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) override;
-	virtual void CleanupSwapchainFramebuffer(RHIContext* Context) override;
 	virtual void Cleanup(RHIContext* Context) override;
 	virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) override;
 };
@@ -202,6 +208,7 @@ public:
     std::vector<D3D12_SHADER_RESOURCE_VIEW_DESC> srvDescriptions;
     std::vector<CD3DX12_GPU_DESCRIPTOR_HANDLE> GpuDescriptorHandles;
     std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
+    std::vector<RHID3D12ImageResource*> ImageToTransition;
     RHID3D12PipelineObject() = default;
     virtual ~RHID3D12PipelineObject() override = default;
     
@@ -245,7 +252,6 @@ public:
     std::vector<D3D12_VERTEX_BUFFER_VIEW> BoundBufferViews;
     D3D12_INDEX_BUFFER_VIEW BoundIndexBufferView;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    ID3D12Resource* CurrentRT;
     ID3D12DescriptorHeap* pHeaps;
     RHID3D12GraphicsDispatcher() = default;
     virtual ~RHID3D12GraphicsDispatcher() override = default;
@@ -254,13 +260,12 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
-    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    virtual void BeginFrame() override;
-	virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) override;
+    virtual void Dispatch(RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
+	virtual void BeginRenderPass(RHIRenderPass* RenderPass) override;
+    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
-	virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) override;
-	virtual void EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
-	virtual void WaitForGPUIdle(RHIContext* Context) override;
+    virtual void WaitForGPUIdle(RHIContext* Context) override;
 };
 
 // RHID3D12ImGUI
@@ -271,7 +276,7 @@ public:
     RHID3D12ImGUI() = default;
     virtual ~RHID3D12ImGUI() override = default;
 
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass) override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
     virtual void Cleanup() override;

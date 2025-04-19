@@ -20,6 +20,8 @@
 #include <memory>
 #include <vector>
 
+class RHIRenderPass;
+class RHIImageResource;
 class RHIPipelineObject;
 /** Pixel format used in all RHI implementations.
  * Every RHI implementation should always write its own convert function.
@@ -147,6 +149,9 @@ public:
     virtual void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) = 0;
     virtual void CleanupSwapchain(RHIContext* Context) = 0;
     virtual void RecreateSwapchain(RHIContext* Context) = 0;
+    virtual void AddScreenSizeTexture(RHIImageResource* ImageResource) = 0;
+    virtual void RemoveScreenSizeTexture(RHIImageResource* ImageResource) = 0;
+    virtual void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) = 0;
     virtual bool IsAlive() = 0;
     virtual uint32_t GetWindowHeight() = 0;
     virtual uint32_t GetWindowWidth() = 0;
@@ -177,6 +182,9 @@ public:
     virtual void InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport) override;
     virtual void CleanupSwapchain(RHIContext* Context) override;
     virtual void RecreateSwapchain(RHIContext* Context) override;
+    virtual void AddScreenSizeTexture(RHIImageResource* ImageResource) override;
+    virtual void RemoveScreenSizeTexture(RHIImageResource* ImageResource) override;
+    virtual void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) override;
     virtual bool IsAlive() override;
     virtual uint32_t GetWindowHeight() override;
     virtual uint32_t GetWindowWidth() override;
@@ -310,8 +318,6 @@ public:
     RHIPresentPassBase(const RHIPresentPassBase&) = delete;
     virtual ~RHIPresentPassBase() = default;
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT) = 0;
-    virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
-    virtual void CleanupSwapchainFramebuffer(RHIContext* Context) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
     virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
 };
@@ -326,8 +332,6 @@ public:
     RHIPresentPass();
     virtual ~RHIPresentPass() override;
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* ColorRT, RHIImageResource* DepthRT) override;
-    virtual void CreateSwapchainFramebuffer(RHIContext* Context, RHIWindowManager* WindowManager) override;
-    virtual void CleanupSwapchainFramebuffer(RHIContext* Context) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) override;
     RHIPresentPassBase* GetImpl() { return pImpl.get(); }
@@ -379,8 +383,8 @@ public:
     virtual void SetImageSamplerBinding(uint32_t Binding) override;
     virtual void RemoveAllGlobalBindings() override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
-    virtual void InitializePipelineObject(::RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource) override;
-    virtual void InitializePipelineObject(::RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass) override;
+    virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource) override;
+    virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass) override;
     virtual void Cleanup(RHIContext* Context) override;
     RHIPipelineFactoryBase* GetImpl() { return pImpl.get(); }
 };
@@ -421,12 +425,11 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
-    virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) = 0;
-    virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) = 0;
+    virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    virtual void BeginRenderPass(RHIRenderPass* RenderPass) = 0;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
-    virtual void EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
-    virtual void BeginFrame() = 0;
+    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
+    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void WaitForGPUIdle(RHIContext* Context) = 0;
 };
 
@@ -444,19 +447,17 @@ public:
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
     /**
-     * Call this between BeginRenderPass & EndRenderPass
-     * @param WindowManager 
+     * Call this between BeginRenderPass & EndRenderPass 
      * @param PipelineObject 
      * @param IndexCount 
      * @param IndexOffset 
      * @param InstanceCount 
      */
-    virtual void Dispatch(RHIWindowManager* WindowManager, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    virtual void BeginRenderPass(RHIContext* Context, RHIRenderPass* RenderPass) override;
-    virtual void BeginPresentPass(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPassResource) override;
+    virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void BeginRenderPass(RHIRenderPass* RenderPass) override;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
-    virtual void EndPresentPassAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
-    virtual void BeginFrame() override;
+    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
+    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void WaitForGPUIdle(RHIContext* Context) override;
     RHIGraphicsDispatcherBase* GetImpl() { return pImpl.get(); }
 };
@@ -468,7 +469,7 @@ public:
     RHIImGUIBase() = default;
     RHIImGUIBase(const RHIImGUIBase&) = delete;
     virtual ~RHIImGUIBase() = default;
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass) = 0;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) = 0;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) = 0;
 	virtual void Cleanup() = 0;
@@ -484,7 +485,7 @@ public:
     RHIImGUI();
     RHIImGUI(const RHIImGUI&) = delete;
     virtual ~RHIImGUI();
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIPresentPass* PresentPass) override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
     /**
      * Executes drawcalls for ImGUI.
      */

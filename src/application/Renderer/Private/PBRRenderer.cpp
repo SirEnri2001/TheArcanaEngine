@@ -4,6 +4,7 @@
 #include "PBRRenderer.h"
 #include <CoreLog.inl>
 #include <imgui.h>
+#include <directx/d3d12.h>
 
 #include "Renderer.h"
 
@@ -20,7 +21,8 @@ void PBRMeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh, Mate
     RHIVertexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
     RHIIndexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Indices.size(), BufferType::INDEX);
 
-    RHIVertexBuffer.CopyToBuffer(&Context->Context, InMesh.Vertices.data(), InMesh.Vertices.size() * sizeof(Mesh::VertexType));
+    RHIVertexBuffer.CopyToBuffer(&Context->Context, InMesh.Vertices.data(),
+        InMesh.Vertices.size() * sizeof(Mesh::VertexType));
     RHIIndexBuffer.CopyToBuffer(&Context->Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
 
     IndexBufferSize = InMesh.Indices.size();
@@ -52,43 +54,46 @@ void PBRRenderer::AddSceneObject(PBRMeshRenderProxy& MeshProxy)
 void PBRRenderer::Initialize(RendererContext* rendererContext, std::vector<char>& vs, std::vector<char>& ps)
 {
     RContext = rendererContext;
+    RContext->WindowManager.InitializeRenderPassAsPresent(&PresentPass, &RContext->Context);
 
-	PipelineFactory.SetShaders(vs, ps);
+    PipelineFactory.SetShaders(vs, ps);
 
-	/* Vertex Data*/
-	PipelineFactory.AddBufferBinding(0, sizeof(Mesh::VertexType));
-	PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
-	PipelineFactory.AddBufferLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
-	PipelineFactory.AddBufferLayout(0, 2, R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
-	PipelineFactory.AddBufferLayout(0, 3,  R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
+    /* Vertex Data*/
+    PipelineFactory.AddBufferBinding(0, sizeof(Mesh::VertexType));
+    PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
+    PipelineFactory.AddBufferLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
+    PipelineFactory.AddBufferLayout(0, 2, R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
+    PipelineFactory.AddBufferLayout(0, 3, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
 
-	/* Uniforms */
-    PipelineFactory.SetUniformBinding(0);   // MVP etc.
-    PipelineFactory.SetUniformBinding(1);   // PBR Material
-    PipelineFactory.SetUniformBinding(2);   // Lighting
+    /* Uniforms */
+    PipelineFactory.SetUniformBinding(0); // MVP etc.
+    PipelineFactory.SetUniformBinding(1); // PBR Material
+    PipelineFactory.SetUniformBinding(2); // Lighting
 
     TransformationRelatedUniform.Initialize(&RContext->Context, sizeof(TransformationData));
     MaterialPropertyRelatedUniform.Initialize(&RContext->Context, sizeof(MaterialPropertyData));
     LightingRelatedUniform.Initialize(&RContext->Context, sizeof(LightingData));
 
-	PipelineFactory.InitializePipelineObject(&PresentPipelineObject, &RContext->Context, &RContext->PresentPass);
+    PipelineFactory.InitializePipelineObject(&PresentPipelineObject, &RContext->Context, &PresentPass);
+
     GraphicDispatcher.Initialize(&RContext->Context);
 }
 
 
 bool PBRRenderer::SetUniform(RendererUniformType uniformType, void* data)
 {
-	bool success = false;
+    bool success = false;
     uint32_t bindingLocation;
-	TransformationData*		transformData;
-    LightingData*			lightingData;
-    MaterialPropertyData*   materialData;
+    TransformationData* transformData;
+    LightingData* lightingData;
+    MaterialPropertyData* materialData;
     switch (uniformType)
     {
     case RendererUniformType::Transformation:
         transformData = static_cast<TransformationData*>(data);
         TransformationRelatedUniform.CopyToBuffer(&RContext->Context, transformData, sizeof(*transformData));
-        PresentPipelineObject.SetUniform(&TransformationRelatedUniform, GetUniformBinding(RendererUniformType::Transformation));
+        PresentPipelineObject.SetUniform(&TransformationRelatedUniform,
+            GetUniformBinding(RendererUniformType::Transformation));
         success = true;
         break;
     case RendererUniformType::Lighting:
@@ -101,12 +106,13 @@ bool PBRRenderer::SetUniform(RendererUniformType uniformType, void* data)
         // TODO: Remove the following, material bound with PBRMeshProxy, shouldn't set manually
         materialData = static_cast<MaterialPropertyData*>(data);
         MaterialPropertyRelatedUniform.CopyToBuffer(&RContext->Context, materialData, sizeof(*materialData));
-        PresentPipelineObject.SetUniform(&MaterialPropertyRelatedUniform, GetUniformBinding(RendererUniformType::MaterialProperty));
+        PresentPipelineObject.SetUniform(&MaterialPropertyRelatedUniform,
+            GetUniformBinding(RendererUniformType::MaterialProperty));
         break;
     default:
         break;
     }
-	return success;
+    return success;
 }
 
 void PBRRenderer::BindMaterial(PBR::MaterialPropertyData* materialData)
@@ -120,23 +126,29 @@ void PBRRenderer::BindMaterial(PBR::MaterialPropertyData* materialData)
 
 void PBRRenderer::UpdateFrame()
 {
-    RHIContext& rhiContext = RContext->Context;
+    auto& rhiContext = RContext->Context;
+    auto& windowManager = RContext->WindowManager;
+
     GraphicDispatcher.WaitForGPUIdle(&rhiContext);
-    GraphicDispatcher.BeginFrame();
-    GraphicDispatcher.BeginPresentPass(&rhiContext, &RContext->WindowManager, &RContext->PresentPass);
-    for (const auto& [material, meshProxyList] : MaterialMap)
+    GraphicDispatcher.BeginFrame(&rhiContext, &windowManager, &PresentPass);
     {
-        BindMaterial(material); 
-        // TODO: replace the following with draw instanced (batch?)
-        for (PBRMeshRenderProxy* meshProxy : meshProxyList)
+        GraphicDispatcher.BeginRenderPass(&PresentPass);
         {
-            GraphicDispatcher.BindIndexBuffer(&meshProxy->RHIIndexBuffer, 0);
-            GraphicDispatcher.BindVertexBuffer(&meshProxy->RHIVertexBuffer, 0, 0);
-            GraphicDispatcher.Dispatch(&RContext->WindowManager, &PresentPipelineObject, meshProxy->IndexBufferSize, 0, 1);
+            for (const auto& [material, meshProxyList] : MaterialMap)
+            {
+                BindMaterial(material);
+                // TODO: replace the following with draw instanced (batch?)
+                for (PBRMeshRenderProxy* meshProxy : meshProxyList)
+                {
+                    GraphicDispatcher.BindIndexBuffer(&meshProxy->RHIIndexBuffer, 0);
+                    GraphicDispatcher.BindVertexBuffer(&meshProxy->RHIVertexBuffer, 0, 0);
+                    GraphicDispatcher.Dispatch(&PresentPipelineObject, meshProxy->IndexBufferSize, 0, 1);
+                }
+                // break;  // TODO: remove the break for multiple materials (currently bugged)
+            }
         }
-        // break;  // TODO: remove the break for multiple materials (currently bugged)
+        GraphicDispatcher.EndRenderPass(&PresentPass);
     }
-    GraphicDispatcher.EndPresentPassAndSubmit(&rhiContext, &RContext->WindowManager);
+    GraphicDispatcher.EndFrameAndSubmit(&rhiContext, &windowManager);
+
 }
-
-
