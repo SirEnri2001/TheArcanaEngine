@@ -64,6 +64,34 @@ namespace PBR
         MaterialProperty,
         Lighting
     };
+
+    class PBR_RENDERER_API PerspectiveCamera
+    {
+        const static float3 WorldUp;
+        void UpdateVPMat();
+    public:
+        float3 Position;
+        float3 Front;
+        float3 Up;
+        float3 Right;
+
+        float FovDegree;
+        float Aspect;
+        float NearPlane;
+        float FarPlane;
+
+        float4x4 m_vpMat;
+
+
+        PerspectiveCamera();
+        void MoveForward(float dist);
+        void MoveUpward(float dist);
+
+        void MoveBackward(float dist) { MoveForward(-dist); }
+        void MoveDownward(float dist) { MoveUpward(-dist); }
+    };
+
+    void PBR_RENDERER_API UpdateUI(ImGuiSharedGlobals* ImGlobals);
 }
 
 
@@ -76,6 +104,8 @@ private:
     static uint32_t GetUniformBinding(PBR::RendererUniformType uniformType);
 
 public:
+    void (*mp_funcImDraw)(ImGuiSharedGlobals*);
+
     RendererContext* RContext;
 
     std::map<PBR::MaterialPropertyData*, std::vector<PBR::PBRMeshRenderProxy*>> MaterialMap;

@@ -234,7 +234,6 @@ int main()
 #endif
 }
 
-
 int PBRRendererTest()
 {
     GRHIImplementationSelection = RHIImplement_Vulkan;
@@ -265,6 +264,7 @@ int PBRRendererTest()
     ]
 })";
 
+
     RendererContext::Get()->Initialize(WIDTH, HEIGHT);
 
     Scene::LoadSceneJson(MainScene, TestJson);
@@ -285,8 +285,8 @@ int PBRRendererTest()
     std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVertDebug.spv");
     std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFragDebug.spv");
     PBRRenderer RendererInstance;    RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
-
-
+    RendererInstance.mp_funcImDraw = DrawUI;
+    
     // Draw
     RendererInstance.AddSceneObject(MeshProxy);
     RendererInstance.AddSceneObject(MeshProxy2);
@@ -306,7 +306,6 @@ int PBRRendererTest()
         // update uniform buffer
         RendererInstance.SetUniform(PBR::RendererUniformType::Transformation, &transformationData);
         RendererInstance.SetUniform(PBR::RendererUniformType::Lighting, &lightingData);
-        // RendererInstance.SetUniform(PBR::RendererUniformType::MaterialProperty, &roughBluePlastic);
 
         RendererInstance.UpdateFrame();
     }

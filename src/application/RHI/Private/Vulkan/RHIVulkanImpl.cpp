@@ -92,6 +92,7 @@ void CreateVkInstance(
     InOutExtensions = std::vector<const char*>(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
     InOutExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    InOutExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
     const std::vector<const char*> validationLayers = {
         "VK_LAYER_KHRONOS_validation"
