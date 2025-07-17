@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cassert>
 #include <iostream>
+#include <array>
 
 #include "RHIVulkanImpl.h"
 #include "GLFW/glfw3.h"
@@ -151,23 +152,32 @@ void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRen
 	CreatePresentableRenderPass(VulkanRenderPass->RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), CurrentSwapchain.SwapchainImageFormat, VK_SAMPLE_COUNT_1_BIT);
 	CurrentSwapchain.SwapchainFramebuffers.resize(CurrentSwapchain.SwapchainImageViews.size());
 	for (size_t i = 0; i < CurrentSwapchain.SwapchainImageViews.size(); i++) {
-		//std::array<VkImageView, 1> attachments = {
-		//	ColorRT->ImageView,
-		//	DepthRT->ImageView,
-		//	CurrentSwapchain.SwapchainImageViews[i]
-		//};
-
 		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = VulkanRenderPass->RenderPass;
 		framebufferInfo.attachmentCount = 1;//static_cast<uint32_t>(attachments.size());
 		framebufferInfo.pAttachments = &CurrentSwapchain.SwapchainImageViews[i];//attachments.data();
+
 		framebufferInfo.width = CurrentSwapchain.SwapchainExtent.width;
 		framebufferInfo.height = CurrentSwapchain.SwapchainExtent.height;
 		framebufferInfo.layers = 1;
+		if (VulkanRenderPass->DepthRenderTargets != nullptr) {
+			std::array<VkImageView, 2> attachments = {
+				CurrentSwapchain.SwapchainImageViews[i],
+                VulkanRenderPass->DepthRenderTargets->ImageView
+			};
 
-		if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create framebuffer!");
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments = attachments.data();
+
+			if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
+				throw std::runtime_error("failed to create framebuffer!");
+			}
+		}
+		else {
+			if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
+				throw std::runtime_error("failed to create framebuffer!");
+			}
 		}
 	}
 }

@@ -113,6 +113,7 @@ void CreateDescriptorSet(VkDescriptorSet& OutDescriptorSet, std::vector<VkWriteD
 
 VkSampleCountFlagBits GetMaxUsableSampleCount(VkPhysicalDevice& PhysicalDevice);
 
+// Create mipmap level for image & set image layout to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 void CreateMipmapForImage(VkCommandBuffer& InCommandBuffer, VkImage Image, int32_t TexWidth, int32_t TexHeight, uint32_t MipmapLevel);
 
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);

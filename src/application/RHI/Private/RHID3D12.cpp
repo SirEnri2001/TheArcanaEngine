@@ -470,7 +470,7 @@ void RHID3D12Context::WaitForPreviousFrame()
 }
 
 
-void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, uint32_t MipLevel)
+void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, int32_t MipLevel)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until

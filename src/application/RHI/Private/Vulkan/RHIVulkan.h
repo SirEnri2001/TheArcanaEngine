@@ -178,6 +178,7 @@ class RHIVulkanWindowManager : public RHIWindowManagerBase
 public:
 	RHIRenderPass* PresentRenderPass;
 	RHIPlatformSupport* PlatformSupport;
+	
 	GLFWwindow* pGLFWwindow;
 	VkSurfaceKHR Surface;
 	VkSurfaceCapabilitiesKHR SurfaceCapabilities;
@@ -238,7 +239,7 @@ public:
 	RHIVulkanImageResource() = default;
 	~RHIVulkanImageResource() override = default;
 
-    void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t InMipLevel = -1) override;
+    void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t InMipLevel = -1) override;
 	void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent,
 	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
     void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;

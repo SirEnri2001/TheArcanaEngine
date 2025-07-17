@@ -53,7 +53,7 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 }
 
 
-void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t InMipLevel)
+void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t InMipLevel)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	Usage = IU_GENERAL;
@@ -63,11 +63,11 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, ui
 	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
 		throw std::runtime_error("texture image format does not support linear blitting!");
 	}
-	MipLevel = InMipLevel;
 	if(InMipLevel==-1)
 	{
 		InMipLevel = static_cast<uint32_t>(std::floor(std::log2(std::max(Width, Height)))) + 1;
 	}
+	MipLevel = InMipLevel;
 
 	if (Width<=0 || Height<=0) {
 		throw std::runtime_error("failed to load texture image!");
@@ -115,8 +115,8 @@ void RHIVulkanImageResource::CopyToTexture(RHIContext* Context, void* Data, uint
 	BeginCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
 	TransitionImageLayout(Image, commandBuffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevel);
 	CopyBufferToImage(stagingBuffer, Image, commandBuffer, ImageExtent.width, ImageExtent.height);
-	//CreateMipmapForImage(commandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
-	TransitionImageLayout(Image, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevel);
+	CreateMipmapForImage(commandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
+	TransitionImageLayout(Image, commandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevel);
 	EndCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->GraphicsQueue, VulkanContext->Device);
 
 	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);

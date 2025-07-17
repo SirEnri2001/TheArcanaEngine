@@ -197,7 +197,7 @@ public:
     RHIImageResourceBase() = default;
     RHIImageResourceBase(const RHIImageResourceBase&) = delete;
     virtual ~RHIImageResourceBase() = default;
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel = -1) = 0;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t MipLevel = -1) = 0;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) = 0;
     virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
@@ -214,7 +214,7 @@ public:
     RHIImageResource();
     virtual ~RHIImageResource() override;
 
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel = -1) override;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t MipLevel = -1) override;
     /**
      * Create a rendertarget that can be displayed on screen.
      * @param Context 

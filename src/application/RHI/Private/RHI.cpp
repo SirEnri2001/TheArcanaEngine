@@ -162,7 +162,7 @@ RHIImageResource::~RHIImageResource()
 {
 }
 
-void RHIImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, uint32_t MipLevel)
+void RHIImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t MipLevel)
 {
 	pImpl->Initialize(Context, Height, Width, InFormat, MipLevel);
 }
