@@ -398,7 +398,8 @@ bool PhysicalDeviceSupportSurface(
     return formatCount > 0 && presentModeCount > 0;
 }
 
-void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkFormat DepthFormat, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples)
+void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, bool hasDepth, VkFormat DepthFormat, 
+    VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples)
 {
 	VkAttachmentDescription colorAttachment{};
     colorAttachment.format = SwapchainImageFormat;
@@ -434,6 +435,7 @@ void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, V
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+
     VkAttachmentReference depthAttachmentRef{};
     depthAttachmentRef.attachment = 1;
     depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -446,7 +448,9 @@ void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, V
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
-    subpass.pDepthStencilAttachment = &depthAttachmentRef;
+    if (hasDepth) {
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
+    }
     //subpass.pResolveAttachments = &colorAttachmentResolveRef;
 
     VkSubpassDependency dependency{};
@@ -461,7 +465,7 @@ void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, V
     std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.attachmentCount = hasDepth ? 2 : 1;
     renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;

@@ -43,11 +43,6 @@ void RHIPlatformSupport::Cleanup()
 	pImpl->Cleanup();
 }
 
-void RHIPlatformSupport::InitializePhysicalDevice(RHIWindowManager* WindowManager)
-{
-	pImpl->InitializePhysicalDevice(WindowManager);
-}
-
 // RHIContext implementation
 RHIContext::RHIContext()
 {

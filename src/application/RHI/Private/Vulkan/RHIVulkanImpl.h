@@ -76,7 +76,7 @@ VkFormat findSupportedFormat(VkPhysicalDevice PhysicalDevice, const std::vector<
 VkFormat findDepthFormat(VkPhysicalDevice PhysicalDevice);
 
 void CreateRenderPassSingleSubpass(VkRenderPass& OutRenderPass, VkDevice Device, const std::vector<VkAttachmentDescription>& Attachments, int32_t DepthAttachementIndex);
-void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, VkFormat DepthFormat, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples);
+void CreatePresentableRenderPass(VkRenderPass& OutRenderPass, VkDevice Device, bool hasDepth, VkFormat DepthFormat, VkFormat SwapchainImageFormat, VkSampleCountFlagBits msaaSamples);
 
 void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, const std::vector<VkDescriptorSetLayoutBinding>& DescSetLayoutBindings, VkDevice Device);
 

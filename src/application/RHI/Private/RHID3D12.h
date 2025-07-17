@@ -35,7 +35,6 @@ public:
 
     virtual void Initialize() override;
     virtual void Cleanup() override;
-    virtual void InitializePhysicalDevice(RHIWindowManager* WindowManager) override;
 };
 
 // RHID3D12Context

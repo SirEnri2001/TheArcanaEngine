@@ -138,7 +138,6 @@ void RendererContext::Initialize(int Width, int Height)
 	}
     RHIPlatformSupport::Get()->Initialize();
     WindowManager.Initialize(RHIPlatformSupport::Get(), Height, Width);
-    RHIPlatformSupport::Get()->InitializePhysicalDevice(&WindowManager);
 	Context.Initialize(RHIPlatformSupport::Get());
     WindowManager.InitializeSwapchain(&Context, RHIPlatformSupport::Get());
     ColorRenderTarget.InitializeRenderTarget(&Context, &WindowManager, {WindowManager.GetWindowWidth(), WindowManager.GetWindowHeight(), 1}, IU_COLOR_PRESENT_RT, 4);

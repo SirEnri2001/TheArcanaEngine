@@ -77,7 +77,6 @@ public:
     virtual ~RHIPlatformSupportBase() = default;
     virtual void Initialize() = 0;
     virtual void Cleanup() = 0;
-    virtual void InitializePhysicalDevice(RHIWindowManager* WindowManager) = 0;
 };
 
 /**
@@ -103,11 +102,6 @@ public:
 	 * Should be called last in the graphical context.
 	 */
 	virtual void Cleanup() override;
-	/**
-	 * Retrieve all properties from initialized WindowManager.
-	 * @param WindowManager Initialized WindowManager
-	 */
-	virtual void InitializePhysicalDevice(RHIWindowManager* WindowManager) override;
     static RHIPlatformSupport* Get();
     RHIPlatformSupportBase* GetImpl() { return pImpl.get(); }
 };

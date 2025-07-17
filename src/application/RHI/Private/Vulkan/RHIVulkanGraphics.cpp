@@ -225,7 +225,7 @@ void RHIVulkanPresentPass::Initialize(RHIContext* Context, RHIWindowManager* Win
 	ColorRT = static_cast<RHIVulkanImageResource*>(InColorRT->GetImpl());
 	DepthRT = static_cast<RHIVulkanImageResource*>(InDepthRT->GetImpl());
 	msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	CreatePresentableRenderPass(RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat, msaaSamples);
+	CreatePresentableRenderPass(RenderPass, VulkanContext->Device, DepthRT!=nullptr, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat, msaaSamples);
 }
 
 void RHIVulkanPresentPass::Cleanup(RHIContext* Context)

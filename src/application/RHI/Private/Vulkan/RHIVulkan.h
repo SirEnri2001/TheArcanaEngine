@@ -42,7 +42,6 @@ public:
 
 	void Initialize() override;
 	void Cleanup() override;
-	void InitializePhysicalDevice(RHIWindowManager* WindowManager) override;
 
 
 	// Vulkan api loaders

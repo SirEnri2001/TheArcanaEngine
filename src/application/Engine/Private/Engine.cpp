@@ -15,6 +15,8 @@
 #include "Renderer.h"
 #include "RHIImGuiHelper.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -152,8 +154,182 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 
 int PBRRendererTest();
 
+class RenderViewport {
+public:
+    RHIContext Context;
+    RHIWindowManager WindowManager;
+
+    RenderViewport() {
+
+    }
+
+    void InitializeViewport(int Width, int Height) {
+        RHIPlatformSupport::Get()->Initialize();
+        WindowManager.Initialize(RHIPlatformSupport::Get(), Height, Width);
+        Context.Initialize(RHIPlatformSupport::Get());
+        WindowManager.InitializeSwapchain(&Context, RHIPlatformSupport::Get());
+    }
+
+    bool IsWindowAlive() {
+        return WindowManager.IsAlive();
+    }
+};
+
+class PassPipeline {
+public:
+    virtual void InitializePipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) = 0;
+};
+
+class BlinnPhongPipeline : public PassPipeline {
+public:
+    RHIPipelineFactory PipelineFactory;
+    RHIPipelineObject PipelineObject;
+    RHIPipelineObject PresentPipelineObject;
+
+    std::vector<char> VertexShaderSPIRV;
+    std::vector<char> FragmentShaderSPIRV;
+
+    BlinnPhongPipeline() {
+        VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
+        FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
+    }
+
+    virtual void InitializePipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) override {
+        PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+        PipelineFactory.SetUniformBinding(0);
+        PipelineFactory.SetImageSamplerBinding(1);
+        PipelineFactory.AddBufferBinding(0, sizeof(Mesh::VertexType));
+        PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
+        PipelineFactory.AddBufferLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
+        PipelineFactory.AddBufferLayout(0, 2, R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
+        PipelineFactory.AddBufferLayout(0, 3, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
+        PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
+    }
+};
+
+//class Renderer {
+//public:
+//    enum class RendererType {
+//        DEFAULT
+//    };
+//    Renderer() {
+//
+//    }
+//    ~Renderer() {
+//
+//    }
+//
+//    virtual void CreateRenderer(RenderViewport& viewport) = 0;
+//    virtual void Render(RenderViewport& TargetViewport, std::vector<MeshRenderProxy*>& MeshProxyPasses) = 0;
+//};
+
+class BlinnPhongRenderer {
+public:
+    uint32_t IndexBufferSize;
+    RHIBufferResource RHIFullScreenQuadBuffer;
+    RHIBufferResource RHIFullScreenQuadIndexBuffer;
+    RHIGraphicsDispatcher GraphicDispatcher;
+    RHIRenderPass PresentPass;
+    RHIImageResource GBufferA;
+    RHIImageResource GBufferD;
+    RHIUniform Uniform;
+
+    BlinnPhongPipeline Pipeline;
+
+    RHIImGUI ImGUI;
+    void (*pFuncImDraw)(ImGuiSharedGlobals*);
+
+    BlinnPhongRenderer() {
+        
+    }
+
+    virtual void CreateRenderer(RenderViewport& Viewport) {
+        // create renderer
+        GBufferA.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager,
+            { Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight(), 1 }, IU_COLOR_RT);
+        GBufferD.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager,
+            { Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight(), 1 }, IU_DEPTH_RT);
+        PresentPass.AddColorRenderTarget(&GBufferA);
+        PresentPass.SetDepthRenderTarget(&GBufferD);
+        //PresentPass.Initialize(&Viewport.Context, Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight());
+        Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
+
+        GraphicDispatcher.Initialize(&Viewport.Context);
+
+        Pipeline.InitializePipeline(Viewport, PresentPass);
+
+        RHIFullScreenQuadBuffer.Initialize(&Viewport.Context, sizeof(float3), 4, BufferType::VERTEX);
+        RHIFullScreenQuadIndexBuffer.Initialize(&Viewport.Context, sizeof(uint32_t), 6, BufferType::INDEX);
+        float3 FullScreenVertices[4] = { float3(-0.5, -0.5, 0.5), float3(-0.5, 0.5, 0.5), float3(0.5, 0.5, 0.5), float3(0.5, -0.5, 0.5) };
+        uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
+        RHIFullScreenQuadBuffer.CopyToBuffer(&Viewport.Context, FullScreenVertices, sizeof(float3) * 4);
+        RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
+        Uniform.Initialize(&Viewport.Context, sizeof(UniformBufferObject));
+        ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &PresentPass);
+
+    }
+
+    virtual void Render(RenderViewport& Viewport, std::vector<MeshRenderProxy*>& MeshProxyPasses) {
+        auto& Context = Viewport.Context;
+        ImGUI.UpdateUI(pFuncImDraw);
+        GraphicDispatcher.WaitForGPUIdle(&Context);
+        GraphicDispatcher.BeginFrame(&Context, &Viewport.WindowManager, &PresentPass);
+        GraphicDispatcher.BeginRenderPass(&PresentPass);
+        for (auto& MeshProxy : MeshProxyPasses)
+        {
+            Pipeline.PipelineObject.SetUniform(&Uniform, 0);
+            Pipeline.PipelineObject.SetImageSampler(&MeshProxy->Texture, 1);
+            GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
+            GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
+            IndexBufferSize = MeshProxy->IndexBufferSize;
+            GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
+        }
+        // Comment this line if you don't want ImGUI
+        ImGUI.DispatchImGUI(&GraphicDispatcher);
+        GraphicDispatcher.EndRenderPass(&PresentPass);
+        GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager);
+    }
+};
+
+void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, RenderViewport& Viewport)
+{
+    OutRenderProxy.RHIVertexBuffer.Initialize(&Viewport.Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
+    OutRenderProxy.RHIIndexBuffer.Initialize(&Viewport.Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::INDEX);
+    OutRenderProxy.RHIVertexBuffer.CopyToBuffer(&Viewport.Context, InMesh.Vertices.data(), InMesh.Vertices.size() * sizeof(Mesh::VertexType));
+    OutRenderProxy.RHIIndexBuffer.CopyToBuffer(&Viewport.Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
+    int texWidth, texHeight, texChannels;
+    stbi_uc* pixels = stbi_load(InMesh.TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    assert(texHeight > 0 && texWidth > 0);
+    OutRenderProxy.Texture.Initialize(&Viewport.Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB);
+    OutRenderProxy.Texture.CopyToTexture(&Viewport.Context, pixels, 4);
+    OutRenderProxy.IndexBufferSize = InMesh.Indices.size();
+    stbi_image_free(pixels);
+}
+
+
 int main()
 {
+    GRHIImplementationSelection = RHIImplement_Vulkan;
+    Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
+    StaticMesh.TexturePath = TEXTURE_PATH;
+    RenderViewport Viewport;
+    Viewport.InitializeViewport(1280, 720);
+    BlinnPhongRenderer BPRenderer;
+    BPRenderer.pFuncImDraw = DrawUI;
+    BPRenderer.CreateRenderer(Viewport);
+
+    MeshRenderProxy MeshProxy;
+    InitializeMeshRenderProxy(MeshProxy, StaticMesh, Viewport);
+    std::vector<MeshRenderProxy*> MeshProxies;
+    MeshProxies.push_back(&MeshProxy);
+    UniformBufferObject ubo;
+    while (Viewport.IsWindowAlive())
+    {
+        updateUniformBuffer(ubo, Viewport.WindowManager.GetWindowHeight(), Viewport.WindowManager.GetWindowWidth(), viewMat, ViewPos);
+        BPRenderer.Uniform.CopyToBuffer(&RendererContext::Get()->Context, &ubo, sizeof(ubo));
+        BPRenderer.Render(Viewport, MeshProxies);
+    }
+
 #if 0
     //Log("Engine starts at ", "application mode", " ", 3);
     //Warning("This is a test warning. ");
@@ -172,7 +348,7 @@ int main()
 		            "z":3.0
 		        },
 		        "Rotation":{
-		            "x":0.0,
+		            "x":0.0, 
 		            "y":20.0,
 		            "z":30.0
 		        },
@@ -229,7 +405,7 @@ int main()
         RendererInstance.UpdateFrame(RendererContext::Get());
     }
 	return 0;
-#else
+#elif 0
     return PBRRendererTest();
 #endif
 }

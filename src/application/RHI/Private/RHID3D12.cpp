@@ -81,12 +81,6 @@ void RHID3D12PlatformSupport::Cleanup()
     // Placeholder implementation
 }
 
-void RHID3D12PlatformSupport::InitializePhysicalDevice(RHIWindowManager* WindowManager)
-{
-    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
-    
-}
-
 // RHID3D12Context implementation
 void RHID3D12Context::Initialize(RHIPlatformSupport* PlatformSupport)
 {

@@ -12,6 +12,7 @@
 #include <array>
 
 #include "RHIVulkanImpl.h"
+#include "CoreLog.inl"
 #include "GLFW/glfw3.h"
 
 RHIVulkanPlatformSupport::RHIVulkanPlatformSupport() {}
@@ -46,39 +47,27 @@ void RHIVulkanPlatformSupport::Initialize()
 		VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME
 	};
 	RetrieveAvailablePhysicalDevices(AvailablePhysicalDevices, Instance, PhysicalDeviceExtensions);
+
+	Log("All Physical Devices:");
+	for (auto& PD : AvailablePhysicalDevices)
+	{
+		VkPhysicalDeviceProperties PDProp;
+		vkGetPhysicalDeviceProperties(PD, &PDProp);
+        Log("  ", PDProp.deviceName);
+	}
+
+	// Grab first physical device
+	CurrentPhysicalDevice.PhysicalDevice = AvailablePhysicalDevices[0];
+	vkGetPhysicalDeviceFeatures(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDFeatures);
+	vkGetPhysicalDeviceProperties(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDProperties);
+	vkGetPhysicalDeviceMemoryProperties(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDMemoryProperties);
+
+	Log("Select Physical Device: ", CurrentPhysicalDevice.PDProperties.deviceName);
 }
 
 void RHIVulkanPlatformSupport::Cleanup()
 {
 	vkDestroyInstance(Instance, nullptr);
-}
-
-void RHIVulkanPlatformSupport::InitializePhysicalDevice(RHIWindowManager* WindowManager)
-{
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	assert(CurrentPhysicalDevice.PhysicalDevice==nullptr);
-	// Select suitable physical device
-	for (auto& PD : AvailablePhysicalDevices)
-	{
-		VulkanWindowManager->SurfaceFormats.clear();
-		VulkanWindowManager->PresentModes.clear();
-		vkGetPhysicalDeviceFeatures(PD, &CurrentPhysicalDevice.PDFeatures);
-		if (PhysicalDeviceSupportSurface(VulkanWindowManager->SurfaceCapabilities, VulkanWindowManager->SurfaceFormats, VulkanWindowManager->PresentModes, PD, VulkanWindowManager->Surface)
-			&& PhysicalDevideSupportQueueFamilies(CurrentPhysicalDevice.GraphicsQueueFamilyIndex, CurrentPhysicalDevice.PresentQueueFamilyIndex, PD, VulkanWindowManager->Surface)
-			&& CurrentPhysicalDevice.PDFeatures.samplerAnisotropy)
-		{
-			CurrentPhysicalDevice.PhysicalDevice = PD;
-			break;
-		}
-	}
-
-	if (CurrentPhysicalDevice.PhysicalDevice == VK_NULL_HANDLE)
-	{
-		throw std::runtime_error("failed to find a suitable GPU!");
-	}
-
-	vkGetPhysicalDeviceProperties(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDProperties);
-	vkGetPhysicalDeviceMemoryProperties(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDMemoryProperties);
 }
 
 RHIVulkanContext::RHIVulkanContext() {}
@@ -97,10 +86,6 @@ void RHIVulkanContext::Cleanup()
 {
 	vkDestroyCommandPool(Device, CommandPool, nullptr);
 	vkDestroyDevice(Device, nullptr);
-
-	//if (enableValidationLayers) {
-	//    DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-	//}
 }
 
 void RHIVulkanContext::WaitDeviceIdle()
@@ -115,6 +100,19 @@ void RHIVulkanWindowManager::Initialize(RHIPlatformSupport* InPlatformSupport, u
 	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
 	CreateVkSurface(VulkanPlatformSupport->Instance, pGLFWwindow, Surface);
 	PresentRenderPass = new RHIRenderPass();
+
+	SurfaceFormats.clear();
+	PresentModes.clear();
+	if (PhysicalDeviceSupportSurface(SurfaceCapabilities, SurfaceFormats, PresentModes, VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface)
+		&& PhysicalDevideSupportQueueFamilies(VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex, 
+			VulkanPlatformSupport->CurrentPhysicalDevice.PresentQueueFamilyIndex, VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface)
+		&& VulkanPlatformSupport->CurrentPhysicalDevice.PDFeatures.samplerAnisotropy)
+	{
+		return;
+	}
+	else {
+		Error("Physical Device does not support this window context! ");
+	}
 }
 
 void RHIVulkanWindowManager::CleanupSwapchain(RHIContext* Context)
@@ -149,7 +147,7 @@ void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRen
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(OutRenderPass->GetImpl());
 	PresentRenderPass = OutRenderPass;
-	CreatePresentableRenderPass(VulkanRenderPass->RenderPass, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), CurrentSwapchain.SwapchainImageFormat, VK_SAMPLE_COUNT_1_BIT);
+	CreatePresentableRenderPass(VulkanRenderPass->RenderPass, VulkanContext->Device, VulkanRenderPass->DepthRenderTargets != nullptr, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), CurrentSwapchain.SwapchainImageFormat, VK_SAMPLE_COUNT_1_BIT);
 	CurrentSwapchain.SwapchainFramebuffers.resize(CurrentSwapchain.SwapchainImageViews.size());
 	for (size_t i = 0; i < CurrentSwapchain.SwapchainImageViews.size(); i++) {
 		VkFramebufferCreateInfo framebufferInfo{};
