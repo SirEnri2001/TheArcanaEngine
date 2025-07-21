@@ -18,15 +18,13 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
-
 const std::string MODEL_PATH = "models/spot/spot_triangulated_good.obj";
 const std::string TEXTURE_PATH = "models/spot/spot_texture.png";
 const std::string MODEL2_PATH = "models/viking_room.obj";
 const std::string TEXTURE2_PATH = "textures/viking_room.png";
 const std::string VERT_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.vert";
 const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
+const std::string CUBE_PATH = "models/cube/cube.obj";
 
 std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -46,28 +44,6 @@ std::vector<char> readFile(const std::string& filename) {
     return buffer;
 }
 
-
-struct UniformBufferObject {
-    alignas(16) float4x4 model;
-    alignas(16) float4x4 view;
-    alignas(16) float4x4 proj;
-    alignas(16) float4 viewPosition;
-    alignas(16) float4x4 modelInv;
-};
-
-void updateUniformBuffer(UniformBufferObject& OutUniformBufferObject, float WindowHeight, float WindowWidth, glm::mat4 viewMat, float4 ViewPos) {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    OutUniformBufferObject.model = glm::mat4(1.0f);//glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    OutUniformBufferObject.view = viewMat;
-    OutUniformBufferObject.proj = glm::perspective(glm::radians(45.0f), WindowWidth / WindowHeight, 0.1f, 10.0f);
-    OutUniformBufferObject.proj[1][1] *= -1;
-    OutUniformBufferObject.viewPosition = ViewPos;
-    OutUniformBufferObject.modelInv = glm::inverse(OutUniformBufferObject.model);
-}
 auto viewMat = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 float4 ViewPos = { 2.,2.,2.,1. };
 void DrawUI(ImGuiSharedGlobals* ImGlobals)
@@ -121,6 +97,9 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         float DeltaX = io.MousePos.x - io.MousePosPrev.x;
         float DeltaY = io.MousePos.y - io.MousePosPrev.y;
 
+        DeltaX *= 0.25;
+        DeltaY *= 0.25;
+
         viewMat = glm::rotate(glm::mat4(1.f), DeltaX * 0.01f, glm::vec3(0.0f, 1.0f, 0.0f)) * viewMat;
         viewMat = glm::rotate(glm::mat4(1.f), DeltaY * 0.01f, glm::vec3(1.0f, 0.0f, 0.0f)) * viewMat;
         float3 PlayerMove = { 0.f, 0.f, 0.f };
@@ -140,15 +119,15 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         {
             PlayerMove += float3(-1., 0., 0.);
         }
-        if (ImGui::IsKeyDown(ImGuiKey_Q))
+        if (ImGui::IsKeyDown(ImGuiKey_E))
         {
             PlayerMove += float3(0., -1., 0.);
         }
-        if (ImGui::IsKeyDown(ImGuiKey_E))
+        if (ImGui::IsKeyDown(ImGuiKey_Q))
         {
             PlayerMove += float3(0., 1., 0.);
         }
-        viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.1f) * viewMat;
+        viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.001f) * viewMat;
     }
 }
 
@@ -198,6 +177,7 @@ public:
         PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
         PipelineFactory.SetUniformBinding(0);
         PipelineFactory.SetImageSamplerBinding(1);
+        PipelineFactory.SetUniformBinding(2);
         PipelineFactory.AddBufferBinding(0, sizeof(Mesh::VertexType));
         PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
         PipelineFactory.AddBufferLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
@@ -239,6 +219,19 @@ public:
     RHIImGUI ImGUI;
     void (*pFuncImDraw)(ImGuiSharedGlobals*);
 
+    struct MeshDesc {
+        MeshRenderProxy* Proxy;
+        RHIUniform* ModelUniform;
+    };
+
+    std::vector<MeshDesc> MeshDescs;
+
+    struct UniformBufferObject {
+        alignas(16) float4x4 view;
+        alignas(16) float4x4 proj;
+        alignas(16) float4 viewPosition;
+    } ubo;
+
     BlinnPhongRenderer() {
         
     }
@@ -269,25 +262,48 @@ public:
 
     }
 
-    virtual void Render(RenderViewport& Viewport, std::vector<MeshRenderProxy*>& MeshProxyPasses) {
+    void UpdateUniformBuffer(RenderViewport& Viewport, glm::mat4 ViewMat, float4 ViewPos) {
+        static auto startTime = std::chrono::high_resolution_clock::now();
+
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        ubo.view = viewMat;
+
+        // sensor size 32mm
+        // focal length 45mm
+        // fov = 2 * atan(sensor_size/2/focal_length)
+        ubo.proj = glm::perspective(2 * glm::atan(0.032f / 2.f / 0.045f),
+            (float) Viewport.WindowManager.GetWindowWidth() / Viewport.WindowManager.GetWindowHeight(), 0.1f, 1000.0f);
+        ubo.proj[1][1] *= -1;
+        ubo.viewPosition = ViewPos;
+    }
+
+    virtual void Render(RenderViewport& Viewport, glm::mat4 ViewMat, float4 ViewPos) {
         auto& Context = Viewport.Context;
         ImGUI.UpdateUI(pFuncImDraw);
         GraphicDispatcher.WaitForGPUIdle(&Context);
         GraphicDispatcher.BeginFrame(&Context, &Viewport.WindowManager, &PresentPass);
         GraphicDispatcher.BeginRenderPass(&PresentPass);
-        for (auto& MeshProxy : MeshProxyPasses)
+        for (auto& MeshDesc : MeshDescs)
         {
+            UpdateUniformBuffer(Viewport, ViewMat, ViewPos);
+            Uniform.CopyToBuffer(&Viewport.Context, &ubo, sizeof(ubo));
             Pipeline.PipelineObject.SetUniform(&Uniform, 0);
-            Pipeline.PipelineObject.SetImageSampler(&MeshProxy->Texture, 1);
-            GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
-            GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
-            IndexBufferSize = MeshProxy->IndexBufferSize;
+            Pipeline.PipelineObject.SetImageSampler(&MeshDesc.Proxy->Texture, 1);
+            Pipeline.PipelineObject.SetUniform(MeshDesc.ModelUniform, 2);
+            GraphicDispatcher.BindIndexBuffer(&MeshDesc.Proxy->RHIIndexBuffer, 0);
+            GraphicDispatcher.BindVertexBuffer(&MeshDesc.Proxy->RHIVertexBuffer, 0, 0);
+            IndexBufferSize = MeshDesc.Proxy->IndexBufferSize;
             GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
         // Comment this line if you don't want ImGUI
         ImGUI.DispatchImGUI(&GraphicDispatcher);
         GraphicDispatcher.EndRenderPass(&PresentPass);
         GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager);
+    }
+
+    virtual void DrawMesh(MeshRenderProxy& Proxy, RHIUniform& ModelUniform) {
+        MeshDescs.push_back(MeshDesc{&Proxy, &ModelUniform });
     }
 };
 
@@ -306,28 +322,71 @@ void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, Re
     stbi_image_free(pixels);
 }
 
+struct ModelUniformObject {
+    alignas(16) float4x4 model;
+    alignas(16) float4x4 modelInv;
+};
+
+void SetModelUniform(RenderViewport& Viewport, RHIUniform& Uniform, float4x4 ModelMat) {
+    ModelUniformObject uniformobject;
+    Uniform.Initialize(&Viewport.Context, sizeof(ModelUniformObject));
+    uniformobject.model = ModelMat;
+    uniformobject.modelInv = glm::inverse(ModelMat);
+    Uniform.CopyToBuffer(&Viewport.Context, &uniformobject, sizeof(ModelUniformObject));
+}
 
 int main()
 {
     GRHIImplementationSelection = RHIImplement_Vulkan;
-    Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
+    Mesh StaticMesh = Mesh::LoadObj(CUBE_PATH);
     StaticMesh.TexturePath = TEXTURE_PATH;
     RenderViewport Viewport;
-    Viewport.InitializeViewport(1280, 720);
+    Viewport.InitializeViewport(1000, 1000);
     BlinnPhongRenderer BPRenderer;
     BPRenderer.pFuncImDraw = DrawUI;
     BPRenderer.CreateRenderer(Viewport);
 
     MeshRenderProxy MeshProxy;
     InitializeMeshRenderProxy(MeshProxy, StaticMesh, Viewport);
-    std::vector<MeshRenderProxy*> MeshProxies;
-    MeshProxies.push_back(&MeshProxy);
-    UniformBufferObject ubo;
+
+    std::array<RHIUniform, 8> Uniforms;
+
+    
+    viewMat = glm::lookAt(glm::vec3(-0.27f, -0.8f, 0.27f), glm::vec3(-0.27f, 0.0f, 0.27f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ViewPos = float4(-0.27f, -0.8f, 0.27f, 1.f);
+    
+    
+    // Floor
+    SetModelUniform(Viewport, Uniforms[0], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)));
+
+    // Celling
+    SetModelUniform(Viewport, Uniforms[1], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)));
+
+    // Leftwall
+    SetModelUniform(Viewport, Uniforms[2], glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)));
+
+    // Rightwall
+    SetModelUniform(Viewport, Uniforms[3], glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)));
+
+    // Backwall
+    SetModelUniform(Viewport, Uniforms[4], glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)));
+
+    // Shortbox
+    SetModelUniform(Viewport, Uniforms[5], glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)));
+
+    // Tallbox
+    SetModelUniform(Viewport, Uniforms[6], glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)));
+
+    // Light
+    SetModelUniform(Viewport, Uniforms[7], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)));
+
+    for (auto& Uniform : Uniforms) {
+        BPRenderer.DrawMesh(MeshProxy, Uniform);
+    }
+
     while (Viewport.IsWindowAlive())
     {
-        updateUniformBuffer(ubo, Viewport.WindowManager.GetWindowHeight(), Viewport.WindowManager.GetWindowWidth(), viewMat, ViewPos);
-        BPRenderer.Uniform.CopyToBuffer(&RendererContext::Get()->Context, &ubo, sizeof(ubo));
-        BPRenderer.Render(Viewport, MeshProxies);
+        BPRenderer.Render(Viewport, viewMat, ViewPos);
     }
 
 #if 0
@@ -441,50 +500,50 @@ int PBRRendererTest()
     ]
 })";
 
-    RendererContext::Get()->Initialize(WIDTH, HEIGHT);
+    //RendererContext::Get()->Initialize(WIDTH, HEIGHT);
 
-    Scene::LoadSceneJson(MainScene, TestJson);
-    Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
-    Mesh StaticMesh2 = Mesh::LoadObj(MODEL2_PATH);
-    StaticMesh.TexturePath = TEXTURE_PATH;
+    //Scene::LoadSceneJson(MainScene, TestJson);
+    //Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
+    //Mesh StaticMesh2 = Mesh::LoadObj(MODEL2_PATH);
+    //StaticMesh.TexturePath = TEXTURE_PATH;
 
-    PBR::MaterialPropertyData roughBluePlastic{ {0.f, 0.f, 1.f}, 0.01f, 0.01f };
-    PBR::MaterialPropertyData shinyRedMetal{ {1.f, 0.f, 0.f}, 0.9f, 1.0f };
+    //PBR::MaterialPropertyData roughBluePlastic{ {0.f, 0.f, 1.f}, 0.01f, 0.01f };
+    //PBR::MaterialPropertyData shinyRedMetal{ {1.f, 0.f, 0.f}, 0.9f, 1.0f };
 
-    PBR::PBRMeshRenderProxy MeshProxy;
-    PBR::PBRMeshRenderProxy MeshProxy2;
-    MeshProxy.Initialize(RendererContext::Get(), StaticMesh, &shinyRedMetal);
-    MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2, &roughBluePlastic);
-
-
-    // Renderer
-    std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVertDebug.spv");
-    std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFragDebug.spv");
-    PBRRenderer RendererInstance;    RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
+    //PBR::PBRMeshRenderProxy MeshProxy;
+    //PBR::PBRMeshRenderProxy MeshProxy2;
+    //MeshProxy.Initialize(RendererContext::Get(), StaticMesh, &shinyRedMetal);
+    //MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2, &roughBluePlastic);
 
 
-    // Draw
-    RendererInstance.AddSceneObject(MeshProxy);
-    RendererInstance.AddSceneObject(MeshProxy2);
+    //// Renderer
+    //std::vector<char> PBRVertSPV = readFile("shaderbytecode/hlsl/PBRVertDebug.spv");
+    //std::vector<char> PBRPixelSPV = readFile("shaderbytecode/hlsl/PBRFragDebug.spv");
+    //PBRRenderer RendererInstance;    RendererInstance.Initialize(RendererContext::Get(), PBRVertSPV, PBRPixelSPV);
 
-    UniformBufferObject ubo;
-    PBR::LightingData lightingData{ glm::normalize(float3(0, 0, 1)) };
-    PBR::TransformationData transformationData;
-    while (RendererContext::Get()->IsWindowAlive())
-    {
-        // calculate camera
-        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(), RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
-        transformationData.model = ubo.model;
-        transformationData.view = ubo.view;
-        transformationData.viewPosition = ubo.viewPosition;
-        transformationData.proj = ubo.proj;
 
-        // update uniform buffer
-        RendererInstance.SetUniform(PBR::RendererUniformType::Transformation, &transformationData);
-        RendererInstance.SetUniform(PBR::RendererUniformType::Lighting, &lightingData);
-        // RendererInstance.SetUniform(PBR::RendererUniformType::MaterialProperty, &roughBluePlastic);
+    //// Draw
+    //RendererInstance.AddSceneObject(MeshProxy);
+    //RendererInstance.AddSceneObject(MeshProxy2);
 
-        RendererInstance.UpdateFrame();
-    }
+    //UniformBufferObject ubo;
+    //PBR::LightingData lightingData{ glm::normalize(float3(0, 0, 1)) };
+    //PBR::TransformationData transformationData;
+    //while (RendererContext::Get()->IsWindowAlive())
+    //{
+    //    // calculate camera
+    //    updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(), RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
+    //    transformationData.model = ubo.model;
+    //    transformationData.view = ubo.view;
+    //    transformationData.viewPosition = ubo.viewPosition;
+    //    transformationData.proj = ubo.proj;
+
+    //    // update uniform buffer
+    //    RendererInstance.SetUniform(PBR::RendererUniformType::Transformation, &transformationData);
+    //    RendererInstance.SetUniform(PBR::RendererUniformType::Lighting, &lightingData);
+    //    // RendererInstance.SetUniform(PBR::RendererUniformType::MaterialProperty, &roughBluePlastic);
+
+    //    RendererInstance.UpdateFrame();
+    //}
     return 0;
 }

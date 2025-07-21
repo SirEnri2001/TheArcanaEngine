@@ -1,11 +1,15 @@
 #version 450
 
 layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
     mat4 view;
     mat4 proj;
     vec4 viewPosition;
 } ubo;
+
+layout(binding = 2) uniform ModelUniform {
+    mat4 model;
+    mat4 modelInv;
+} modelubo;
 
 layout(binding = 1) uniform sampler2D texSampler;
 
@@ -24,5 +28,5 @@ void main() {
     float spec = pow(max(dot(fragNormal, halfwayDir), 0.0), 16.0);
     float ambient = 0.1;
     float diffuse = max(dot(fragNormal, lightDir), 0.);
-    outColor = (ambient + diffuse + spec) * texture(texSampler, fragTexCoord);
+    outColor = vec4(fragNormal, 1.);//(ambient + diffuse + spec) * texture(texSampler, fragTexCoord);
 }
