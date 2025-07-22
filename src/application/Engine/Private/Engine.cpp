@@ -43,9 +43,9 @@ std::vector<char> readFile(const std::string& filename) {
 
     return buffer;
 }
-
-auto viewMat = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 float4 ViewPos = { 2.,2.,2.,1. };
+float4 ViewForward;
+float4 ViewUp;
 void DrawUI(ImGuiSharedGlobals* ImGlobals)
 {
     ImGui::SetCurrentContext(ImGlobals->Context);
@@ -99,35 +99,39 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 
         DeltaX *= 0.25;
         DeltaY *= 0.25;
+        auto viewMat = glm::mat4(1.f);
+        viewMat = glm::rotate(glm::mat4(1.f), DeltaX * 0.01f, float3(ViewUp)) * viewMat;
+        viewMat = glm::rotate(glm::mat4(1.f), DeltaY * 0.01f, glm::cross(float3(ViewForward), float3(ViewUp))) * viewMat;
 
-        viewMat = glm::rotate(glm::mat4(1.f), DeltaX * 0.01f, glm::vec3(0.0f, 1.0f, 0.0f)) * viewMat;
-        viewMat = glm::rotate(glm::mat4(1.f), DeltaY * 0.01f, glm::vec3(1.0f, 0.0f, 0.0f)) * viewMat;
         float3 PlayerMove = { 0.f, 0.f, 0.f };
         if (ImGui::IsKeyDown(ImGuiKey_W))
         {
-            PlayerMove += float3(0., 0., 1.);
+            PlayerMove += float3(ViewForward);
         }
         if (ImGui::IsKeyDown(ImGuiKey_S))
         {
-            PlayerMove += float3(0., 0., -1.);
+            PlayerMove -= float3(ViewForward);
         }
         if (ImGui::IsKeyDown(ImGuiKey_A))
         {
-            PlayerMove += float3(1., 0., 0.);
+            PlayerMove -= glm::cross(float3(ViewForward), float3(ViewUp));
         }
         if (ImGui::IsKeyDown(ImGuiKey_D))
         {
-            PlayerMove += float3(-1., 0., 0.);
+            PlayerMove += glm::cross(float3(ViewForward), float3(ViewUp));
         }
         if (ImGui::IsKeyDown(ImGuiKey_E))
         {
-            PlayerMove += float3(0., -1., 0.);
+            PlayerMove -= float3(ViewUp);
         }
         if (ImGui::IsKeyDown(ImGuiKey_Q))
         {
-            PlayerMove += float3(0., 1., 0.);
+            PlayerMove += float3(ViewUp);
         }
         viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.001f) * viewMat;
+        ViewPos = viewMat * ViewPos;
+        ViewForward = viewMat * ViewForward;
+        ViewUp = viewMat * ViewUp;
     }
 }
 
@@ -187,22 +191,6 @@ public:
     }
 };
 
-//class Renderer {
-//public:
-//    enum class RendererType {
-//        DEFAULT
-//    };
-//    Renderer() {
-//
-//    }
-//    ~Renderer() {
-//
-//    }
-//
-//    virtual void CreateRenderer(RenderViewport& viewport) = 0;
-//    virtual void Render(RenderViewport& TargetViewport, std::vector<MeshRenderProxy*>& MeshProxyPasses) = 0;
-//};
-
 class BlinnPhongRenderer {
 public:
     uint32_t IndexBufferSize;
@@ -245,7 +233,7 @@ public:
 
         RHIFullScreenQuadBuffer.Initialize(&Viewport.Context, sizeof(float3), 4, BufferType::VERTEX);
         RHIFullScreenQuadIndexBuffer.Initialize(&Viewport.Context, sizeof(uint32_t), 6, BufferType::INDEX);
-        float3 FullScreenVertices[4] = { float3(-0.5, -0.5, 0.5), float3(-0.5, 0.5, 0.5), float3(0.5, 0.5, 0.5), float3(0.5, -0.5, 0.5) };
+        float3 FullScreenVertices[4] = { float3(-1, -1, 1), float3(-1, 1, 1), float3(1, 1, 1), float3(1, -1, 1) };
         uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
         RHIFullScreenQuadBuffer.CopyToBuffer(&Viewport.Context, FullScreenVertices, sizeof(float3) * 4);
         RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
@@ -259,15 +247,6 @@ public:
 
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-        ubo.view = viewMat;
-
-        // sensor size 32mm
-        // focal length 45mm
-        // fov = 2 * atan(sensor_size/2/focal_length)
-        ubo.proj = glm::perspective(2 * glm::atan(0.032f / 2.f / 0.045f),
-            (float) Viewport.WindowManager.GetWindowWidth() / Viewport.WindowManager.GetWindowHeight(), 0.1f, 1000.0f);
-        ubo.proj[1][1] *= -1;
-        ubo.viewPosition = ViewPos;
     }
 
     virtual void Render(RenderViewport& Viewport, glm::mat4 ViewMat, float4 ViewPos) {
@@ -296,6 +275,116 @@ public:
 
     virtual void DrawMesh(MeshRenderProxy& Proxy, RHIUniform& ModelUniform) {
         MeshDescs.push_back(MeshDesc{&Proxy, &ModelUniform });
+    }
+};
+
+class PathTracerPipeline : public PassPipeline {
+public:
+    RHIPipelineFactory PipelineFactory;
+    RHIPipelineObject PipelineObject;
+    RHIPipelineObject PresentPipelineObject;
+
+    std::vector<char> VertexShaderSPIRV;
+    std::vector<char> FragmentShaderSPIRV;
+
+    PathTracerPipeline() {
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.vert");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.frag");
+    }
+
+    virtual void InitializePipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) override {
+        PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+        PipelineFactory.SetUniformBinding(0);
+        PipelineFactory.SetUniformBinding(1);
+        PipelineFactory.AddBufferBinding(0, sizeof(float3));
+        PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
+        PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
+    }
+};
+
+class PathTraceRenderer {
+public:
+    uint32_t IndexBufferSize;
+    RHIBufferResource RHIFullScreenQuadBuffer;
+    RHIBufferResource RHIFullScreenQuadIndexBuffer;
+    RHIGraphicsDispatcher GraphicDispatcher;
+    RHIRenderPass PresentPass;
+    RHIUniform CameraUniform;
+    RHIUniform* SceneUniform = nullptr;
+
+    PathTracerPipeline Pipeline;
+
+    RHIImGUI ImGUI;
+    void (*pFuncImDraw)(ImGuiSharedGlobals*);
+
+    struct CameraUniformObject {
+        alignas(16) float3 eye;
+        alignas(16) float3 forward;
+        alignas(16) float3 up;
+        alignas(16) glm::ivec2 screenres;
+    } cuo;
+
+    PathTraceRenderer() {
+
+    }
+
+    virtual void CreateRenderer(RenderViewport& Viewport) {
+        // create renderer
+
+        Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
+
+        GraphicDispatcher.Initialize(&Viewport.Context);
+
+        Pipeline.InitializePipeline(Viewport, PresentPass);
+
+        RHIFullScreenQuadBuffer.Initialize(&Viewport.Context, sizeof(float3), 8, BufferType::VERTEX);
+        RHIFullScreenQuadIndexBuffer.Initialize(&Viewport.Context, sizeof(uint32_t), 6, BufferType::INDEX);
+        float3 FullScreenVertices[4] = { float3(-1., -1., 0.), float3(-1., 1., 0.), float3(1., 1., 0.), float3(1., -1., 0.) };
+        uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
+        RHIFullScreenQuadBuffer.CopyToBuffer(&Viewport.Context, FullScreenVertices, sizeof(float3) * 8);
+        RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
+        CameraUniform.Initialize(&Viewport.Context, sizeof(CameraUniformObject));
+        ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &PresentPass);
+
+    }
+
+    void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp) {
+        static auto startTime = std::chrono::high_resolution_clock::now();
+
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        // sensor size 32mm
+        // focal length 45mm
+        // fov = 2 * atan(sensor_size/2/focal_length)
+        cuo.eye = ViewPos;
+        cuo.up = ViewUp;
+        cuo.forward = ViewForward;
+    }
+
+    void SetUniform(RHIUniform& InUniform) {
+        SceneUniform = &InUniform;
+    }
+
+    virtual void Render(RenderViewport& Viewport, float4 ViewPos) {
+        auto& Context = Viewport.Context;
+        ImGUI.UpdateUI(pFuncImDraw);
+        cuo.screenres.r = Viewport.WindowManager.GetWindowWidth();
+        cuo.screenres.g = Viewport.WindowManager.GetWindowHeight();
+        CameraUniform.CopyToBuffer(&Context, &cuo, sizeof(CameraUniformObject));
+
+        GraphicDispatcher.WaitForGPUIdle(&Context);
+        GraphicDispatcher.BeginFrame(&Context, &Viewport.WindowManager, &PresentPass);
+        GraphicDispatcher.BeginRenderPass(&PresentPass);
+        Pipeline.PipelineObject.SetUniform(SceneUniform, 0);
+        Pipeline.PipelineObject.SetUniform(&CameraUniform, 1);
+        GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
+        GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
+        IndexBufferSize = 6;
+        GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
+        // Comment this line if you don't want ImGUI
+        ImGUI.DispatchImGUI(&GraphicDispatcher);
+        GraphicDispatcher.EndRenderPass(&PresentPass);
+        GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager);
     }
 };
 
@@ -329,7 +418,66 @@ void SetModelUniform(RenderViewport& Viewport, RHIUniform& Uniform, float4x4 Mod
     Uniform.CopyToBuffer(&Viewport.Context, &uniformobject, sizeof(ModelUniformObject));
 }
 
-int main()
+void SetSceneUniform(RenderViewport& Viewport, std::vector<ModelUniformObject>& Objects, float4x4 ModelMat, float3 Color) {
+    ModelUniformObject uniformobject;
+    uniformobject.model = ModelMat;
+    uniformobject.modelInv = glm::inverse(ModelMat);
+    uniformobject.color = Color;
+    Objects.push_back(uniformobject);
+}
+
+int main() {
+    GRHIImplementationSelection = RHIImplement_Vulkan;
+    RenderViewport Viewport;
+    Viewport.InitializeViewport(1000, 1000);
+    PathTraceRenderer PTRenderer;
+    PTRenderer.pFuncImDraw = DrawUI;
+    PTRenderer.CreateRenderer(Viewport);
+
+    ViewPos = float4(-0.27f, -0.8f, 0.27f, 1.f);
+    ViewUp = float4(0., 0., 1., 0.);
+    ViewForward = float4(0., 1., 0., 0.);
+
+    RHIUniform SceneUniform;
+    SceneUniform.Initialize(&Viewport.Context, sizeof(ModelUniformObject) * 8);
+
+    std::vector<ModelUniformObject> Objects;
+    // Floor
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
+
+    // Celling
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
+
+    // Leftwall
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f));
+
+    // Rightwall
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f));
+
+    // Backwall
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f));
+
+    // Shortbox
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f));
+
+    // Tallbox
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f));
+
+    // Light
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f));
+
+    SceneUniform.CopyToBuffer(&Viewport.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
+    PTRenderer.SetUniform(SceneUniform);
+
+    while (Viewport.IsWindowAlive())
+    {
+        PTRenderer.UpdateUniformBuffer(ViewPos, ViewForward, ViewUp);
+        PTRenderer.Render(Viewport, ViewPos);
+    }
+    return 0;
+}
+
+int BlinnPhongMain()
 {
     GRHIImplementationSelection = RHIImplement_Vulkan;
     Mesh StaticMesh = Mesh::LoadObj(CUBE_PATH);
@@ -346,8 +494,10 @@ int main()
     std::array<RHIUniform, 8> Uniforms;
 
     
-    viewMat = glm::lookAt(glm::vec3(-0.27f, -0.8f, 0.27f), glm::vec3(-0.27f, 0.0f, 0.27f), glm::vec3(0.0f, 0.0f, 1.0f));
+    auto viewMat = glm::lookAt(glm::vec3(-0.27f, -0.8f, 0.27f), glm::vec3(-0.27f, 0.0f, 0.27f), glm::vec3(0.0f, 0.0f, 1.0f));
     ViewPos = float4(-0.27f, -0.8f, 0.27f, 1.f);
+    ViewUp = float4(0., 0., 1., 0.);
+    ViewForward = float4(0., 1., 0., 0.);
     
     
     // Floor
@@ -382,85 +532,7 @@ int main()
     {
         BPRenderer.Render(Viewport, viewMat, ViewPos);
     }
-
-#if 0
-    //Log("Engine starts at ", "application mode", " ", 3);
-    //Warning("This is a test warning. ");
-    //Error("This is a test ERROR. ");
-    GRHIImplementationSelection = RHIImplement_Vulkan;
-    Scene MainScene;
-    std::string TestJson = R"({
-    "Children":[
-        {
-            "Type":"Primitive",
-            "Mesh":"cube.obj",
-			"Transform":{
-		        "Location":{
-		            "x":1.0,
-		            "y":2.0,
-		            "z":3.0
-		        },
-		        "Rotation":{
-		            "x":0.0, 
-		            "y":20.0,
-		            "z":30.0
-		        },
-		        "Scale":{
-		            "x":1.0,
-		            "y":2.0,
-		            "z":1.0
-		        }
-		    }
-        }
-    ]
-})";
-    Scene::LoadSceneJson(MainScene, TestJson);
-    Mesh StaticMesh = Mesh::LoadObj(MODEL_PATH);
-    Mesh StaticMesh2 = Mesh::LoadObj(MODEL2_PATH);
-    StaticMesh.TexturePath = TEXTURE_PATH;
-    StaticMesh2.TexturePath = TEXTURE2_PATH;
-    std::vector<char> VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
-    std::vector<char> FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
-
-    std::vector<char> postprocessvertSPV = readFile("shaderbytecode/glsl/ScreenPost.vert");
-    std::vector<char> postprocessfragSPV = readFile("shaderbytecode/glsl/ScreenPost.frag");
-
-    std::vector<char> BlinnPhongHLSL = readFile("shaders/hlsl/BlinnPhong.hlsl");
-    std::vector<char> ScreenPostHLSL = readFile("shaders/hlsl/ScreenPost.hlsl");
-
-    // Renderer
-    RendererContext::Get()->Initialize(WIDTH, HEIGHT);
-    Renderer RendererInstance;
-    RendererInstance.pFuncImDraw = DrawUI;
-    MeshRenderProxy MeshProxy;
-    MeshRenderProxy MeshProxy2;
-    MeshProxy.Initialize(RendererContext::Get(), StaticMesh);
-    MeshProxy2.Initialize(RendererContext::Get(), StaticMesh2);
-    UniformBufferObject ubo;
-    RHIUniform Uniform;
-    Uniform.Initialize(&RendererContext::Get()->Context, sizeof(UniformBufferObject));
-    RendererInstance.SetUniform(&Uniform, 0);
-    //RendererInstance.SetTextureSampler(&MeshProxy.Texture, 1);
-    if(GRHIImplementationSelection==RHIImplement_Vulkan)
-    {
-		RendererInstance.Initialize(RendererContext::Get(), VertexShaderSPIRV, FragmentShaderSPIRV, postprocessvertSPV, postprocessfragSPV);
-    }
-	else
-    {
-		RendererInstance.Initialize(RendererContext::Get(), BlinnPhongHLSL, BlinnPhongHLSL, ScreenPostHLSL, ScreenPostHLSL);
-    }
-    RendererInstance.DrawScene(RendererContext::Get(), MeshProxy);
-    RendererInstance.DrawScene(RendererContext::Get(), MeshProxy2);
-    while (RendererContext::Get()->IsWindowAlive())
-    {
-        updateUniformBuffer(ubo, RendererContext::Get()->WindowManager.GetWindowHeight(),  RendererContext::Get()->WindowManager.GetWindowWidth(), viewMat, ViewPos);
-        Uniform.CopyToBuffer(&RendererContext::Get()->Context, &ubo, sizeof(ubo));
-        RendererInstance.UpdateFrame(RendererContext::Get());
-    }
-	return 0;
-#elif 0
-    return PBRRendererTest();
-#endif
+    return 0;
 }
 
 
