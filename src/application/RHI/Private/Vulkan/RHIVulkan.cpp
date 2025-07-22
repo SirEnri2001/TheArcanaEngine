@@ -100,7 +100,7 @@ void RHIVulkanWindowManager::Initialize(RHIPlatformSupport* InPlatformSupport, u
 	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
 	CreateVkSurface(VulkanPlatformSupport->Instance, pGLFWwindow, Surface);
 	PresentRenderPass = new RHIRenderPass();
-
+	CurrentSwapchain.DepthRT = new RHIVulkanImageResource();
 	SurfaceFormats.clear();
 	PresentModes.clear();
 	if (PhysicalDeviceSupportSurface(SurfaceCapabilities, SurfaceFormats, PresentModes, VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface)
@@ -122,6 +122,7 @@ void RHIVulkanWindowManager::CleanupSwapchain(RHIContext* Context)
 		vkDestroyImageView(VulkanContext->Device, imageView, nullptr);
 	}
 	vkDestroySwapchainKHR(VulkanContext->Device, CurrentSwapchain.Swapchain, nullptr);
+	CurrentSwapchain.DepthRT->Cleanup(Context);
 }
 
 void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport)
@@ -141,6 +142,8 @@ void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatfor
 		CurrentSwapchain.Swapchain, CurrentSwapchain.SwapchainImages, CurrentSwapchain.SwapchainImageViews, CurrentSwapchain.SwapchainImageFormat, CurrentSwapchain.SwapchainExtent,
 		VulkanContext->Device, Surface, SurfaceCapabilities, SurfaceFormats, PresentModes, 
 		VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex, VulkanPlatformSupport->CurrentPhysicalDevice.PresentQueueFamilyIndex);
+
+	CurrentSwapchain.DepthRT->InitializeRenderTarget(Context, nullptr, { GetWindowWidth(), GetWindowHeight(), 1 }, IU_DEPTH_RT);
 }
 
 void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context)
@@ -148,6 +151,7 @@ void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRen
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(OutRenderPass->GetImpl());
 	PresentRenderPass = OutRenderPass;
+	VulkanRenderPass->DepthRenderTargets = CurrentSwapchain.DepthRT;
 	CreatePresentableRenderPass(VulkanRenderPass->RenderPass, VulkanContext->Device, VulkanRenderPass->DepthRenderTargets != nullptr, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), CurrentSwapchain.SwapchainImageFormat, VK_SAMPLE_COUNT_1_BIT);
 	CurrentSwapchain.SwapchainFramebuffers.resize(CurrentSwapchain.SwapchainImageViews.size());
 	for (size_t i = 0; i < CurrentSwapchain.SwapchainImageViews.size(); i++) {

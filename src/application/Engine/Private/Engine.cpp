@@ -210,8 +210,6 @@ public:
     RHIBufferResource RHIFullScreenQuadIndexBuffer;
     RHIGraphicsDispatcher GraphicDispatcher;
     RHIRenderPass PresentPass;
-    RHIImageResource GBufferA;
-    RHIImageResource GBufferD;
     RHIUniform Uniform;
 
     BlinnPhongPipeline Pipeline;
@@ -238,13 +236,7 @@ public:
 
     virtual void CreateRenderer(RenderViewport& Viewport) {
         // create renderer
-        GBufferA.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager,
-            { Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight(), 1 }, IU_COLOR_RT);
-        GBufferD.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager,
-            { Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight(), 1 }, IU_DEPTH_RT);
-        PresentPass.AddColorRenderTarget(&GBufferA);
-        PresentPass.SetDepthRenderTarget(&GBufferD);
-        //PresentPass.Initialize(&Viewport.Context, Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight());
+
         Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
 
         GraphicDispatcher.Initialize(&Viewport.Context);

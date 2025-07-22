@@ -172,6 +172,8 @@ public:
 	void WaitDeviceIdle() override;
 };
 
+class RHIVulkanImageResource;
+
 class RHIVulkanWindowManager : public RHIWindowManagerBase
 {
 public:
@@ -192,6 +194,7 @@ public:
 		std::vector<VkFramebuffer> SwapchainFramebuffers;
 		VkExtent2D SwapchainExtent;
 		VkFormat SwapchainImageFormat;
+		RHIVulkanImageResource* DepthRT;
 	} CurrentSwapchain;
 
 	RHIVulkanWindowManager() = default;

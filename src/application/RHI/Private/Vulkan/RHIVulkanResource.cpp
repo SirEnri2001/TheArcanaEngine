@@ -7,7 +7,7 @@
 void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	auto* VulkanWindowManager = WindowManager != nullptr ? static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl()) : nullptr;
 	VkImageUsageFlags VkImageUsage;
 	VkImageAspectFlagBits VkImageAspectFlagBits;
 	VkImageLayout VkLayout;
@@ -15,7 +15,7 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 	switch (Usage)
 	{
 	case IU_COLOR_RT:
-		InnerFormat = VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat;
+		InnerFormat = VulkanWindowManager != nullptr ? VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat : VK_FORMAT_B8G8R8A8_SRGB;
 		VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
 		VkLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -25,7 +25,7 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 		// VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL
 		break;
 	case IU_COLOR_PRESENT_RT:
-		InnerFormat = VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat;
+		InnerFormat = VulkanWindowManager != nullptr ? VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat : VK_FORMAT_B8G8R8A8_SRGB;
 		VkImageUsage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
 		VkLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
