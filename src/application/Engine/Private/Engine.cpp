@@ -50,8 +50,8 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 {
     ImGui::SetCurrentContext(ImGlobals->Context);
     ImGui::SetAllocatorFunctions(ImGlobals->MemAllocFunc, ImGlobals->MemFreeFunc, ImGlobals->UserData);
-    static bool show_demo_window = true;
-    static bool show_another_window = true;
+    static bool show_demo_window = false;
+    static bool show_another_window = false;
     static float4 clear_color;
     static ImGuiIO& io = ImGui::GetIO();
     // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
@@ -317,13 +317,15 @@ void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, Re
 struct ModelUniformObject {
     alignas(16) float4x4 model;
     alignas(16) float4x4 modelInv;
+    alignas(16) float3 color;
 };
 
-void SetModelUniform(RenderViewport& Viewport, RHIUniform& Uniform, float4x4 ModelMat) {
+void SetModelUniform(RenderViewport& Viewport, RHIUniform& Uniform, float4x4 ModelMat, float3 Color) {
     ModelUniformObject uniformobject;
     Uniform.Initialize(&Viewport.Context, sizeof(ModelUniformObject));
     uniformobject.model = ModelMat;
     uniformobject.modelInv = glm::inverse(ModelMat);
+    uniformobject.color = Color;
     Uniform.CopyToBuffer(&Viewport.Context, &uniformobject, sizeof(ModelUniformObject));
 }
 
@@ -349,28 +351,28 @@ int main()
     
     
     // Floor
-    SetModelUniform(Viewport, Uniforms[0], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)));
+    SetModelUniform(Viewport, Uniforms[0], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
 
     // Celling
-    SetModelUniform(Viewport, Uniforms[1], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)));
+    SetModelUniform(Viewport, Uniforms[1], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
 
     // Leftwall
-    SetModelUniform(Viewport, Uniforms[2], glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)));
+    SetModelUniform(Viewport, Uniforms[2], glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f));
 
     // Rightwall
-    SetModelUniform(Viewport, Uniforms[3], glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)));
+    SetModelUniform(Viewport, Uniforms[3], glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f));
 
     // Backwall
-    SetModelUniform(Viewport, Uniforms[4], glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)));
+    SetModelUniform(Viewport, Uniforms[4], glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f));
 
     // Shortbox
-    SetModelUniform(Viewport, Uniforms[5], glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)));
+    SetModelUniform(Viewport, Uniforms[5], glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f));
 
     // Tallbox
-    SetModelUniform(Viewport, Uniforms[6], glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)));
+    SetModelUniform(Viewport, Uniforms[6], glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f));
 
     // Light
-    SetModelUniform(Viewport, Uniforms[7], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)));
+    SetModelUniform(Viewport, Uniforms[7], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
 
     for (auto& Uniform : Uniforms) {
         BPRenderer.DrawMesh(MeshProxy, Uniform);
