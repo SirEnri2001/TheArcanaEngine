@@ -128,12 +128,13 @@ void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatfor
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport->GetImpl());
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface, &SurfaceCapabilities);
 	glfwGetFramebufferSize(pGLFWwindow, reinterpret_cast<int*>(&CurrentSwapchain.SwapchainExtent.width), reinterpret_cast<int*>(&CurrentSwapchain.SwapchainExtent.height));
 	while (CurrentSwapchain.SwapchainExtent.width == 0 || CurrentSwapchain.SwapchainExtent.height == 0) {
 		glfwGetFramebufferSize(pGLFWwindow, reinterpret_cast<int*>(&CurrentSwapchain.SwapchainExtent.width), reinterpret_cast<int*>(&CurrentSwapchain.SwapchainExtent.height));
 		glfwWaitEvents();
 	}
+
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface, &SurfaceCapabilities);
 
 	vkDeviceWaitIdle(VulkanContext->Device);
 	CreateSwapchain(
@@ -188,12 +189,6 @@ void RHIVulkanWindowManager::RecreateSwapchain(RHIContext* Context)
 	CleanupSwapchain(Context);
 	InitializeSwapchain(Context, PlatformSupport);
 	for (size_t i = 0; i < CurrentSwapchain.SwapchainImageViews.size(); i++) {
-		//std::array<VkImageView, 1> attachments = {
-		//	ColorRT->ImageView,
-		//	DepthRT->ImageView,
-		//	CurrentSwapchain.SwapchainImageViews[i]
-		//};
-
 		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = VulkanRenderPass->RenderPass;
@@ -202,9 +197,23 @@ void RHIVulkanWindowManager::RecreateSwapchain(RHIContext* Context)
 		framebufferInfo.width = CurrentSwapchain.SwapchainExtent.width;
 		framebufferInfo.height = CurrentSwapchain.SwapchainExtent.height;
 		framebufferInfo.layers = 1;
+		if (VulkanRenderPass->DepthRenderTargets != nullptr) {
+			std::array<VkImageView, 2> attachments = {
+				CurrentSwapchain.SwapchainImageViews[i],
+				VulkanRenderPass->DepthRenderTargets->ImageView
+			};
 
-		if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create framebuffer!");
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments = attachments.data();
+
+			if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
+				throw std::runtime_error("failed to create framebuffer!");
+			}
+		}
+		else {
+			if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
+				throw std::runtime_error("failed to create framebuffer!");
+			}
 		}
 	}
 }
