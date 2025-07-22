@@ -456,6 +456,27 @@ public:
     RHIGraphicsDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
+class RHIComputeDispatcherBase {
+public:
+    RHIComputeDispatcherBase() = default;
+    RHIComputeDispatcherBase(const RHIComputeDispatcherBase&) = delete;
+    virtual ~RHIComputeDispatcherBase() = default;
+    virtual void Initialize(RHIContext* Context) = 0;
+    virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
+    virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
+    virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    virtual void BeginRenderPass(RHIRenderPass* RenderPass) = 0;
+    virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
+    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
+    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void WaitForGPUIdle(RHIContext* Context) = 0;
+};
+
+class RHI_API RHIComputeDispatcher : public RHIComputeDispatcherBase {
+
+};
+
 struct ImGuiSharedGlobals;
 class RHIImGUIBase
 {
