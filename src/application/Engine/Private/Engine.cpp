@@ -1,6 +1,7 @@
 #define COREGEOMETRY_INCLUDE
 #define CORESCENE_INCLUDE
 #define RENDERER_INCLUDE
+#define SHADERCOMPILER_INCLUDE
 #define PBR_RENDERER_INCLUDE
 
 #include <chrono>
@@ -14,6 +15,7 @@
 #include "PBRRenderer.h"
 #include "Renderer.h"
 #include "RHIImGuiHelper.h"
+#include "ShaderCompiler.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -427,8 +429,27 @@ void SetSceneUniform(RenderViewport& Viewport, std::vector<ModelUniformObject>& 
     Objects.push_back(uniformobject);
 }
 
+#define PT_VERTSHADER "./shaders/glsl/PathTracer.vert"
+#define PT_FRAGSHADER "./shaders/glsl/PathTracer.frag"
+
+void CompileAllShaders() {
+    GLSLCompiler Compiler;
+    bool IsSucceeded = true;
+    do {
+        IsSucceeded = true;
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_VERTSHADER, "./shaderbytecode/glsl/PathTracer.vert", "");
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag", "");
+        if (!IsSucceeded) {
+            Log("Shader compilation error, please check and try again. ");
+            system("pause");
+        }
+    } while (!IsSucceeded);
+}
+
 int main() {
     GRHIImplementationSelection = RHIImplement_Vulkan;
+    CompileAllShaders();
+    Log("All shaders compilation succeeded. ");
     RenderViewport Viewport;
     Viewport.InitializeViewport(1000, 1000);
     PathTraceRenderer PTRenderer;

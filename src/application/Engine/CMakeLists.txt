@@ -9,9 +9,7 @@ target_include_directories(Engine
 PUBLIC ./Public
 )
 
-add_dependencies(Engine glslCompile)
-
-target_link_libraries(Engine CoreGeometry CoreScene Renderer CoreMath CoreLog CoreGeometry)
+target_link_libraries(Engine CoreGeometry CoreScene Renderer CoreMath CoreLog CoreGeometry ShaderCompiler)
 
 set_target_properties(Engine PROPERTIES 
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
