@@ -131,7 +131,8 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.001f) * viewMat;
         ViewPos = viewMat * ViewPos;
         ViewForward = viewMat * ViewForward;
-        ViewUp = viewMat * ViewUp;
+        ViewUp = float4(0., 0., 1., 0.);
+        ViewForward = float4(glm::normalize(glm::cross(float3(ViewUp), glm::cross(float3(ViewForward), float3(ViewUp)))), 0.0);
     }
 }
 
@@ -321,7 +322,8 @@ public:
         alignas(16) float3 eye;
         alignas(16) float3 forward;
         alignas(16) float3 up;
-        alignas(16) glm::ivec2 screenres;
+        alignas(8) glm::ivec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
+        alignas(8) float time;
     } cuo;
 
     PathTraceRenderer() {
@@ -348,17 +350,14 @@ public:
 
     }
 
-    void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp) {
-        static auto startTime = std::chrono::high_resolution_clock::now();
-
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp, float time) {
         // sensor size 32mm
         // focal length 45mm
         // fov = 2 * atan(sensor_size/2/focal_length)
         cuo.eye = ViewPos;
         cuo.up = ViewUp;
         cuo.forward = ViewForward;
+        cuo.time = time;
     }
 
     void SetUniform(RHIUniform& InUniform) {
@@ -407,6 +406,7 @@ struct ModelUniformObject {
     alignas(16) float4x4 model;
     alignas(16) float4x4 modelInv;
     alignas(16) float3 color;
+    alignas(16) float3 emission;
 };
 
 void SetModelUniform(RenderViewport& Viewport, RHIUniform& Uniform, float4x4 ModelMat, float3 Color) {
@@ -418,11 +418,12 @@ void SetModelUniform(RenderViewport& Viewport, RHIUniform& Uniform, float4x4 Mod
     Uniform.CopyToBuffer(&Viewport.Context, &uniformobject, sizeof(ModelUniformObject));
 }
 
-void SetSceneUniform(RenderViewport& Viewport, std::vector<ModelUniformObject>& Objects, float4x4 ModelMat, float3 Color) {
+void SetSceneUniform(RenderViewport& Viewport, std::vector<ModelUniformObject>& Objects, float4x4 ModelMat, float3 Color, float3 emission) {
     ModelUniformObject uniformobject;
     uniformobject.model = ModelMat;
     uniformobject.modelInv = glm::inverse(ModelMat);
     uniformobject.color = Color;
+    uniformobject.emission = emission;
     Objects.push_back(uniformobject);
 }
 
@@ -443,35 +444,40 @@ int main() {
 
     std::vector<ModelUniformObject> Objects;
     // Floor
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
 
     // Celling
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
 
     // Leftwall
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f), float3(0., 0., 0.));
 
     // Rightwall
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f), float3(0., 0., 0.));
 
     // Backwall
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
 
     // Shortbox
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
 
     // Tallbox
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
 
     // Light
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
 
     SceneUniform.CopyToBuffer(&Viewport.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
     PTRenderer.SetUniform(SceneUniform);
 
+
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
     while (Viewport.IsWindowAlive())
     {
-        PTRenderer.UpdateUniformBuffer(ViewPos, ViewForward, ViewUp);
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        PTRenderer.UpdateUniformBuffer(ViewPos, ViewForward, ViewUp, time);
         PTRenderer.Render(Viewport, ViewPos);
     }
     return 0;

@@ -5,6 +5,7 @@ struct ModelUniform {
     mat4 model;
     mat4 modelInv;
     vec3 color;
+    vec3 emission;
 };
 
 layout(binding = 0) uniform ModelUniforms {
@@ -16,12 +17,14 @@ layout(binding = 1) uniform CameraUniform {
     vec3 forward;
     vec3 up;
     ivec2 screenres;
+    float time;
 } cameraubo;
 
-void RayIntersect(in vec3 rayPos, in vec3 rayDir, out vec3 baseColor, out vec3 worldNormal){
-    float t = 999999999.;
+void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColor, out vec3 worldNormal, out vec3 emission){
+    t = 999999999.;
     baseColor = vec3(0.);
     worldNormal = vec3(0.);
+    emission = vec3(0.);
     for(int i = 0;i < 8;i ++){
         ModelUniform ubo = modelus.modelubo[i];
         vec3 invertRayPos = vec3(ubo.modelInv * vec4(rayPos, 1.));
@@ -38,6 +41,7 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out vec3 baseColor, out vec3 w
                 t = tzplus;
                 baseColor = ubo.color;
                 worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., 0., 1., 0.));
+                emission = ubo.emission;
             }
         }
         if(tzminus> 0. && tzminus < t){
@@ -46,6 +50,7 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out vec3 baseColor, out vec3 w
                 t = tzminus;
                 baseColor = ubo.color;
                 worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., 0., -1., 0.));
+                emission = ubo.emission;
             }
         }
         if(typlus> 0. && typlus < t){
@@ -54,6 +59,7 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out vec3 baseColor, out vec3 w
                 t = typlus;
                 baseColor = ubo.color;
                 worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., 1., 0., 0.));
+                emission = ubo.emission;
             }
         }
         if(tyminus> 0. && tyminus < t){
@@ -62,6 +68,7 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out vec3 baseColor, out vec3 w
                 t = tyminus;
                 baseColor = ubo.color;
                 worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., -1., 0., 0.));
+                emission = ubo.emission;
             }
         }
         if(txplus> 0. && txplus < t){
@@ -70,6 +77,7 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out vec3 baseColor, out vec3 w
                 t = txplus;
                 baseColor = ubo.color;
                 worldNormal = vec3(transpose(ubo.modelInv) * vec4(1., 0., 0., 0.));
+                emission = ubo.emission;
             }
         }
         if(txminus> 0. && txminus < t){
@@ -77,10 +85,24 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out vec3 baseColor, out vec3 w
             if(abs(Intersect.z)<1. && abs(Intersect.y)<1.){
                 t = txminus;
                 baseColor = ubo.color;
-                worldNormal = vec3(transpose(ubo.modelInv) * vec4(1., 0., 0., 0.));
+                worldNormal = vec3(transpose(ubo.modelInv) * vec4(-1., 0., 0., 0.));
+                emission = ubo.emission;
             }
         }
     }
+}
+
+vec3 hash( vec3 p )
+{
+	p = vec3( dot(p,vec3(127.1,311.7, 74.7)),
+			  dot(p,vec3(269.5,183.3,246.1)),
+			  dot(p,vec3(113.5,271.9,124.6)));
+
+	return fract(sin(p)*43758.5453123);
+}
+
+void GetRandomDir(in vec2 fragCoord, out vec3 outDir){
+    outDir = normalize(hash(vec3(cameraubo.time / 100., fragCoord.x * 0.1, fragCoord.y * 0.1)));
 }
 
 void main() {
@@ -98,8 +120,15 @@ void main() {
     camToWorld1[1] = cameraubo.up;
     camToWorld1[2] = cameraubo.forward;
     vec3 rayWorldSpaceDir = (camToWorld1 * rayCamSpaceDir);
+    vec3 rayWorldOrigin = cameraubo.eye;
     vec3 baseColor;
     vec3 worldNormal;
-    RayIntersect(cameraubo.eye, rayWorldSpaceDir, baseColor, worldNormal);
-    outColor = vec4(worldNormal, 1.0);
+    vec3 emission;
+    float t;
+    RayIntersect(cameraubo.eye, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
+    rayWorldOrigin = rayWorldOrigin + t * rayWorldSpaceDir;
+    GetRandomDir(ndc.xy, rayWorldSpaceDir);
+    RayIntersect(rayWorldOrigin, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
+    worldNormal = normalize(worldNormal);
+    outColor = vec4(emission, 1.0);
 }
