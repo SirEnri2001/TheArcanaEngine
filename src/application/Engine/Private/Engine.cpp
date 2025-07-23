@@ -28,6 +28,8 @@ const std::string VERT_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.vert";
 const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
 const std::string CUBE_PATH = "models/cube/cube.obj";
 
+bool Recompile = false;
+
 std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
@@ -67,20 +69,11 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         static float f = 0.0f;
         static int counter = 0;
 
-        ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+        ImGui::Begin("Toolbar");                          // Create a window called "Hello, world!" and append into it.
+        //ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 
-        ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-        ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-        ImGui::Checkbox("Another Window", &show_another_window);
-
-        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-        ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-        if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-            counter++;
-        ImGui::SameLine();
-        ImGui::Text("counter = %d", counter);
-
+        if (ImGui::Button("Recompile Shaders"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+            Recompile = true;
         ImGui::End();
     }
 
@@ -164,6 +157,7 @@ public:
 class PassPipeline {
 public:
     virtual void InitializePipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) = 0;
+    virtual void ReloadPipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) {}
 };
 
 class BlinnPhongPipeline : public PassPipeline {
@@ -285,7 +279,6 @@ class PathTracerPipeline : public PassPipeline {
 public:
     RHIPipelineFactory PipelineFactory;
     RHIPipelineObject PipelineObject;
-    RHIPipelineObject PresentPipelineObject;
 
     std::vector<char> VertexShaderSPIRV;
     std::vector<char> FragmentShaderSPIRV;
@@ -303,8 +296,16 @@ public:
         PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
         PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
     }
-};
 
+    virtual void ReloadPipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) override {
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.vert");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.frag");
+        PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+        PipelineObject.Cleanup(&Viewport.Context);
+        PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
+    }
+};
+void CompileAllShaders();
 class PathTraceRenderer {
 public:
     uint32_t IndexBufferSize;
@@ -368,6 +369,7 @@ public:
 
     virtual void Render(RenderViewport& Viewport, float4 ViewPos) {
         auto& Context = Viewport.Context;
+
         ImGUI.UpdateUI(pFuncImDraw);
         cuo.screenres.r = Viewport.WindowManager.GetWindowWidth();
         cuo.screenres.g = Viewport.WindowManager.GetWindowHeight();
@@ -375,6 +377,13 @@ public:
 
         GraphicDispatcher.WaitForGPUIdle(&Context);
         GraphicDispatcher.BeginFrame(&Context, &Viewport.WindowManager, &PresentPass);
+
+        if (Recompile) {
+            CompileAllShaders();
+            Pipeline.ReloadPipeline(Viewport, PresentPass);
+            Recompile = false;
+        }
+
         GraphicDispatcher.BeginRenderPass(&PresentPass);
         Pipeline.PipelineObject.SetUniform(SceneUniform, 0);
         Pipeline.PipelineObject.SetUniform(&CameraUniform, 1);
@@ -498,6 +507,7 @@ int main() {
     {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
         PTRenderer.UpdateUniformBuffer(ViewPos, ViewForward, ViewUp, time);
         PTRenderer.Render(Viewport, ViewPos);
     }
