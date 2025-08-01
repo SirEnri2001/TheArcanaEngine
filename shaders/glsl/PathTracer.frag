@@ -101,11 +101,13 @@ vec3 hash( vec3 p )
 	return fract(sin(p)*43758.5453123);
 }
 
-void GetRandomDir(in vec2 fragCoord, out vec3 outDir){
-    outDir = normalize(hash(vec3(cameraubo.time / 100., fragCoord.x * 0.1, fragCoord.y * 0.1)));
+void GetRandomDir(in float seed, in vec2 fragCoord, out vec3 outDir){
+    outDir = normalize(hash(vec3(seed, fragCoord.x * 0.1, fragCoord.y * 0.1)) - 0.5);
 }
 
 void main() {
+#ifdef COMPILETEST
+#else
     // sensor size 32mm
     // focal length 45mm
     // fov = 2 * atan(sensor_size/2/focal_length)
@@ -124,11 +126,27 @@ void main() {
     vec3 baseColor;
     vec3 worldNormal;
     vec3 emission;
+    vec3 accumulatedIlluminate = vec3(0.);
     float t;
-    RayIntersect(cameraubo.eye, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
-    rayWorldOrigin = rayWorldOrigin + t * rayWorldSpaceDir;
-    GetRandomDir(ndc.xy, rayWorldSpaceDir);
-    RayIntersect(rayWorldOrigin, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
-    worldNormal = normalize(worldNormal);
-    outColor = vec4(emission, 1.0);
+    int validRays = 0;
+    for(int i = 0; i < 5; i++){
+        vec3 totalBaseColor = vec3(1.0);
+        rayWorldSpaceDir = (camToWorld1 * rayCamSpaceDir);
+        rayWorldOrigin = cameraubo.eye;
+        RayIntersect(cameraubo.eye, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
+        totalBaseColor *= baseColor;
+        rayWorldOrigin = rayWorldOrigin + (t - 0.001) * rayWorldSpaceDir;
+        GetRandomDir(cameraubo.time / 100. + i * 0.01, ndc.xy, rayWorldSpaceDir);
+        if (dot(rayWorldSpaceDir, worldNormal)< 0.){
+            rayWorldSpaceDir *= -1.;
+        }
+        RayIntersect(rayWorldOrigin, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
+        if(t<10000){
+            validRays++;
+            accumulatedIlluminate+=emission * totalBaseColor;
+        }
+    }
+    
+    outColor = vec4(accumulatedIlluminate / validRays, 1.0);
+#endif
 }
