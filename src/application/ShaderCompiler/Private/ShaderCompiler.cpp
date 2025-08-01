@@ -10,7 +10,7 @@ void GLSLCompiler::Preprocess(const char* File) {
 
 bool GLSLCompiler::DirectCompile(const char* InFile, const char* OutFile, const char* Args) {
 	std::stringstream CommandLine;
-	CommandLine << "glslc " << InFile << " -o " << OutFile;
+	CommandLine << "glslc " << InFile << " -o " << OutFile << " " << Args;
 	int result = std::system(CommandLine.str().c_str());
 	return result == 0;
 }

@@ -29,6 +29,12 @@ const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
 const std::string CUBE_PATH = "models/cube/cube.obj";
 
 bool Recompile = false;
+bool TestShaders = false;
+bool RenderingPaused = false;
+bool ShaderCompileHasError = false;
+
+
+void CompileAllShaders(bool CompileTest = false);
 
 std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -70,10 +76,59 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         static int counter = 0;
 
         ImGui::Begin("Toolbar");                          // Create a window called "Hello, world!" and append into it.
-        //ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+        ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 
-        if (ImGui::Button("Recompile Shaders"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+        if (ImGui::Button("Recompile Shaders")) {
             Recompile = true;
+            TestShaders = false;
+        }
+        
+        if (ImGui::Button("Recompile Test Shaders")) {
+            Recompile = true;
+            TestShaders = true;
+        }
+
+        if (ImGui::Button("Pause")) {
+            RenderingPaused = true;
+            ImGui::OpenPopup("Pause Rendering");
+        }
+
+        if (ShaderCompileHasError) {
+            ImGui::OpenPopup("Shader Compiler Error");
+        }
+
+        // Always center this window when appearing
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+        if (ImGui::BeginPopupModal("Pause Rendering", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("Rendering paused. ");
+            ImGui::Separator();
+
+            if (ImGui::Button("Continue", ImVec2(120, 0)))
+            {
+                RenderingPaused = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SetItemDefaultFocus();
+            ImGui::EndPopup();
+        }
+
+        if (ImGui::BeginPopupModal("Shader Compiler Error", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("Shader has compilation error, check console for more information. ");
+            ImGui::Separator();
+
+            if (ImGui::Button("Retry", ImVec2(120, 0))) 
+            { 
+                CompileAllShaders(TestShaders);
+                ImGui::CloseCurrentPopup(); 
+            }
+            ImGui::SetItemDefaultFocus();
+            ImGui::EndPopup();
+        }
+
         ImGui::End();
     }
 
@@ -305,7 +360,6 @@ public:
         PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
     }
 };
-void CompileAllShaders();
 class PathTraceRenderer {
 public:
     uint32_t IndexBufferSize;
@@ -379,18 +433,21 @@ public:
         GraphicDispatcher.BeginFrame(&Context, &Viewport.WindowManager, &PresentPass);
 
         if (Recompile) {
-            CompileAllShaders();
+            CompileAllShaders(TestShaders);
             Pipeline.ReloadPipeline(Viewport, PresentPass);
             Recompile = false;
         }
 
         GraphicDispatcher.BeginRenderPass(&PresentPass);
-        Pipeline.PipelineObject.SetUniform(SceneUniform, 0);
-        Pipeline.PipelineObject.SetUniform(&CameraUniform, 1);
-        GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
-        GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
-        IndexBufferSize = 6;
-        GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
+        if (!RenderingPaused && !ShaderCompileHasError) {
+            Pipeline.PipelineObject.SetUniform(SceneUniform, 0);
+            Pipeline.PipelineObject.SetUniform(&CameraUniform, 1);
+            GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
+            GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
+            IndexBufferSize = 6;
+            GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
+        }
+        
         // Comment this line if you don't want ImGUI
         ImGUI.DispatchImGUI(&GraphicDispatcher);
         GraphicDispatcher.EndRenderPass(&PresentPass);
@@ -441,23 +498,35 @@ void SetSceneUniform(RenderViewport& Viewport, std::vector<ModelUniformObject>& 
 #define PT_VERTSHADER "./shaders/glsl/PathTracer.vert"
 #define PT_FRAGSHADER "./shaders/glsl/PathTracer.frag"
 
-void CompileAllShaders() {
+void CompileAllShaders(bool CompileTest) {
     GLSLCompiler Compiler;
     bool IsSucceeded = true;
-    do {
-        IsSucceeded = true;
+    IsSucceeded = true;
+    if (CompileTest)
+    {
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_VERTSHADER, "./shaderbytecode/glsl/PathTracer.vert", "-DCOMPILETEST");
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag", "-DCOMPILETEST");
+    }
+    else {
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_VERTSHADER, "./shaderbytecode/glsl/PathTracer.vert", "");
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag", "");
-        if (!IsSucceeded) {
-            Log("Shader compilation error, please check and try again. ");
-            system("pause");
-        }
-    } while (!IsSucceeded);
+    }
+    if (!IsSucceeded) {
+        ShaderCompileHasError = true;
+    }
+    else {
+        ShaderCompileHasError = false;
+    }
 }
 
 int main() {
     GRHIImplementationSelection = RHIImplement_Vulkan;
-    CompileAllShaders();
+    do {
+        CompileAllShaders();
+        if (ShaderCompileHasError) {
+            system("pause");
+        }
+    } while (ShaderCompileHasError);
     Log("All shaders compilation succeeded. ");
     RenderViewport Viewport;
     Viewport.InitializeViewport(1000, 1000);
