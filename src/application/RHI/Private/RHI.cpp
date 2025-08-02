@@ -467,6 +467,18 @@ void RHIGraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
 	pImpl->WaitForGPUIdle(Context);
 }
+
+void RHIGraphicsDispatcher::TransitionImageAsRenderTarget(RHIImageResource* Image)
+{
+	pImpl->TransitionImageAsRenderTarget(Image);
+}
+
+void RHIGraphicsDispatcher::TransitionImageAsShaderRead(RHIImageResource* Image)
+{
+	pImpl->TransitionImageAsShaderRead(Image);
+}
+
+
 RHIPipelineObject::RHIPipelineObject()
 {
 		if (GRHIImplementationSelection == RHIImplement_Vulkan) {

@@ -149,6 +149,8 @@ public:
 			return VK_FORMAT_R32G32B32_SFLOAT;
 		case R32G32_SFLOAT:
 			return VK_FORMAT_R32G32_SFLOAT;
+		case R32G32B32A32_SFLOAT:
+			return VK_FORMAT_R32G32B32A32_SFLOAT;
 		}
 		return VK_FORMAT_UNDEFINED;
 	}
@@ -417,4 +419,6 @@ public:
 	void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
 	void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
 	void WaitForGPUIdle(RHIContext* Context) override;
+	virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
+	virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
 };

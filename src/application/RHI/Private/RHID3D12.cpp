@@ -1080,6 +1080,14 @@ void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
 }
 
+void RHID3D12GraphicsDispatcher::TransitionImageAsRenderTarget(RHIImageResource* Image)
+{
+}
+
+void RHID3D12GraphicsDispatcher::TransitionImageAsShaderRead(RHIImageResource* Image)
+{
+}
+
 void RHID3D12RenderPass::Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY)
 {
     Height = SizeY;

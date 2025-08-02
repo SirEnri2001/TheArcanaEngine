@@ -367,6 +367,17 @@ void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
 	vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 }
 
+void RHIVulkanGraphicDispatcher::TransitionImageAsRenderTarget(RHIImageResource* Image) {
+	auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image->GetImpl());
+	TransitionImageLayout(VulkanImage->Image, CommandBuffer, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VulkanImage->MipLevel);
+	VulkanImage->DescriptorInfo.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+}
+
+void RHIVulkanGraphicDispatcher::TransitionImageAsShaderRead(RHIImageResource* Image) {
+	auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image->GetImpl());
+	TransitionImageLayout(VulkanImage->Image, CommandBuffer, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VulkanImage->MipLevel);
+	VulkanImage->DescriptorInfo.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+}
 
 void RHIVulkanGraphicDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
 {

@@ -265,6 +265,8 @@ public:
     virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
     virtual void WaitForGPUIdle(RHIContext* Context) override;
+    virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
+    virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
 };
 
 // RHID3D12ImGUI

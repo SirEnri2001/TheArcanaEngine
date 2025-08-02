@@ -425,6 +425,8 @@ public:
     virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
     virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void WaitForGPUIdle(RHIContext* Context) = 0;
+    virtual void TransitionImageAsShaderRead(RHIImageResource* Image) = 0;
+    virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) = 0;
 };
 
 /**
@@ -453,6 +455,8 @@ public:
     virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
     virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void WaitForGPUIdle(RHIContext* Context) override;
+    virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
+    virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
     RHIGraphicsDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
