@@ -347,6 +347,7 @@ public:
         PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
         PipelineFactory.SetUniformBinding(0);
         PipelineFactory.SetUniformBinding(1);
+        PipelineFactory.SetImageSamplerBinding(2);
         PipelineFactory.AddBufferBinding(0, sizeof(float3));
         PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
         PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
@@ -360,19 +361,58 @@ public:
         PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
     }
 };
+
+class PTPostPipeline : public PassPipeline {
+public:
+    RHIPipelineFactory PipelineFactory;
+    RHIPipelineObject PipelineObject;
+
+    std::vector<char> VertexShaderSPIRV;
+    std::vector<char> FragmentShaderSPIRV;
+    PTPostPipeline() {
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.vert");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.frag");
+    }
+
+    virtual void InitializePipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) override {
+        PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+        PipelineFactory.SetImageSamplerBinding(0);
+        PipelineFactory.AddBufferBinding(0, sizeof(float3));
+        PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
+        PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
+    }
+
+    virtual void ReloadPipeline(RenderViewport& Viewport, RHIRenderPass& RenderPass) override {
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.vert");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.frag");
+        PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+        PipelineObject.Cleanup(&Viewport.Context);
+        PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
+    }
+};
+
 class PathTraceRenderer {
 public:
     uint32_t IndexBufferSize;
     RHIBufferResource RHIFullScreenQuadBuffer;
     RHIBufferResource RHIFullScreenQuadIndexBuffer;
+    RHIImageResource RHIScreenBuffer1;
+    RHIImageResource RHIScreenBuffer2;
+    RHIImageResource RHIScreenBufferDepth;
     RHIGraphicsDispatcher GraphicDispatcher;
     RHIRenderPass PresentPass;
+    RHIRenderPass PTRenderPass1;
+    RHIRenderPass PTRenderPass2;
     RHIUniform CameraUniform;
     RHIUniform* SceneUniform = nullptr;
 
     PathTracerPipeline Pipeline;
+    PTPostPipeline PostPipeline;
 
     RHIImGUI ImGUI;
+
+    bool swap = false;
+
     void (*pFuncImDraw)(ImGuiSharedGlobals*);
 
     struct CameraUniformObject {
@@ -391,10 +431,24 @@ public:
         // create renderer
 
         Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
+        ImageExtent3D ext;
+        ext.Depth = 1;
+        ext.Height = Viewport.WindowManager.GetWindowHeight();
+        ext.Width = Viewport.WindowManager.GetWindowWidth();
+        RHIScreenBuffer1.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager, ext, IU_COLOR_RT);
+        RHIScreenBuffer2.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager, ext, IU_COLOR_RT);
+        RHIScreenBufferDepth.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager, ext, IU_DEPTH_RT);
+        PTRenderPass1.AddColorRenderTarget(&RHIScreenBuffer1);
+        PTRenderPass2.AddColorRenderTarget(&RHIScreenBuffer2);
+        PTRenderPass1.SetDepthRenderTarget(&RHIScreenBufferDepth);
+        PTRenderPass2.SetDepthRenderTarget(&RHIScreenBufferDepth);
+        PTRenderPass1.Initialize(&Viewport.Context, Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight());
+        PTRenderPass2.Initialize(&Viewport.Context, Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight());
 
         GraphicDispatcher.Initialize(&Viewport.Context);
 
-        Pipeline.InitializePipeline(Viewport, PresentPass);
+        Pipeline.InitializePipeline(Viewport, PTRenderPass1);
+        PostPipeline.InitializePipeline(Viewport, PresentPass);
 
         RHIFullScreenQuadBuffer.Initialize(&Viewport.Context, sizeof(float3), 8, BufferType::VERTEX);
         RHIFullScreenQuadIndexBuffer.Initialize(&Viewport.Context, sizeof(uint32_t), 6, BufferType::INDEX);
@@ -404,7 +458,6 @@ public:
         RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         CameraUniform.Initialize(&Viewport.Context, sizeof(CameraUniformObject));
         ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &PresentPass);
-
     }
 
     void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp, float time) {
@@ -434,24 +487,49 @@ public:
 
         if (Recompile) {
             CompileAllShaders(TestShaders);
-            Pipeline.ReloadPipeline(Viewport, PresentPass);
+            Pipeline.ReloadPipeline(Viewport, PTRenderPass1);
+            PostPipeline.ReloadPipeline(Viewport, PresentPass);
             Recompile = false;
         }
 
-        GraphicDispatcher.BeginRenderPass(&PresentPass);
+        if (swap) {
+            GraphicDispatcher.TransitionImageAsRenderTarget(&RHIScreenBuffer2);
+            GraphicDispatcher.TransitionImageAsShaderRead(&RHIScreenBuffer1);
+            GraphicDispatcher.BeginRenderPass(&PTRenderPass2);
+        }
+        else {
+            GraphicDispatcher.TransitionImageAsRenderTarget(&RHIScreenBuffer1);
+            GraphicDispatcher.TransitionImageAsShaderRead(&RHIScreenBuffer2);
+            GraphicDispatcher.BeginRenderPass(&PTRenderPass1);
+        }
         if (!RenderingPaused && !ShaderCompileHasError) {
             Pipeline.PipelineObject.SetUniform(SceneUniform, 0);
             Pipeline.PipelineObject.SetUniform(&CameraUniform, 1);
+            Pipeline.PipelineObject.SetImageSampler(swap ? &RHIScreenBuffer1 : &RHIScreenBuffer2, 2);
             GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
             GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
             IndexBufferSize = 6;
             GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
-        
+        if (swap) {
+            GraphicDispatcher.EndRenderPass(&PTRenderPass2);
+        }
+        else {
+            GraphicDispatcher.EndRenderPass(&PTRenderPass1);
+        }
+        GraphicDispatcher.BeginRenderPass(&PresentPass);
         // Comment this line if you don't want ImGUI
+        if (!RenderingPaused && !ShaderCompileHasError) {
+            PostPipeline.PipelineObject.SetImageSampler(swap ? &RHIScreenBuffer1 : &RHIScreenBuffer2, 0);
+            GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
+            GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
+            IndexBufferSize = 6;
+            GraphicDispatcher.Dispatch(&PostPipeline.PipelineObject, IndexBufferSize, 0, 1);
+        }
         ImGUI.DispatchImGUI(&GraphicDispatcher);
         GraphicDispatcher.EndRenderPass(&PresentPass);
         GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager);
+        swap  = !swap;
     }
 };
 
@@ -497,6 +575,8 @@ void SetSceneUniform(RenderViewport& Viewport, std::vector<ModelUniformObject>& 
 
 #define PT_VERTSHADER "./shaders/glsl/PathTracer.vert"
 #define PT_FRAGSHADER "./shaders/glsl/PathTracer.frag"
+#define PTPOST_VERTSHADER "./shaders/glsl/ScreenPost.vert"
+#define PTPOST_FRAGSHADER "./shaders/glsl/ScreenPost.frag"
 
 void CompileAllShaders(bool CompileTest) {
     GLSLCompiler Compiler;
@@ -506,10 +586,14 @@ void CompileAllShaders(bool CompileTest) {
     {
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_VERTSHADER, "./shaderbytecode/glsl/PathTracer.vert", "-DCOMPILETEST");
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag", "-DCOMPILETEST");
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_VERTSHADER, "./shaderbytecode/glsl/ScreenPost.vert", "-DCOMPILETEST");
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_FRAGSHADER, "./shaderbytecode/glsl/ScreenPost.frag", "-DCOMPILETEST");
     }
     else {
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_VERTSHADER, "./shaderbytecode/glsl/PathTracer.vert", "");
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag", "");
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_VERTSHADER, "./shaderbytecode/glsl/ScreenPost.vert", "");
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_FRAGSHADER, "./shaderbytecode/glsl/ScreenPost.frag", "");
     }
     if (!IsSucceeded) {
         ShaderCompileHasError = true;
@@ -564,7 +648,7 @@ int main() {
     SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
 
     // Light
-    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
+    SetSceneUniform(Viewport, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
 
     SceneUniform.CopyToBuffer(&Viewport.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
     PTRenderer.SetUniform(SceneUniform);

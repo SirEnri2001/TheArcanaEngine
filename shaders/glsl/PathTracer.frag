@@ -20,6 +20,8 @@ layout(binding = 1) uniform CameraUniform {
     float time;
 } cameraubo;
 
+layout(binding = 2) uniform sampler2D screenBuffer;
+
 void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColor, out vec3 worldNormal, out vec3 emission){
     t = 999999999.;
     baseColor = vec3(0.);
@@ -115,6 +117,8 @@ void main() {
     // assume our camera near plane width is 2 as in ndc.
     float cameraDistance = 1. / tan(halffov);
     vec3 ndc = vec3(gl_FragCoord.x / cameraubo.screenres.x * 2 - 1, 1 - gl_FragCoord.y / cameraubo.screenres.y * 2, 0.);
+    vec2 screenxy = (ndc.xy + 1.0) * 0.5;
+    screenxy.y *= -1;
     vec3 rayUnnorm = vec3(ndc.x, ndc.y, cameraDistance);
     vec3 rayCamSpaceDir = normalize(rayUnnorm);
     mat3 camToWorld1;
@@ -129,24 +133,27 @@ void main() {
     vec3 accumulatedIlluminate = vec3(0.);
     float t;
     int validRays = 0;
-    for(int i = 0; i < 5; i++){
-        vec3 totalBaseColor = vec3(1.0);
-        rayWorldSpaceDir = (camToWorld1 * rayCamSpaceDir);
-        rayWorldOrigin = cameraubo.eye;
-        RayIntersect(cameraubo.eye, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
-        totalBaseColor *= baseColor;
-        rayWorldOrigin = rayWorldOrigin + (t - 0.001) * rayWorldSpaceDir;
-        GetRandomDir(cameraubo.time / 100. + i * 0.01, ndc.xy, rayWorldSpaceDir);
-        if (dot(rayWorldSpaceDir, worldNormal)< 0.){
-            rayWorldSpaceDir *= -1.;
-        }
-        RayIntersect(rayWorldOrigin, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
-        if(t<10000){
-            validRays++;
-            accumulatedIlluminate+=emission * totalBaseColor;
-        }
+    bool inBox = true;
+    vec3 totalBaseColor = vec3(1.0);
+    rayWorldSpaceDir = (camToWorld1 * rayCamSpaceDir);
+    rayWorldOrigin = cameraubo.eye;
+    RayIntersect(cameraubo.eye, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
+    if(t>10000){
+        inBox = false;
+        outColor = vec4(0.,0.,0., 1.);
+        return;
     }
-    
-    outColor = vec4(accumulatedIlluminate / validRays, 1.0);
+    totalBaseColor *= baseColor;
+    rayWorldOrigin = rayWorldOrigin + (t - 0.00001) * rayWorldSpaceDir;
+    GetRandomDir(cameraubo.time / 100., ndc.xy, rayWorldSpaceDir);
+    if (dot(rayWorldSpaceDir, worldNormal)< 0.){
+        rayWorldSpaceDir *= -1.;
+    }
+    RayIntersect(rayWorldOrigin, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
+    if(t<10000){
+        accumulatedIlluminate += emission * totalBaseColor * dot(worldNormal, rayWorldSpaceDir) * -1. * 0.0001;
+    }
+    outColor = vec4(accumulatedIlluminate, 1.0);
+    outColor = (outColor + texture(screenBuffer, screenxy.xy));
 #endif
 }

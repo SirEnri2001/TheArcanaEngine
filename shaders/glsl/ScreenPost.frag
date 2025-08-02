@@ -6,5 +6,6 @@ layout(location = 0) in vec3 fragPos;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    outColor = 1. - texture(texSampler, fragPos.xy);
+    vec2 screenxy = (fragPos.xy + 1.0) * 0.5;
+    outColor = texture(texSampler, screenxy.xy);
 }
