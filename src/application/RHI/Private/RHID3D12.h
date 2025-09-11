@@ -96,8 +96,13 @@ public:
     virtual void RemoveScreenSizeTexture(RHIImageResource* ImageResource) override;
     virtual void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) override;
     virtual bool IsAlive() override;
-    virtual uint32_t GetWindowHeight() override;
-    virtual uint32_t GetWindowWidth() override;
+
+    virtual RHIImageResource* GetColorRenderTarget() override {
+        return nullptr;
+    }
+    virtual RHIImageResource* GetDepthRenderTarget() override {
+        return nullptr;
+    }
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
     void SetResized(bool val, LPARAM Param){bResized = val; ResizeParam = Param; }
 };
@@ -115,10 +120,12 @@ public:
     ComPtr<ID3D12Resource> m_texture;
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t MipLevel) override;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) override;
+    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1)  override;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
     virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
+    virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
@@ -176,10 +183,8 @@ public:
     DXGI_FORMAT DepthRTFormat;
 	RHID3D12RenderPass() = default;
 	virtual ~RHID3D12RenderPass() override = default;
-	virtual void Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY) override;
+	virtual void Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat) override;
 	virtual void Cleanup(RHIContext* Context) override;
-	virtual void AddColorRenderTarget(RHIImageResource* ColorRT) override;
-	virtual void SetDepthRenderTarget(RHIImageResource* DepthRT) override;
 };
 
 class RHID3D12PresentPass : public RHIPresentPassBase
@@ -260,9 +265,9 @@ public:
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
     virtual void Dispatch(RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
-	virtual void BeginRenderPass(RHIRenderPass* RenderPass) override;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
+	virtual void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
+    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
     virtual void WaitForGPUIdle(RHIContext* Context) override;
     virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
@@ -277,9 +282,31 @@ public:
     RHID3D12ImGUI() = default;
     virtual ~RHID3D12ImGUI() override = default;
 
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
     virtual void Cleanup() override;
 };
 
+class RHID3D12FrameBuffer : public RHIFrameBufferBase {
+public:
+    RHID3D12FrameBuffer();
+    RHID3D12FrameBuffer(const RHID3D12FrameBuffer&) = delete;
+    virtual ~RHID3D12FrameBuffer() override;
+    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
+        std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) override;
+    virtual void Cleanup(RHIContext* Context) override;
+};
+
+class RHID3D12Swapchain : public RHISwapchainBase
+{
+public:
+    RHID3D12Swapchain();
+    RHID3D12Swapchain(const RHID3D12Swapchain&) = delete;
+    virtual ~RHID3D12Swapchain();
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) override;
+    virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) override;
+    ImageExtent3D GetFrameSize() override;
+};

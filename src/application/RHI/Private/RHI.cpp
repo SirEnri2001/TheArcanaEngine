@@ -132,16 +132,13 @@ bool RHIWindowManager::IsAlive()
 	return pImpl->IsAlive();
 }
 
-uint32_t RHIWindowManager::GetWindowHeight()
-{
-	return pImpl->GetWindowHeight();
-}
 
-uint32_t RHIWindowManager::GetWindowWidth()
-{
-	return pImpl->GetWindowWidth();
+RHIImageResource* RHIWindowManager::GetColorRenderTarget() {
+	return pImpl->GetColorRenderTarget();
 }
-
+RHIImageResource* RHIWindowManager::GetDepthRenderTarget() {
+	return pImpl->GetDepthRenderTarget();
+}
 
 // RHIImageResource implementation
 RHIImageResource::RHIImageResource()
@@ -157,9 +154,9 @@ RHIImageResource::~RHIImageResource()
 {
 }
 
-void RHIImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t MipLevel)
+void RHIImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
 {
-	pImpl->Initialize(Context, Height, Width, InFormat, MipLevel);
+	pImpl->Initialize(Context, Height, Width, InFormat, InUsage, MipLevel);
 }
 
 
@@ -167,6 +164,12 @@ void RHIImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowMana
 {
 	pImpl->InitializeRenderTarget(Context, WindowManager, RTExtent, InUsage, MultiSamplesCount);
 }
+
+void RHIImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
+{
+	pImpl->Initialize(Context, RTExtent, InFormat, InUsage, MipLevel);
+}
+
 
 void RHIImageResource::CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride)
 {
@@ -176,6 +179,11 @@ void RHIImageResource::CopyToTexture(RHIContext* Context, void* Data, uint32_t S
 void RHIImageResource::Cleanup(RHIContext* Context)
 {
 	pImpl->Cleanup(Context);
+}
+
+void RHIImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_t Width)
+{
+	pImpl->Resize(Context, Height, Width);
 }
 
 // RHIBufferResource implementation
@@ -250,24 +258,14 @@ RHIRenderPass::~RHIRenderPass()
 {
 }
 
-void RHIRenderPass::Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY)
+void RHIRenderPass::Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat)
 {
-	pImpl->Initialize(Context, SizeX, SizeY);
+	pImpl->Initialize(Context, ColorRTFormats, hasDepth, DepthFormat);
 }
 
 void RHIRenderPass::Cleanup(RHIContext* Context)
 {
 	pImpl->Cleanup(Context);
-}
-
-void RHIRenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
-{
-	pImpl->AddColorRenderTarget(ColorRT);
-}
-
-void RHIRenderPass::SetDepthRenderTarget(RHIImageResource* DepthRT)
-{
-	pImpl->SetDepthRenderTarget(DepthRT);
 }
 
 // RHIPresentPass implementation
@@ -380,9 +378,9 @@ RHIImGUI::~RHIImGUI()
 {
 }
 
-void RHIImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
+void RHIImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
-	pImpl->Initialize(Context, WindowManager, PresentRenderPass);
+	pImpl->Initialize(Context, WindowManager, Swapchain, PresentRenderPass);
 }
 
 void RHIImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* ImGlobals))
@@ -440,9 +438,9 @@ void RHIGraphicsDispatcher::Dispatch(RHIPipelineObject* PipelineObject, uint32_t
 	pImpl->Dispatch(PipelineObject, IndexCount, IndexOffset, InstanceCount);
 }
 
-void RHIGraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
+void RHIGraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
 {
-	pImpl->BeginRenderPass(RenderPass);
+	pImpl->BeginRenderPass(RenderPass, Framebuffer);
 }
 
 
@@ -451,12 +449,12 @@ void RHIGraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 	pImpl->EndRenderPass(RenderPass);
 }
 
-void RHIGraphicsDispatcher::BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
+void RHIGraphicsDispatcher::BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
-	pImpl->BeginFrame(Context, WindowManager, PresentRenderPass);
+	pImpl->BeginFrame(Context, Swapchain, PresentRenderPass);
 }
 
-void RHIGraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIGraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
 {
 	pImpl->EndFrameAndSubmit(Context, WindowManager);
 }
@@ -505,4 +503,67 @@ void RHIPipelineObject::SetImageSampler(RHIImageResource* ImageResource, uint32_
 void RHIPipelineObject::Cleanup(RHIContext* Context)
 {
     pImpl->Cleanup(Context);
+}
+
+RHIFrameBuffer::RHIFrameBuffer() {
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanFrameBuffer>();
+	}
+	else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12FrameBuffer>();
+	}
+}
+
+RHIFrameBuffer::~RHIFrameBuffer() {
+
+}
+
+void RHIFrameBuffer::Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
+	std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) {
+	pImpl->Initialize(Context, RenderPass, ColorRTs, DepthRT);
+}
+
+void RHIFrameBuffer::Cleanup(RHIContext* Context) {
+	pImpl->Cleanup(Context);
+}
+
+RHISwapchain::RHISwapchain()
+{
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanSwapchain>();
+	}
+	else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12Swapchain>();
+	}
+}
+
+RHISwapchain::~RHISwapchain()
+{
+	
+}
+
+void RHISwapchain::Initialize(RHIContext* Context, RHIWindowManager* WindowManager)
+{
+	pImpl->Initialize(Context, WindowManager);
+}
+
+void RHISwapchain::Cleanup(RHIContext* Context)
+{
+	pImpl->Cleanup(Context);
+}
+
+void RHISwapchain::AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass)
+{
+	pImpl->AcquireFrame(Context, OutFrameBuffer, InRenderPass);
+}
+
+void RHISwapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher)
+{
+	pImpl->PresentFrameAndRelease(Context, GDispatcher);
+}
+
+
+ImageExtent3D RHISwapchain::GetFrameSize()
+{
+	return pImpl->GetFrameSize();
 }

@@ -431,18 +431,6 @@ bool RHID3D12WindowManager::IsAlive()
     return IsWindow(hWnd);
 }
 
-uint32_t RHID3D12WindowManager::GetWindowHeight()
-{
-    // Placeholder implementation
-    return m_height;
-}
-
-uint32_t RHID3D12WindowManager::GetWindowWidth()
-{
-    // Placeholder implementation
-    return m_width;
-}
-
 void RHID3D12Context::WaitForPreviousFrame()
 {
 	    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
@@ -464,7 +452,7 @@ void RHID3D12Context::WaitForPreviousFrame()
 }
 
 
-void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, int32_t MipLevel)
+void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
@@ -505,14 +493,19 @@ void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, u
     }
 }
 
+void RHID3D12ImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
+{
+	
+}
+
 
 void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
 
-    Height = WindowManager->GetWindowHeight();
-    Width = WindowManager->GetWindowWidth();
+    //Height = WindowManager->GetWindowHeight();
+    //Width = WindowManager->GetWindowWidth();
 
     // Create the texture.
     // Describe and create a Texture2D.
@@ -603,6 +596,10 @@ void RHID3D12ImageResource::Cleanup(RHIContext* Context)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     // Placeholder implementation
+}
+
+void RHID3D12ImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_t Width) {
+
 }
 
 // RHID3D12BufferResource implementation
@@ -984,7 +981,7 @@ void RHID3D12GraphicsDispatcher::Dispatch(RHIPipelineObject* Pipeline, uint32_t 
 
 }
 
-void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
+void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
 {
     auto* D3D12RenderPass = static_cast<RHID3D12RenderPass*>(RenderPass->GetImpl());
     // Execute the command list.
@@ -1022,7 +1019,7 @@ void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
 	m_commandList->ClearDepthStencilView(D3D12RenderPass->DepthRT, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0, 0, 0, NULL);
 }
 
-void RHID3D12GraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHID3D12GraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
 {
 	//ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
@@ -1052,28 +1049,28 @@ void RHID3D12GraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 }
 
 
-void RHID3D12GraphicsDispatcher::BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
+void RHID3D12GraphicsDispatcher::BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
-    auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
+    auto* D3D12Swapchain = static_cast<RHID3D12Swapchain*>(Swapchain->GetImpl());
     auto* D3D12PresentRenderPass = static_cast<RHID3D12RenderPass*>(PresentRenderPass->GetImpl());
 
-    if (D3D12WindowManager->bResized)
-    {
-        D3D12WindowManager->RecreateSwapchain(Context);
-        D3D12WindowManager->SetResized(false, NULL);
-        D3D12Context->WaitForPreviousFrame();
-    }
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-        D3D12WindowManager->m_renderTargets[D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex()],
-        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-    D3D12PresentRenderPass->ColorRTs.resize(1);
-    D3D12PresentRenderPass->ColorRTs[0] = D3D12WindowManager->m_rtvHandles[D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex()];
-    D3D12PresentRenderPass->ColorRTFormats.resize(1);
-    D3D12PresentRenderPass->ColorRTFormats[0] = D3D12WindowManager->RTFormat;
-    D3D12PresentRenderPass->DepthRT = D3D12WindowManager->dsvHandle;
-    D3D12PresentRenderPass->Height = D3D12WindowManager->m_height;
-    D3D12PresentRenderPass->Width = D3D12WindowManager->m_width;
+    //if (D3D12WindowManager->bResized)
+    //{
+    //    D3D12WindowManager->RecreateSwapchain(Context);
+    //    D3D12WindowManager->SetResized(false, NULL);
+    //    D3D12Context->WaitForPreviousFrame();
+    //}
+    //m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+    //    D3D12WindowManager->m_renderTargets[D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex()],
+    //    D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    //D3D12PresentRenderPass->ColorRTs.resize(1);
+    //D3D12PresentRenderPass->ColorRTs[0] = D3D12WindowManager->m_rtvHandles[D3D12WindowManager->m_swapChain->GetCurrentBackBufferIndex()];
+    //D3D12PresentRenderPass->ColorRTFormats.resize(1);
+    //D3D12PresentRenderPass->ColorRTFormats[0] = D3D12WindowManager->RTFormat;
+    //D3D12PresentRenderPass->DepthRT = D3D12WindowManager->dsvHandle;
+    //D3D12PresentRenderPass->Height = D3D12WindowManager->m_height;
+    //D3D12PresentRenderPass->Width = D3D12WindowManager->m_width;
 }
 
 void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
@@ -1088,27 +1085,26 @@ void RHID3D12GraphicsDispatcher::TransitionImageAsShaderRead(RHIImageResource* I
 {
 }
 
-void RHID3D12RenderPass::Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY)
+void RHID3D12RenderPass::Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat)
 {
-    Height = SizeY;
-    Width = SizeX;
+
 }
 
 
-void RHID3D12RenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
-{
-    auto* D3D12ColorRT = static_cast<RHID3D12ImageResource*>(ColorRT->GetImpl());
-    ColorRTs.push_back(D3D12ColorRT->RTDSVCpuDescriptorHandle);
-    ColorRTFormats.push_back(DXGI_FORMAT_R8G8B8A8_UNORM);
-    TransitionList.push_back(D3D12ColorRT);
-}
-
-void RHID3D12RenderPass::SetDepthRenderTarget(RHIImageResource* InDepthRT)
-{
-    auto* D3D12DepthRT = static_cast<RHID3D12ImageResource*>(InDepthRT->GetImpl());
-    DepthRT = D3D12DepthRT->RTDSVCpuDescriptorHandle;
-    DepthRTFormat = DXGI_FORMAT_D32_FLOAT;
-}
+//void RHID3D12RenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
+//{
+//    auto* D3D12ColorRT = static_cast<RHID3D12ImageResource*>(ColorRT->GetImpl());
+//    ColorRTs.push_back(D3D12ColorRT->RTDSVCpuDescriptorHandle);
+//    ColorRTFormats.push_back(DXGI_FORMAT_R8G8B8A8_UNORM);
+//    TransitionList.push_back(D3D12ColorRT);
+//}
+//
+//void RHID3D12RenderPass::SetDepthRenderTarget(RHIImageResource* InDepthRT)
+//{
+//    auto* D3D12DepthRT = static_cast<RHID3D12ImageResource*>(InDepthRT->GetImpl());
+//    DepthRT = D3D12DepthRT->RTDSVCpuDescriptorHandle;
+//    DepthRTFormat = DXGI_FORMAT_D32_FLOAT;
+//}
 
 void RHID3D12RenderPass::Cleanup(RHIContext* Context)
 {
@@ -1145,7 +1141,7 @@ void RHID3D12PresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* 
 static DescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
 static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
 // RHID3D12ImGUI implementation
-void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
+void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
@@ -1228,4 +1224,53 @@ void RHID3D12ImGUI::Cleanup()
     ImGui_ImplDX12_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
+}
+
+RHID3D12FrameBuffer::RHID3D12FrameBuffer() {
+
+}
+RHID3D12FrameBuffer::~RHID3D12FrameBuffer() {
+
+}
+void RHID3D12FrameBuffer::Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
+    std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) {
+
+}
+void RHID3D12FrameBuffer::Cleanup(RHIContext* Context) {
+
+}
+
+RHID3D12Swapchain::RHID3D12Swapchain()
+{
+	
+}
+
+RHID3D12Swapchain::~RHID3D12Swapchain()
+{
+	
+}
+
+void RHID3D12Swapchain::Initialize(RHIContext* Context, RHIWindowManager* WindowManager)
+{
+	
+}
+
+void RHID3D12Swapchain::Cleanup(RHIContext* Context)
+{
+	
+}
+
+void RHID3D12Swapchain::AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass)
+{
+	
+}
+
+void RHID3D12Swapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher)
+{
+	
+}
+
+ImageExtent3D RHID3D12Swapchain::GetFrameSize()
+{
+    return ImageExtent3D{};
 }

@@ -135,34 +135,29 @@ void RHIVulkanPipelineFactory::RemoveAllBufferBindings()
 	AttributeDescriptions.clear();
 }
 
-void RHIVulkanRenderPass::Initialize(RHIContext* Context, uint32_t Width, uint32_t Height)
+void RHIVulkanRenderPass::Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat)
 {
 	// Initialize: std::vector<VkAttachmentDescription> & VkRenderPass & VkFramebuffer
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	Extent.height = Height;
-	Extent.width = Width;
-	std::vector<VkImageView> ImageViews;
-	for(size_t i = 0; i < ColorRenderTargets.size(); i++)
+	for(size_t i = 0; i < ColorRTFormats.size(); i++)
 	{
-		auto* VkImageResource = ColorRenderTargets[i];
 		VkAttachmentDescription AttachmentDesc{};
-		AttachmentDesc.format = VkImageResource->InnerFormat;
+		AttachmentDesc.format = RHIVulkanPlatformSupport::GetVkFormat(ColorRTFormats[i]);
 		AttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
 		AttachmentDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		AttachmentDesc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		AttachmentDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		AttachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		AttachmentDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		AttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		AttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		Attachments.emplace_back(
 			AttachmentDesc
 		);
-		ImageViews.push_back(VkImageResource->ImageView);
 	}
-	if(DepthRenderTargets!=nullptr)
+	if(hasDepth)
 	{
 		VkAttachmentDescription AttachmentDesc{};
-		AttachmentDesc.format = DepthRenderTargets->InnerFormat;
+		AttachmentDesc.format = RHIVulkanPlatformSupport::GetVkFormat(DepthFormat);
 		AttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
 		AttachmentDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		AttachmentDesc.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -173,39 +168,15 @@ void RHIVulkanRenderPass::Initialize(RHIContext* Context, uint32_t Width, uint32
 		Attachments.emplace_back(
 			AttachmentDesc
 		);
-		DepthAttachmentIndex = ColorRenderTargets.size();
-		ImageViews.push_back(DepthRenderTargets->ImageView);
+		DepthAttachmentIndex = ColorRTFormats.size();
 	}
 	CreateRenderPassSingleSubpass(RenderPass, VulkanContext->Device, Attachments, DepthAttachmentIndex);
-	VkFramebufferCreateInfo framebufferInfo{};
-	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	framebufferInfo.renderPass = RenderPass;
-	framebufferInfo.attachmentCount = static_cast<uint32_t>(ImageViews.size());
-	framebufferInfo.pAttachments = ImageViews.data();
-	framebufferInfo.width = Width;
-	framebufferInfo.height = Height;
-	framebufferInfo.layers = 1;
-
-	if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &FrameBuffer) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create framebuffer!");
-	}
 }
 
 void RHIVulkanRenderPass::Cleanup(RHIContext* Context)
 {
 
 }
-
-void RHIVulkanRenderPass::AddColorRenderTarget(RHIImageResource* ColorRT)
-{
-	ColorRenderTargets.push_back(static_cast<RHIVulkanImageResource*>(ColorRT->GetImpl()));
-}
-
-void RHIVulkanRenderPass::SetDepthRenderTarget(RHIImageResource* DepthRT)
-{
-	DepthRenderTargets = static_cast<RHIVulkanImageResource*>(DepthRT->GetImpl());
-}
-
 
 // RHIVulkanPresentPass implementation
 RHIVulkanPresentPass::RHIVulkanPresentPass()
@@ -225,7 +196,8 @@ void RHIVulkanPresentPass::Initialize(RHIContext* Context, RHIWindowManager* Win
 	ColorRT = static_cast<RHIVulkanImageResource*>(InColorRT->GetImpl());
 	DepthRT = static_cast<RHIVulkanImageResource*>(InDepthRT->GetImpl());
 	msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-	CreatePresentableRenderPass(RenderPass, VulkanContext->Device, DepthRT!=nullptr, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), VulkanWindowManager->CurrentSwapchain.SwapchainImageFormat, msaaSamples);
+	CreatePresentableRenderPass(RenderPass, VulkanContext->Device, DepthRT!=nullptr, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), 
+		VulkanWindowManager->ScreenSizeImages[0]->InnerFormat, msaaSamples);
 }
 
 void RHIVulkanPresentPass::Cleanup(RHIContext* Context)
@@ -236,45 +208,25 @@ void RHIVulkanPresentPass::Cleanup(RHIContext* Context)
 
 void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-	WindowManager->RecreateSwapchain(Context);
-	ColorRT->Cleanup(Context);
-	DepthRT->Cleanup(Context);
-	ImageExtent3D RenderTargetExtent;
-	RenderTargetExtent.Height = WindowManager->GetWindowHeight();
-	RenderTargetExtent.Width = WindowManager->GetWindowWidth();
-	RenderTargetExtent.Depth = 1;
-	ColorRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, msaaSamples);
-	DepthRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, msaaSamples);
+	//WindowManager->RecreateSwapchain(Context);
+	//ColorRT->Cleanup(Context);
+	//DepthRT->Cleanup(Context);
+	//ImageExtent3D RenderTargetExtent;
+	//RenderTargetExtent.Height = WindowManager->GetWindowHeight();
+	//RenderTargetExtent.Width = WindowManager->GetWindowWidth();
+	//RenderTargetExtent.Depth = 1;
+	//ColorRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_COLOR_RT, msaaSamples);
+	//DepthRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, msaaSamples);
 }
 
 void RHIVulkanGraphicDispatcher::Initialize(RHIContext* Context)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	VkSemaphoreCreateInfo semaphoreInfo{};
-	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-	VkFenceCreateInfo fenceInfo{};
-	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
 	CreateCommandBuffer(CommandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
-	if (vkCreateSemaphore(VulkanContext->Device, &semaphoreInfo, nullptr, &ImageAvailableSemaphore) != VK_SUCCESS ||
-		vkCreateSemaphore(VulkanContext->Device, &semaphoreInfo, nullptr, &RenderFinishSemaphore) != VK_SUCCESS ||
-		vkCreateFence(VulkanContext->Device, &fenceInfo, nullptr, &InFlightFence) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create synchronization objects for a frame!");
-	}
 }
 
 void RHIVulkanGraphicDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	for (int i = 0; i < VulkanWindowManager->CurrentSwapchain.SwapchainImageViews.size(); i++)
-	{
-		vkDestroySemaphore(VulkanContext->Device, ImageAvailableSemaphore, nullptr);
-		vkDestroySemaphore(VulkanContext->Device, RenderFinishSemaphore, nullptr);
-		vkDestroyFence(VulkanContext->Device, InFlightFence, nullptr);
-	}
 }
 
 void RHIVulkanGraphicDispatcher::BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
@@ -321,16 +273,18 @@ void RHIVulkanGraphicDispatcher::Dispatch(RHIPipelineObject* PipelineObject, uin
 	vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
 }
 
-void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
+void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
 {
 	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+	auto* VulkanFramebuffer = static_cast<RHIVulkanFrameBuffer*>(Framebuffer->GetImpl());
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassInfo.renderPass = VulkanRenderPass->RenderPass;
-	renderPassInfo.framebuffer = VulkanRenderPass->FrameBuffer;
+	renderPassInfo.framebuffer = VulkanFramebuffer->FrameBuffer;
 	renderPassInfo.renderArea.offset = { 0, 0 };
-	renderPassInfo.renderArea.extent = VulkanRenderPass->Extent;
+	renderPassInfo.renderArea.extent.height = VulkanFramebuffer->Extent.height;
+	renderPassInfo.renderArea.extent.width = VulkanFramebuffer->Extent.width;
 
 	std::array<VkClearValue, 2> clearValues{};
 	clearValues[0].color = { {1.0f, 0.0f, 1.0f, 1.0f} };
@@ -343,15 +297,15 @@ void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIRenderPass* RenderPass)
 	VkViewport viewport{};
 	viewport.x = 0.0f;
 	viewport.y = 0.0f;
-	viewport.width = (float)VulkanRenderPass->Extent.width;
-	viewport.height = (float)VulkanRenderPass->Extent.height;
+	viewport.width = (float)VulkanFramebuffer->Extent.width;
+	viewport.height = (float)VulkanFramebuffer->Extent.height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 	vkCmdSetViewport(CommandBuffer, 0, 1, &viewport);
 
 	VkRect2D scissor{};
 	scissor.offset = { 0, 0 };
-	scissor.extent = VulkanRenderPass->Extent;
+	scissor.extent = renderPassInfo.renderArea.extent;
 	vkCmdSetScissor(CommandBuffer, 0, 1, &scissor);
 }
 
@@ -364,7 +318,7 @@ void RHIVulkanGraphicDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
 void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
+	//vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 }
 
 void RHIVulkanGraphicDispatcher::TransitionImageAsRenderTarget(RHIImageResource* Image) {
@@ -379,109 +333,21 @@ void RHIVulkanGraphicDispatcher::TransitionImageAsShaderRead(RHIImageResource* I
 	VulkanImage->DescriptorInfo.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 
-void RHIVulkanGraphicDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIVulkanGraphicDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	//auto* VulkanFB = static_cast<RHIVulkanFrameBuffer*>(PresentFrameBuffer->GetImpl());
 
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &ImageAvailableSemaphore;
-	submitInfo.pWaitDstStageMask = waitStages;
-
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &CommandBuffer;
-
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &RenderFinishSemaphore;
-
-	if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
-		throw std::runtime_error("failed to record command buffer!");
-	}
-
-	if (vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence) != VK_SUCCESS) {
-		throw std::runtime_error("failed to submit draw command buffer!");
-	}
-
-	VkPresentInfoKHR presentInfo{};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &RenderFinishSemaphore;
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &VulkanWindowManager->CurrentSwapchain.Swapchain;
-	presentInfo.pImageIndices = &CurrentImageIndex;
-
-	auto result = vkQueuePresentKHR(VulkanContext->PresentQueue, &presentInfo);
-
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-		bWindowResizeLastframe = true;
-	}
-	else if (result != VK_SUCCESS) {
-		throw std::runtime_error("failed to present swap chain image!");
-	}
 }
 
 
-void RHIVulkanGraphicDispatcher::BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
+void RHIVulkanGraphicDispatcher::BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	auto* VulkanSwapchain = static_cast<RHIVulkanSwapchain*>(Swapchain->GetImpl());
 	auto* VulkanPresentPass = static_cast<RHIVulkanRenderPass*>(PresentRenderPass->GetImpl());
 
 	glfwPollEvents();
 	WaitForGPUIdle(Context);
-	if (bWindowResizeLastframe)
-	{
-		//PresentPassResource->OnWindowResize(Context, WindowManager);
-		bWindowResizeLastframe = false;
-	}
-	VkResult result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain,
-		UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
-
-	while (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-
-		vkResetFences(VulkanContext->Device, 1, &InFlightFence);
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_ALL_COMMANDS_BIT };
-		if(result==VK_SUBOPTIMAL_KHR)
-		{
-			submitInfo.waitSemaphoreCount = 1;
-			submitInfo.pWaitSemaphores = &ImageAvailableSemaphore;
-		}
-		submitInfo.pWaitDstStageMask = waitStages;
-
-		submitInfo.commandBufferCount = 0;
-		submitInfo.pCommandBuffers = nullptr;
-
-		submitInfo.signalSemaphoreCount = 0;
-		submitInfo.pSignalSemaphores = nullptr;
-
-		if (vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence) != VK_SUCCESS) {
-			throw std::runtime_error("failed to submit draw command buffer!");
-		}
-
-		VulkanWindowManager->RecreateSwapchain(Context);
-		bWindowResizeLastframe = false;
-
-		result = vkAcquireNextImageKHR(VulkanContext->Device, VulkanWindowManager->CurrentSwapchain.Swapchain,
-			UINT64_MAX, ImageAvailableSemaphore, VK_NULL_HANDLE, &CurrentImageIndex);
-	}
-
-	if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-		throw std::runtime_error("failed to acquire swap chain image!");
-	}
-
-	VulkanPresentPass->FrameBuffer = VulkanWindowManager->CurrentSwapchain.SwapchainFramebuffers[CurrentImageIndex];
-	VulkanPresentPass->Extent.height = VulkanWindowManager->GetWindowHeight();
-	VulkanPresentPass->Extent.width = VulkanWindowManager->GetWindowWidth();
-
-	vkResetFences(VulkanContext->Device, 1, &InFlightFence);
-
 	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
 
 	VkCommandBufferBeginInfo beginInfo{};
@@ -493,12 +359,13 @@ void RHIVulkanGraphicDispatcher::BeginFrame(RHIContext* Context, RHIWindowManage
 }
 
 
-void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass)
+void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
 	auto VulkanPlatform = static_cast<RHIVulkanPlatformSupport*>(RHIPlatformSupport::Get()->GetImpl());
 	auto vkWindow = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
 	auto vkContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto vkPresentPass = static_cast<RHIVulkanRenderPass*>(PresentRenderPass->GetImpl());
+	auto vkSwapchain = static_cast<RHIVulkanSwapchain*>(Swapchain->GetImpl());
 	
     ImGlobals.Context = ImGui::CreateContext();
 	ImGui::GetAllocatorFunctions(&ImGlobals.MemAllocFunc, &ImGlobals.MemFreeFunc, &ImGlobals.UserData);
@@ -512,7 +379,7 @@ void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMan
 	ImGuiInitInfo.DescriptorPoolSize = 32;
 	ImGuiInitInfo.RenderPass = vkPresentPass->RenderPass;
 	ImGuiInitInfo.MinImageCount = 2;
-	ImGuiInitInfo.ImageCount = vkWindow->CurrentSwapchain.SwapchainImageViews.size();
+	ImGuiInitInfo.ImageCount = vkSwapchain->SwapchainImageViews.size();
 	ImGuiInitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
 	ImGui_ImplVulkan_Init(&ImGuiInitInfo);
@@ -573,7 +440,7 @@ void RHIVulkanPipelineObject::SetImageSampler(RHIImageResource* ImageResource, u
 	WriteDescSet.dstArrayElement = 0;
 	WriteDescSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	WriteDescSet.descriptorCount = 1;
-	WriteDescSet.pImageInfo = &VulkanImageResource->DescriptorInfo;
+	WriteDescSet.pImageInfo = &VulkanImageResource->GetDescriptorImageInfo();
 
 	if(WriteDescriptorSets.size()<=Binding)
 	{
@@ -589,4 +456,43 @@ void RHIVulkanPipelineObject::Cleanup(RHIContext* Context)
 	vkDestroyPipelineLayout(VulkanContext->Device, PipelineLayout, nullptr);
 	vkDestroyDescriptorSetLayout(VulkanContext->Device, DescriptorSetLayout, nullptr);
 }
+
+RHIVulkanFrameBuffer::RHIVulkanFrameBuffer() {
+
+}
+RHIVulkanFrameBuffer::~RHIVulkanFrameBuffer() {
+
+}
+void RHIVulkanFrameBuffer::Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
+	std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) {
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+	std::vector<VkImageView> ImageViews;
+	for (auto& ColorRT : ColorRTs)
+	{
+		auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ColorRT->GetImpl());
+		ImageViews.push_back(VulkanImageResource->DescriptorInfo.imageView);
+	}
+	auto* VulkanDepthRT = static_cast<RHIVulkanImageResource*>(DepthRT->GetImpl());
+	ImageViews.push_back(VulkanDepthRT->DescriptorInfo.imageView);
+	VkFramebufferCreateInfo framebufferInfo{};
+	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebufferInfo.renderPass = VulkanRenderPass->RenderPass;
+	framebufferInfo.attachmentCount = static_cast<uint32_t>(ImageViews.size());
+	framebufferInfo.pAttachments = ImageViews.data();
+	framebufferInfo.width = VulkanDepthRT->ImageExtent.width;
+	framebufferInfo.height = VulkanDepthRT->ImageExtent.height;
+	framebufferInfo.layers = 1;
+
+	if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &FrameBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create framebuffer!");
+	}
+	Extent.height = VulkanDepthRT->ImageExtent.height;
+	Extent.width = VulkanDepthRT->ImageExtent.width;
+	Extent.depth = 1;
+}
+void RHIVulkanFrameBuffer::Cleanup(RHIContext* Context) {
+
+}
+
 

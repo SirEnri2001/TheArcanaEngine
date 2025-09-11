@@ -29,10 +29,12 @@ class RHIPipelineObject;
 enum RHIFormat
 {
 	R8G8B8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
+    B8G8R8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
 	R8G8B8A8_UNORM, /**< float4 in hlsl, used in color rendertargets */
     R32G32B32A32_SFLOAT, /**< float3 */
     R32G32B32_SFLOAT, /**< float3 */
-    R32G32_SFLOAT /**< float2, uv coords */
+    R32G32_SFLOAT, /**< float2, uv coords */
+    D32_SFLOAT /**< float, depth value */
 };
 
 enum ImageUsage
@@ -147,8 +149,8 @@ public:
     virtual void RemoveScreenSizeTexture(RHIImageResource* ImageResource) = 0;
     virtual void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) = 0;
     virtual bool IsAlive() = 0;
-    virtual uint32_t GetWindowHeight() = 0;
-    virtual uint32_t GetWindowWidth() = 0;
+    virtual RHIImageResource* GetColorRenderTarget() = 0;
+    virtual RHIImageResource* GetDepthRenderTarget() = 0;
 };
 
 /** RHIWindowManager provide a wrapper for window, e.g.\ glfwwindow.
@@ -180,8 +182,8 @@ public:
     virtual void RemoveScreenSizeTexture(RHIImageResource* ImageResource) override;
     virtual void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) override;
     virtual bool IsAlive() override;
-    virtual uint32_t GetWindowHeight() override;
-    virtual uint32_t GetWindowWidth() override;
+    virtual RHIImageResource* GetColorRenderTarget() override;
+    virtual RHIImageResource* GetDepthRenderTarget() override;
     RHIWindowManagerBase* GetImpl() { return pImpl.get(); }
 };
 
@@ -191,10 +193,12 @@ public:
     RHIImageResourceBase() = default;
     RHIImageResourceBase(const RHIImageResourceBase&) = delete;
     virtual ~RHIImageResourceBase() = default;
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t MipLevel = -1) = 0;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) = 0;
+    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) = 0;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) = 0;
     virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
+    virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) = 0;
 };
 
 
@@ -208,7 +212,7 @@ public:
     RHIImageResource();
     virtual ~RHIImageResource() override;
 
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t MipLevel = -1) override;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) override;
     /**
      * Create a rendertarget that can be displayed on screen.
      * @param Context 
@@ -219,8 +223,10 @@ public:
      * @see RHIRenderPass::Initialize()
      */
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1)  override;
     virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
+    virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
     RHIImageResourceBase* GetImpl() { return pImpl.get(); }
 };
 
@@ -282,10 +288,8 @@ public:
     RHIRenderPassBase() = default;
     RHIRenderPassBase(const RHIRenderPassBase&) = delete;
     virtual ~RHIRenderPassBase() = default;
-    virtual void Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY) = 0;
+    virtual void Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
-    virtual void AddColorRenderTarget(RHIImageResource* ColorRT) = 0;
-    virtual void SetDepthRenderTarget(RHIImageResource* DepthRT) = 0;
 };
 
 /**
@@ -297,13 +301,34 @@ class RHI_API RHIRenderPass : public RHIRenderPassBase
 public:
     RHIRenderPass();
     virtual ~RHIRenderPass() override;
-    virtual void Initialize(RHIContext* Context, uint32_t SizeX, uint32_t SizeY) override;
+	virtual void Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth = true, RHIFormat DepthFormat = RHIFormat::D32_SFLOAT) override;
     virtual void Cleanup(RHIContext* Context) override;
-    virtual void AddColorRenderTarget(RHIImageResource* ColorRT) override;
-    virtual void SetDepthRenderTarget(RHIImageResource* DepthRT) override;
     RHIRenderPassBase* GetImpl() { return pImpl.get(); }
 };
 
+class RHIFrameBufferBase
+{
+public:
+    RHIFrameBufferBase() = default;
+    RHIFrameBufferBase(const RHIFrameBufferBase&) = delete;
+    virtual ~RHIFrameBufferBase() = default;
+    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
+        std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+class RHI_API RHIFrameBuffer : public RHIFrameBufferBase
+{
+    std::unique_ptr<RHIFrameBufferBase> pImpl = nullptr;
+public:
+    RHIFrameBuffer();
+    RHIFrameBuffer(const RHIFrameBuffer&) = delete;
+    virtual ~RHIFrameBuffer() override;
+    virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
+        std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    RHIFrameBufferBase* GetImpl() { return pImpl.get(); }
+};
 
 class RHIPresentPassBase
 {
@@ -409,6 +434,34 @@ public:
     RHIPipelineObjectBase* GetImpl() { return pImpl.get(); }
 };
 
+class RHIGraphicsDispatcher;
+
+class RHISwapchainBase {
+public:
+    RHISwapchainBase() = default;
+    RHISwapchainBase(const RHISwapchainBase&) = delete;
+    virtual ~RHISwapchainBase() = default;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+    virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) = 0;
+    virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) = 0;
+    virtual ImageExtent3D GetFrameSize() = 0;
+};
+
+class RHI_API RHISwapchain : public RHISwapchainBase {
+    std::unique_ptr<RHISwapchainBase> pImpl = nullptr;
+public:
+    RHISwapchain();
+    RHISwapchain(const RHISwapchain&) = delete;
+    virtual ~RHISwapchain();
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) override;
+    virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) override;
+    virtual ImageExtent3D GetFrameSize() override;
+    RHISwapchainBase* GetImpl() { return pImpl.get(); }
+};
+
 class RHIGraphicsDispatcherBase
 {
 public:
@@ -420,10 +473,10 @@ public:
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
     virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
-    virtual void BeginRenderPass(RHIRenderPass* RenderPass) = 0;
+    virtual void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) = 0;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
-    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void BeginFrame(RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) = 0;
+    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) = 0;
     virtual void WaitForGPUIdle(RHIContext* Context) = 0;
     virtual void TransitionImageAsShaderRead(RHIImageResource* Image) = 0;
     virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) = 0;
@@ -450,10 +503,10 @@ public:
      * @param InstanceCount 
      */
     virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    virtual void BeginRenderPass(RHIRenderPass* RenderPass) override;
+    virtual void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
     virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
-    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
+    virtual void BeginFrame(RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
+    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
     virtual void WaitForGPUIdle(RHIContext* Context) override;
     virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
     virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
@@ -488,7 +541,7 @@ public:
     RHIImGUIBase() = default;
     RHIImGUIBase(const RHIImGUIBase&) = delete;
     virtual ~RHIImGUIBase() = default;
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) = 0;
     virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) = 0;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) = 0;
 	virtual void Cleanup() = 0;
@@ -504,7 +557,7 @@ public:
     RHIImGUI();
     RHIImGUI(const RHIImGUI&) = delete;
     virtual ~RHIImGUI();
-    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
+    virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
     /**
      * Executes drawcalls for ImGUI.
      */

@@ -145,12 +145,16 @@ public:
 		{
 		case R8G8B8A8_SRGB:
 			return VK_FORMAT_R8G8B8A8_SRGB;
+		case B8G8R8A8_SRGB:
+			return VK_FORMAT_B8G8R8A8_SRGB;
 		case R32G32B32_SFLOAT:
 			return VK_FORMAT_R32G32B32_SFLOAT;
 		case R32G32_SFLOAT:
 			return VK_FORMAT_R32G32_SFLOAT;
 		case R32G32B32A32_SFLOAT:
 			return VK_FORMAT_R32G32B32A32_SFLOAT;
+		case D32_SFLOAT:
+			return VK_FORMAT_D32_SFLOAT;
 		}
 		return VK_FORMAT_UNDEFINED;
 	}
@@ -179,7 +183,6 @@ class RHIVulkanImageResource;
 class RHIVulkanWindowManager : public RHIWindowManagerBase
 {
 public:
-	RHIRenderPass* PresentRenderPass;
 	RHIPlatformSupport* PlatformSupport;
 	
 	GLFWwindow* pGLFWwindow;
@@ -187,17 +190,7 @@ public:
 	VkSurfaceCapabilitiesKHR SurfaceCapabilities;
 	std::vector<VkSurfaceFormatKHR> SurfaceFormats;
 	std::vector<VkPresentModeKHR> PresentModes;
-
-	struct SwapchainDesc
-	{
-		VkSwapchainKHR Swapchain;
-		std::vector<VkImage> SwapchainImages;
-		std::vector<VkImageView> SwapchainImageViews;
-		std::vector<VkFramebuffer> SwapchainFramebuffers;
-		VkExtent2D SwapchainExtent;
-		VkFormat SwapchainImageFormat;
-		RHIVulkanImageResource* DepthRT;
-	} CurrentSwapchain;
+	std::vector<RHIVulkanImageResource*> ScreenSizeImages;
 
 	RHIVulkanWindowManager() = default;
 	~RHIVulkanWindowManager() override = default;
@@ -213,17 +206,44 @@ public:
 	void InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context) override;
 	bool IsAlive() override;
 
-	uint32_t GetWindowHeight() override
-	{
-		return CurrentSwapchain.SwapchainExtent.height;
+	virtual RHIImageResource* GetColorRenderTarget() override {
+		return nullptr;
 	}
-
-	uint32_t GetWindowWidth() override
-	{
-		return CurrentSwapchain.SwapchainExtent.width;
+	virtual RHIImageResource* GetDepthRenderTarget() override {
+		return nullptr;
 	}
-
 	static void OnWindowResize(GLFWwindow* window, int width, int height);
+};
+
+
+class RHIVulkanSwapchain : public RHISwapchainBase
+{
+public:
+	VkSwapchainKHR Swapchain;
+	VkExtent2D SwapchainExtent;
+	std::vector<RHIFrameBuffer*> SwapchainFrameBuffers;
+	std::vector<VkImage> SwapchainImages;
+	std::vector<VkImageView> SwapchainImageViews;
+	VkFormat SwapchainImageFormat;
+	RHIVulkanImageResource* DepthImageResource;
+	VkRenderPass CachedRenderPass; // framebuffer for this specified renderpass
+	uint32_t CurrentImageIndex;
+
+	VkSemaphore ImageAvailableSemaphore;
+	VkSemaphore RenderFinishSemaphore;
+	VkFence InFlightFence;
+
+	RHIVulkanSwapchain();
+	RHIVulkanSwapchain(const RHIVulkanSwapchain&) = delete;
+	virtual ~RHIVulkanSwapchain();
+	virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
+	virtual void Cleanup(RHIContext* Context) override;
+	virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) override;
+	virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) override;
+	virtual ImageExtent3D GetFrameSize() override;
+
+private:
+	void CreateFramebuffers(RHIVulkanContext* Context, VkRenderPass VkRP);
 };
 
 class RHIVulkanImageResource : public RHIImageResourceBase
@@ -231,11 +251,9 @@ class RHIVulkanImageResource : public RHIImageResourceBase
 public:
 	VkImage Image;
 	VkDeviceMemory DeviceMemory;
-	VkImageView ImageView;
-	VkSampler Sampler;
+	VkDescriptorImageInfo DescriptorInfo;
 	bool bHasSampler = false;
 	ImageUsage Usage;
-	VkDescriptorImageInfo DescriptorInfo;
 	VkFormat InnerFormat;
 	VkExtent3D ImageExtent;
 	uint32_t MipLevel = -1;
@@ -243,11 +261,14 @@ public:
 	RHIVulkanImageResource() = default;
 	~RHIVulkanImageResource() override = default;
 
-    void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, int32_t InMipLevel = -1) override;
+    void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t InMipLevel = -1) override;
+	void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel) override;
 	void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent,
 	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
     void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
 	void Cleanup(RHIContext* Context) override;
+	VkDescriptorImageInfo& GetDescriptorImageInfo();
+	virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
 };
 
 class RHIVulkanBufferResource : public RHIBufferResourceBase
@@ -287,20 +308,14 @@ public:
 class RHIVulkanRenderPass : public RHIRenderPassBase
 {
 public:
-	VkExtent2D Extent;
 	VkRenderPass RenderPass;
-	std::vector<RHIVulkanImageResource*> ColorRenderTargets;
-	RHIVulkanImageResource* DepthRenderTargets = nullptr;
 	std::vector<VkAttachmentDescription> Attachments;
 	int32_t DepthAttachmentIndex = -1;
-	VkFramebuffer FrameBuffer;
 
 	RHIVulkanRenderPass() = default;
 	~RHIVulkanRenderPass() override = default;
 
-	void Initialize(RHIContext* Context, uint32_t Width, uint32_t Height) override;
-	void AddColorRenderTarget(RHIImageResource* ColorRT) override;
-	void SetDepthRenderTarget(RHIImageResource* DepthRT) override;
+	virtual void Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat) override;
 	void Cleanup(RHIContext* Context) override;
 };
 
@@ -379,7 +394,7 @@ public:
 	RHIVulkanImGUI() = default;
 	~RHIVulkanImGUI() override = default;
 
-	void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
+	void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
 	void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
 	void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
 	void Cleanup() override;
@@ -389,9 +404,6 @@ class RHIVulkanGraphicDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
 	bool bWindowResizeLastframe = false;
-	VkSemaphore ImageAvailableSemaphore;
-	VkSemaphore RenderFinishSemaphore;
-	VkFence InFlightFence;
 	VkCommandBuffer CommandBuffer;
 
 	struct BindingInfo
@@ -403,7 +415,6 @@ public:
 
 	std::vector<BindingInfo> BindingInfos;
 	BindingInfo IndexBindingInfo;
-	uint32_t CurrentImageIndex;
 
 	RHIVulkanGraphicDispatcher() = default;
 	~RHIVulkanGraphicDispatcher() override = default;
@@ -414,11 +425,23 @@ public:
 	void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
 	void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount,
 	              uint32_t IndexOffset, uint32_t InstanceCount) override;
-	void BeginRenderPass(RHIRenderPass* RenderPass) override;
+	void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
 	void EndRenderPass(RHIRenderPass* RenderPass) override;
-	void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) override;
-	void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) override;
+	void BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
+	void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
 	void WaitForGPUIdle(RHIContext* Context) override;
 	virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
 	virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
+};
+
+class RHIVulkanFrameBuffer : public RHIFrameBufferBase {
+public:
+	VkFramebuffer FrameBuffer;
+	VkExtent3D Extent;
+	RHIVulkanFrameBuffer();
+	RHIVulkanFrameBuffer(const RHIVulkanFrameBuffer&) = delete;
+	virtual ~RHIVulkanFrameBuffer() override;
+	virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
+		std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) override;
+	virtual void Cleanup(RHIContext* Context) override;
 };
