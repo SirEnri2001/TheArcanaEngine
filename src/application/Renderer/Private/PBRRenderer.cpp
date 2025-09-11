@@ -126,13 +126,14 @@ void PBRRenderer::BindMaterial(PBR::MaterialPropertyData* materialData)
 
 void PBRRenderer::UpdateFrame()
 {
+    /*
     auto& rhiContext = RContext->Context;
     auto& windowManager = RContext->WindowManager;
 
     GraphicDispatcher.WaitForGPUIdle(&rhiContext);
     GraphicDispatcher.BeginFrame(&rhiContext, &windowManager, &PresentPass);
     {
-        GraphicDispatcher.BeginRenderPass(&PresentPass);
+        //GraphicDispatcher.BeginRenderPass(&PresentPass, TODO);
         {
             for (const auto& [material, meshProxyList] : MaterialMap)
             {
@@ -150,5 +151,5 @@ void PBRRenderer::UpdateFrame()
         GraphicDispatcher.EndRenderPass(&PresentPass);
     }
     GraphicDispatcher.EndFrameAndSubmit(&rhiContext, &windowManager);
-
+	*/
 }

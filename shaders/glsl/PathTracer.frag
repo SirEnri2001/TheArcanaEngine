@@ -129,15 +129,17 @@ void main() {
     vec3 rayWorldOrigin = cameraubo.eye;
     vec3 baseColor;
     vec3 worldNormal;
+    vec3 surfaceNormal;
     vec3 emission;
     vec3 accumulatedIlluminate = vec3(0.);
     float t;
     int validRays = 0;
     bool inBox = true;
     vec3 totalBaseColor = vec3(1.0);
-    rayWorldSpaceDir = (camToWorld1 * rayCamSpaceDir);
+    rayWorldSpaceDir = normalize(camToWorld1 * rayCamSpaceDir);
     rayWorldOrigin = cameraubo.eye;
     RayIntersect(cameraubo.eye, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
+    surfaceNormal = worldNormal;
     if(t>10000){
         inBox = false;
         outColor = vec4(0.,0.,0., 1.);
@@ -151,9 +153,9 @@ void main() {
     }
     RayIntersect(rayWorldOrigin, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
     if(t<10000){
-        accumulatedIlluminate += emission * totalBaseColor * dot(worldNormal, rayWorldSpaceDir) * -1. * 0.0001;
+        accumulatedIlluminate += emission * totalBaseColor * dot(surfaceNormal, rayWorldSpaceDir) * dot(-rayWorldSpaceDir, worldNormal) / t / t;
     }
     outColor = vec4(accumulatedIlluminate, 1.0);
-    outColor = (outColor + texture(screenBuffer, screenxy.xy));
+    outColor = (outColor + 11*texture(screenBuffer, screenxy.xy))/12.;
 #endif
 }

@@ -38,15 +38,15 @@ MeshRenderProxy::~MeshRenderProxy()
 
 void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS, std::vector<char> VS1, std::vector<char> PS1)
 {
+    /*
     GBufferA.InitializeRenderTarget(&Context->Context, &Context->WindowManager,
         { Context->WindowManager.GetWindowWidth(), Context->WindowManager.GetWindowHeight(), 1 }, IU_COLOR_RT);
     GBufferD.InitializeRenderTarget(&Context->Context, &Context->WindowManager,
         { Context->WindowManager.GetWindowWidth(), Context->WindowManager.GetWindowHeight(), 1 }, IU_DEPTH_RT);
-    RenderPass.AddColorRenderTarget(&GBufferA);
-    RenderPass.SetDepthRenderTarget(&GBufferD);
-    RenderPass.Initialize(&Context->Context, Context->WindowManager.GetWindowWidth(), Context->WindowManager.GetWindowHeight());
+    std::vector<RHIFormat> ColorFormat = {R32G32B32_SFLOAT};
+    RenderPass.Initialize(&Context->Context, ColorFormat);
     Context->WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Context->Context);
-    Context->ImGUI.Initialize(&Context->Context, &Context->WindowManager, &PresentPass);
+    Context->ImGUI.Initialize(&Context->Context, &Context->WindowManager, TODO, &PresentPass);
     PipelineFactory.SetShaders(VS, PS);
     PipelineFactory.SetUniformBinding(0);
     PipelineFactory.SetImageSamplerBinding(1);
@@ -73,6 +73,7 @@ void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::v
     uint32_t FullScreenVerticesIndex[6] = {0, 1, 2, 0, 2, 3};
     RHIFullScreenQuadBuffer.CopyToBuffer(&Context->Context, FullScreenVertices, sizeof(float3) * 4);
     RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Context->Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
+*/
 }
 
 void Renderer::SetUniform(RHIUniform* InUniform, uint32_t Binding)
@@ -93,11 +94,12 @@ void Renderer::DrawScene(RendererContext* Context, MeshRenderProxy& InMeshProxy)
 
 void Renderer::UpdateFrame(RendererContext* RContext)
 {
+    /*
     auto& Context = RContext->Context;
     RContext->ImGUI.UpdateUI(pFuncImDraw);
     GraphicDispatcher.WaitForGPUIdle(&Context);
     GraphicDispatcher.BeginFrame(&Context, &RContext->WindowManager, &PresentPass);
-    GraphicDispatcher.BeginRenderPass(&RenderPass);
+    //GraphicDispatcher.BeginRenderPass(&RenderPass, TODO);
     for (auto& MeshProxy : MeshProxyPasses)
     {
 		PipelineObject.SetUniform(Uniform, 0);
@@ -110,7 +112,7 @@ void Renderer::UpdateFrame(RendererContext* RContext)
     GraphicDispatcher.EndRenderPass(&RenderPass);
 
     PresentPipelineObject.SetImageSampler(&GBufferA, 0);
-    GraphicDispatcher.BeginRenderPass(&PresentPass);
+    //GraphicDispatcher.BeginRenderPass(&PresentPass, TODO);
     GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
     GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
     GraphicDispatcher.Dispatch(&PresentPipelineObject, 6, 0, 1);
@@ -118,6 +120,7 @@ void Renderer::UpdateFrame(RendererContext* RContext)
     RContext->ImGUI.DispatchImGUI(&GraphicDispatcher);
     GraphicDispatcher.EndRenderPass(&PresentPass);
     GraphicDispatcher.EndFrameAndSubmit(&Context, &RContext->WindowManager);
+	*/
 }
 
 
@@ -132,6 +135,7 @@ RendererContext* RendererContext::Get()
 
 void RendererContext::Initialize(int Width, int Height)
 {
+    /*
 	if (bInitialized)
 	{
 		return;
@@ -143,6 +147,7 @@ void RendererContext::Initialize(int Width, int Height)
     ColorRenderTarget.InitializeRenderTarget(&Context, &WindowManager, {WindowManager.GetWindowWidth(), WindowManager.GetWindowHeight(), 1}, IU_COLOR_PRESENT_RT, 4);
     DepthRenderTarget.InitializeRenderTarget(&Context, &WindowManager, {WindowManager.GetWindowWidth(), WindowManager.GetWindowHeight(), 1}, IU_DEPTH_RT, 4);
 	//PresentPass.Initialize(&Context, &WindowManager, 4, &ColorRenderTarget, &DepthRenderTarget);
+	*/
 }
 
 bool RendererContext::IsWindowAlive()

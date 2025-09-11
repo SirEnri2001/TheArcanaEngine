@@ -251,6 +251,7 @@ public:
     RHIGraphicsDispatcher GraphicDispatcher;
     RHIRenderPass PresentPass;
     RHIUniform Uniform;
+    RHISwapchain Swapchain;
 
     BlinnPhongPipeline Pipeline;
 
@@ -276,9 +277,10 @@ public:
 
     virtual void CreateRenderer(RenderViewport& Viewport) {
         // create renderer
-
-        Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
-
+        Swapchain.Initialize(&Viewport.Context, &Viewport.WindowManager);
+        //Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
+        std::vector<RHIFormat> RTFormrats = {RHIFormat::B8G8R8A8_SRGB};
+        PresentPass.Initialize(&Viewport.Context, RTFormrats);
         GraphicDispatcher.Initialize(&Viewport.Context);
 
         Pipeline.InitializePipeline(Viewport, PresentPass);
@@ -290,7 +292,7 @@ public:
         RHIFullScreenQuadBuffer.CopyToBuffer(&Viewport.Context, FullScreenVertices, sizeof(float3) * 4);
         RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         Uniform.Initialize(&Viewport.Context, sizeof(UniformBufferObject));
-        ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &PresentPass);
+        ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &Swapchain, &PresentPass);
 
     }
 
@@ -305,8 +307,10 @@ public:
         auto& Context = Viewport.Context;
         ImGUI.UpdateUI(pFuncImDraw);
         GraphicDispatcher.WaitForGPUIdle(&Context);
-        GraphicDispatcher.BeginFrame(&Context, &Viewport.WindowManager, &PresentPass);
-        GraphicDispatcher.BeginRenderPass(&PresentPass);
+        RHIFrameBuffer* FrameBuffer = nullptr;
+        Swapchain.AcquireFrame(&Context, FrameBuffer, &PresentPass);
+        GraphicDispatcher.BeginFrame(&Context, &Swapchain, &PresentPass);
+        GraphicDispatcher.BeginRenderPass(&PresentPass, FrameBuffer);
         for (auto& MeshDesc : MeshDescs)
         {
             UpdateUniformBuffer(Viewport, ViewMat, ViewPos);
@@ -322,7 +326,8 @@ public:
         // Comment this line if you don't want ImGUI
         ImGUI.DispatchImGUI(&GraphicDispatcher);
         GraphicDispatcher.EndRenderPass(&PresentPass);
-        GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager);
+        GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager, FrameBuffer);
+        Swapchain.PresentFrameAndRelease(&Context, &GraphicDispatcher);
     }
 
     virtual void DrawMesh(MeshRenderProxy& Proxy, RHIUniform& ModelUniform) {
@@ -330,6 +335,7 @@ public:
     }
 };
 
+#if 1
 class PathTracerPipeline : public PassPipeline {
 public:
     RHIPipelineFactory PipelineFactory;
@@ -401,13 +407,16 @@ public:
     RHIImageResource RHIScreenBufferDepth;
     RHIGraphicsDispatcher GraphicDispatcher;
     RHIRenderPass PresentPass;
-    RHIRenderPass PTRenderPass1;
-    RHIRenderPass PTRenderPass2;
+    RHIRenderPass PTRenderPass;
     RHIUniform CameraUniform;
     RHIUniform* SceneUniform = nullptr;
+    RHISwapchain Swapchain;
 
     PathTracerPipeline Pipeline;
     PTPostPipeline PostPipeline;
+
+    RHIFrameBuffer FBuffer1;
+    RHIFrameBuffer FBuffer2;
 
     RHIImGUI ImGUI;
 
@@ -419,35 +428,26 @@ public:
         alignas(16) float3 eye;
         alignas(16) float3 forward;
         alignas(16) float3 up;
-        alignas(8) glm::ivec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
+        alignas(8) glm::uvec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
         alignas(8) float time;
     } cuo;
 
-    PathTraceRenderer() {
-
-    }
+    PathTraceRenderer() {}
 
     virtual void CreateRenderer(RenderViewport& Viewport) {
         // create renderer
-
-        Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
-        ImageExtent3D ext;
-        ext.Depth = 1;
-        ext.Height = Viewport.WindowManager.GetWindowHeight();
-        ext.Width = Viewport.WindowManager.GetWindowWidth();
-        RHIScreenBuffer1.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager, ext, IU_COLOR_RT);
-        RHIScreenBuffer2.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager, ext, IU_COLOR_RT);
+        Swapchain.Initialize(&Viewport.Context, &Viewport.WindowManager);
+        ImageExtent3D ext = Swapchain.GetFrameSize();
+        RHIScreenBuffer1.Initialize(&Viewport.Context, ext, RHIFormat::R8G8B8A8_SRGB, ImageUsage::IU_COLOR_RT, 1);
+        RHIScreenBuffer2.Initialize(&Viewport.Context, ext, RHIFormat::R8G8B8A8_SRGB, ImageUsage::IU_COLOR_RT, 1);
         RHIScreenBufferDepth.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager, ext, IU_DEPTH_RT);
-        PTRenderPass1.AddColorRenderTarget(&RHIScreenBuffer1);
-        PTRenderPass2.AddColorRenderTarget(&RHIScreenBuffer2);
-        PTRenderPass1.SetDepthRenderTarget(&RHIScreenBufferDepth);
-        PTRenderPass2.SetDepthRenderTarget(&RHIScreenBufferDepth);
-        PTRenderPass1.Initialize(&Viewport.Context, Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight());
-        PTRenderPass2.Initialize(&Viewport.Context, Viewport.WindowManager.GetWindowWidth(), Viewport.WindowManager.GetWindowHeight());
-
+        std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
+        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
+        PTRenderPass.Initialize(&Viewport.Context, ColorRTFormats);
+        PresentPass.Initialize(&Viewport.Context, ColorRTFormats1);
         GraphicDispatcher.Initialize(&Viewport.Context);
 
-        Pipeline.InitializePipeline(Viewport, PTRenderPass1);
+        Pipeline.InitializePipeline(Viewport, PTRenderPass);
         PostPipeline.InitializePipeline(Viewport, PresentPass);
 
         RHIFullScreenQuadBuffer.Initialize(&Viewport.Context, sizeof(float3), 8, BufferType::VERTEX);
@@ -457,7 +457,11 @@ public:
         RHIFullScreenQuadBuffer.CopyToBuffer(&Viewport.Context, FullScreenVertices, sizeof(float3) * 8);
         RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         CameraUniform.Initialize(&Viewport.Context, sizeof(CameraUniformObject));
-        ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &PresentPass);
+        ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &Swapchain, &PresentPass);
+        std::vector<RHIImageResource*> ColorRT1 = { &RHIScreenBuffer1 };
+        std::vector<RHIImageResource*> ColorRT2 = { &RHIScreenBuffer2 };
+        FBuffer1.Initialize(&Viewport.Context, &PTRenderPass, ColorRT1, &RHIScreenBufferDepth);
+        FBuffer2.Initialize(&Viewport.Context, &PTRenderPass, ColorRT2, &RHIScreenBufferDepth);
     }
 
     void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp, float time) {
@@ -478,16 +482,18 @@ public:
         auto& Context = Viewport.Context;
 
         ImGUI.UpdateUI(pFuncImDraw);
-        cuo.screenres.r = Viewport.WindowManager.GetWindowWidth();
-        cuo.screenres.g = Viewport.WindowManager.GetWindowHeight();
+        cuo.screenres.r = Swapchain.GetFrameSize().Width;
+        cuo.screenres.g = Swapchain.GetFrameSize().Height;
         CameraUniform.CopyToBuffer(&Context, &cuo, sizeof(CameraUniformObject));
 
         GraphicDispatcher.WaitForGPUIdle(&Context);
-        GraphicDispatcher.BeginFrame(&Context, &Viewport.WindowManager, &PresentPass);
+        RHIFrameBuffer* FrameBuffer = nullptr;
+        Swapchain.AcquireFrame(&Context, FrameBuffer, &PresentPass);
+        GraphicDispatcher.BeginFrame(&Context, &Swapchain, &PresentPass);
 
         if (Recompile) {
             CompileAllShaders(TestShaders);
-            Pipeline.ReloadPipeline(Viewport, PTRenderPass1);
+            Pipeline.ReloadPipeline(Viewport, PTRenderPass);
             PostPipeline.ReloadPipeline(Viewport, PresentPass);
             Recompile = false;
         }
@@ -495,12 +501,12 @@ public:
         if (swap) {
             GraphicDispatcher.TransitionImageAsRenderTarget(&RHIScreenBuffer2);
             GraphicDispatcher.TransitionImageAsShaderRead(&RHIScreenBuffer1);
-            GraphicDispatcher.BeginRenderPass(&PTRenderPass2);
+            GraphicDispatcher.BeginRenderPass(&PTRenderPass, &FBuffer2);
         }
         else {
             GraphicDispatcher.TransitionImageAsRenderTarget(&RHIScreenBuffer1);
             GraphicDispatcher.TransitionImageAsShaderRead(&RHIScreenBuffer2);
-            GraphicDispatcher.BeginRenderPass(&PTRenderPass1);
+            GraphicDispatcher.BeginRenderPass(&PTRenderPass, &FBuffer1);
         }
         if (!RenderingPaused && !ShaderCompileHasError) {
             Pipeline.PipelineObject.SetUniform(SceneUniform, 0);
@@ -511,13 +517,8 @@ public:
             IndexBufferSize = 6;
             GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
-        if (swap) {
-            GraphicDispatcher.EndRenderPass(&PTRenderPass2);
-        }
-        else {
-            GraphicDispatcher.EndRenderPass(&PTRenderPass1);
-        }
-        GraphicDispatcher.BeginRenderPass(&PresentPass);
+        GraphicDispatcher.EndRenderPass(&PTRenderPass);
+        GraphicDispatcher.BeginRenderPass(&PresentPass, FrameBuffer);
         // Comment this line if you don't want ImGUI
         if (!RenderingPaused && !ShaderCompileHasError) {
             PostPipeline.PipelineObject.SetImageSampler(swap ? &RHIScreenBuffer1 : &RHIScreenBuffer2, 0);
@@ -529,10 +530,11 @@ public:
         ImGUI.DispatchImGUI(&GraphicDispatcher);
         GraphicDispatcher.EndRenderPass(&PresentPass);
         GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager);
+        Swapchain.PresentFrameAndRelease(&Context, &GraphicDispatcher);
         swap  = !swap;
     }
 };
-
+#endif
 void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, RenderViewport& Viewport)
 {
     OutRenderProxy.RHIVertexBuffer.Initialize(&Viewport.Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
@@ -603,6 +605,7 @@ void CompileAllShaders(bool CompileTest) {
     }
 }
 
+#if 1
 int main() {
     GRHIImplementationSelection = RHIImplement_Vulkan;
     do {
@@ -666,6 +669,12 @@ int main() {
     }
     return 0;
 }
+#else
+int BlinnPhongMain();
+int main()
+{
+    return BlinnPhongMain();
+}
 
 int BlinnPhongMain()
 {
@@ -724,7 +733,7 @@ int BlinnPhongMain()
     }
     return 0;
 }
-
+#endif
 
 int PBRRendererTest()
 {
