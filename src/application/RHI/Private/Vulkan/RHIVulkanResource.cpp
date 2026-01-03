@@ -163,8 +163,8 @@ void RHIVulkanImageResource::CopyToTexture(RHIContext* Context, void* Data, uint
 		vkUnmapMemory(VulkanContext->Device, stagingBufferMemory);
 	}
 
-	VkCommandBuffer commandBuffer;
-	CreateCommandBuffer(commandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
+	VkCommandBufferManaged commandBufferManaged(VulkanContext->Device, VulkanContext->CommandPool);
+	VkCommandBuffer commandBuffer = commandBufferManaged.Get();
 	BeginCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
 	TransitionImageLayout(Image, commandBuffer, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevel);
 	CopyBufferToImage(stagingBuffer, Image, commandBuffer, ImageExtent.width, ImageExtent.height);
@@ -233,8 +233,8 @@ void RHIVulkanBufferResource::CopyToBuffer(RHIContext* Context, void* data, uint
 	vkMapMemory(VulkanContext->Device, stagingBufferMemory, 0, TotalBytes, 0, &pMappedBuffer);
 	memcpy(pMappedBuffer, data, TotalBytes);
 	vkUnmapMemory(VulkanContext->Device, stagingBufferMemory);
-	VkCommandBuffer CommandBuffer;
-	CreateCommandBuffer(CommandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
+	VkCommandBufferManaged commandBufferManaged(VulkanContext->Device, VulkanContext->CommandPool);
+	VkCommandBuffer CommandBuffer = commandBufferManaged.Get();
 	BeginCommandBufferOneTimeSubmit(CommandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
 	CopyBuffer(stagingBuffer, Buffer, TotalBytes, CommandBuffer);
 	EndCommandBufferOneTimeSubmit(CommandBuffer, VulkanContext->CommandPool, VulkanContext->GraphicsQueue, VulkanContext->Device);

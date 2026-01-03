@@ -222,11 +222,13 @@ void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager*
 void RHIVulkanGraphicDispatcher::Initialize(RHIContext* Context)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	CreateCommandBuffer(CommandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
+	CommandBufferManaged = new VkCommandBufferManaged(VulkanContext->Device, VulkanContext->CommandPool);
+	CommandBuffer = CommandBufferManaged->Get();
 }
 
 void RHIVulkanGraphicDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* WindowManager)
 {
+	delete CommandBufferManaged;
 }
 
 void RHIVulkanGraphicDispatcher::BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)

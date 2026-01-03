@@ -331,12 +331,11 @@ void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphics
 	presentInfo.pImageIndices = &CurrentImageIndex;
 
 	// Transition to presentable format
-	VkCommandBuffer commandBuffer;
-	CreateCommandBuffer(commandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
+	VkCommandBufferManaged commandBufferManaged(VulkanContext->Device, VulkanContext->CommandPool);
+	VkCommandBuffer commandBuffer = commandBufferManaged.Get();
 	BeginCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
 	TransitionImageLayout(SwapchainImages[CurrentImageIndex], commandBuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 1);
 	EndCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->GraphicsQueue, VulkanContext->Device);
-
 
 	auto result = vkQueuePresentKHR(VulkanContext->PresentQueue, &presentInfo);
 

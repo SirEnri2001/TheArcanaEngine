@@ -13,6 +13,9 @@
 
 #include "GLFW/glfw3.h"
 
+// Implementation helpers
+void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool);
+
 void CreateGLFWContext()
 {
 	glfwInit();
@@ -40,6 +43,16 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
         Log("[Vulkan] ", pCallbackData->pMessage);
     }
     return VK_FALSE;
+}
+
+VkCommandBufferManaged::VkCommandBufferManaged(VkDevice InDevice, VkCommandPool InCommandPool)
+    : Device(InDevice), CommandPool(InCommandPool)
+{
+    CreateCommandBuffer(CommandBuffer, Device, CommandPool);
+}
+
+VkCommandBufferManaged::~VkCommandBufferManaged() {
+    vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
 }
 
 void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool)

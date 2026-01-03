@@ -14,6 +14,7 @@
 
 // Forward declarations
 class RHIVulkanWindowManager;
+class VkCommandBufferManaged;
 struct GLFWwindow;
 struct ImDrawData;
 
@@ -404,6 +405,7 @@ class RHIVulkanGraphicDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
 	bool bWindowResizeLastframe = false;
+	VkCommandBufferManaged* CommandBufferManaged;
 	VkCommandBuffer CommandBuffer;
 
 	struct BindingInfo
