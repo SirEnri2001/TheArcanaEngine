@@ -23,6 +23,7 @@
 class RHIRenderPass;
 class RHIImageResource;
 class RHIPipelineObject;
+class RHICommandBuffer;
 /** Pixel format used in all RHI implementations.
  * Every RHI implementation should always write its own convert function.
  */
@@ -196,7 +197,7 @@ public:
     virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) = 0;
     virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) = 0;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) = 0;
-    virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) = 0;
+    virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) = 0;
 };
@@ -224,7 +225,14 @@ public:
      */
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
     virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1)  override;
-    virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
+    /**
+     * Copy data to texture
+     * @param CommandBuffer Command buffer to record copy commands
+     * @param Context 
+     * @param Data 
+     * @param Stride 
+     */
+    virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
     RHIImageResourceBase* GetImpl() { return pImpl.get(); }
@@ -237,7 +245,7 @@ public:
     RHIBufferResourceBase(const RHIBufferResourceBase&) = delete;
     virtual ~RHIBufferResourceBase() = default;
     virtual void Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) = 0;
-    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) = 0;
+    virtual void CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* data, uint32_t TotalBytes) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
 };
 
@@ -251,7 +259,14 @@ public:
     RHIBufferResource();
     virtual ~RHIBufferResource() override;
     virtual void Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) override;
-    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
+    /**
+     * Copy data to buffer
+     * @param CommandBuffer Command buffer to record copy commands
+     * @param Context 
+     * @param data 
+     * @param TotalBytes 
+     */
+    virtual void CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* data, uint32_t TotalBytes) override;
     virtual void Cleanup(RHIContext* Context) override;
     RHIBufferResourceBase* GetImpl() { return pImpl.get(); }
 };
@@ -436,6 +451,30 @@ public:
 
 class RHIGraphicsDispatcher;
 
+class RHICommandBufferBase {
+public:
+    RHICommandBufferBase() = default;
+    RHICommandBufferBase(const RHICommandBufferBase&) = delete;
+    virtual ~RHICommandBufferBase() = default;
+    virtual void Initialize(RHIContext* Context) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+};
+
+/**
+ * RHICommandBuffer stores command buffers for recording rendering commands.
+ */
+class RHI_API RHICommandBuffer
+{
+    std::unique_ptr<RHICommandBufferBase> pImpl = nullptr;
+public:
+    RHICommandBuffer();
+    RHICommandBuffer(const RHICommandBuffer&) = delete;
+    ~RHICommandBuffer();
+    void Initialize(RHIContext* Context);
+    void Cleanup(RHIContext* Context);
+    RHICommandBufferBase* GetImpl() { return pImpl.get(); }
+};
+
 class RHISwapchainBase {
 public:
     RHISwapchainBase() = default;
@@ -444,7 +483,7 @@ public:
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
     virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) = 0;
-    virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) = 0;
+    virtual void PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher) = 0;
     virtual ImageExtent3D GetFrameSize() = 0;
 };
 
@@ -457,7 +496,7 @@ public:
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) override;
-    virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) override;
+    virtual void PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher) override;
     virtual ImageExtent3D GetFrameSize() override;
     RHISwapchainBase* GetImpl() { return pImpl.get(); }
 };
@@ -472,14 +511,14 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
-    virtual void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) = 0;
-    virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
-    virtual void BeginFrame(RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) = 0;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) = 0;
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) = 0;
+    virtual void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) = 0;
+    virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) = 0;
+    virtual void EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) = 0;
     virtual void WaitForGPUIdle(RHIContext* Context) = 0;
-    virtual void TransitionImageAsShaderRead(RHIImageResource* Image) = 0;
-    virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) = 0;
+    virtual void TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) = 0;
+    virtual void TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) = 0;
 };
 
 /**
@@ -497,19 +536,20 @@ public:
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
     /**
      * Call this between BeginRenderPass & EndRenderPass 
+     * @param CommandBuffer Command buffer to record commands
      * @param PipelineObject 
      * @param IndexCount 
      * @param IndexOffset 
      * @param InstanceCount 
      */
-    virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    virtual void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
-    virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
-    virtual void BeginFrame(RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
+    virtual void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) override;
+    virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
+    virtual void EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
     virtual void WaitForGPUIdle(RHIContext* Context) override;
-    virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
-    virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
+    virtual void TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
+    virtual void TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
     RHIGraphicsDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
@@ -542,7 +582,7 @@ public:
     RHIImGUIBase(const RHIImGUIBase&) = delete;
     virtual ~RHIImGUIBase() = default;
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) = 0;
-    virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) = 0;
+    virtual void DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher) = 0;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) = 0;
 	virtual void Cleanup() = 0;
 };
@@ -560,8 +600,9 @@ public:
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
     /**
      * Executes drawcalls for ImGUI.
+     * @param CommandBuffer Command buffer to record ImGUI draw commands
      */
-    virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
+    virtual void DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher) override;
     /**
      * UI components are defined here. 
      */

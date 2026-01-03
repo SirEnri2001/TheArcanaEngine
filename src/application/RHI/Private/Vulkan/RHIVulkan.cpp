@@ -295,10 +295,14 @@ void RHIVulkanSwapchain::AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutF
 	OutFrameBuffer = SwapchainFrameBuffers[CurrentImageIndex];
 }
 
-void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher)
+void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VkDispatcher = static_cast<RHIVulkanGraphicDispatcher*>(GDispatcher->GetImpl());
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
+	RHICommandBuffer TransitionCmdBuffer;
+	TransitionCmdBuffer.Initialize(Context);
+	auto VkTransitionCmdBuf = static_cast<RHIVulkanCommandBuffer*>(TransitionCmdBuffer.GetImpl())->CommandBuffer;
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -309,12 +313,12 @@ void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphics
 	submitInfo.pWaitDstStageMask = waitStages;
 
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &VkDispatcher->CommandBuffer;
+	submitInfo.pCommandBuffers = &VkCmdBuf;
 
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &RenderFinishSemaphore;
 
-	if (vkEndCommandBuffer(VkDispatcher->CommandBuffer) != VK_SUCCESS) {
+	if (vkEndCommandBuffer(VkCmdBuf) != VK_SUCCESS) {
 		throw std::runtime_error("failed to record command buffer!");
 	}
 
@@ -331,11 +335,9 @@ void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphics
 	presentInfo.pImageIndices = &CurrentImageIndex;
 
 	// Transition to presentable format
-	VkCommandBufferManaged commandBufferManaged(VulkanContext->Device, VulkanContext->CommandPool);
-	VkCommandBuffer commandBuffer = commandBufferManaged.Get();
-	BeginCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->Device);
-	TransitionImageLayout(SwapchainImages[CurrentImageIndex], commandBuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 1);
-	EndCommandBufferOneTimeSubmit(commandBuffer, VulkanContext->CommandPool, VulkanContext->GraphicsQueue, VulkanContext->Device);
+	BeginCommandBufferOneTimeSubmit(VkTransitionCmdBuf);
+	TransitionImageLayout(SwapchainImages[CurrentImageIndex], VkTransitionCmdBuf, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 1);
+	EndCommandBufferOneTimeSubmit(VkTransitionCmdBuf, VulkanContext->GraphicsQueue);
 
 	auto result = vkQueuePresentKHR(VulkanContext->PresentQueue, &presentInfo);
 
@@ -409,4 +411,29 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
     uint32_t                                    descriptorWriteCount,
     const VkWriteDescriptorSet* pDescriptorWrites) {
 	return RHIVulkanPlatformSupport::Get()->vkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount, pDescriptorWrites);
+}
+
+// RHIVulkanCommandBuffer implementation
+RHIVulkanCommandBuffer::~RHIVulkanCommandBuffer()
+{
+	// Cleanup should be called explicitly before destruction
+	// But we'll clean up here as a safety measure
+	if (CommandBuffer) {
+		vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
+	}
+}
+
+void RHIVulkanCommandBuffer::Initialize(RHIContext* Context)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	Device = VulkanContext->Device;
+	CommandPool = VulkanContext->CommandPool;
+	CreateCommandBuffer(CommandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
+}
+
+void RHIVulkanCommandBuffer::Cleanup(RHIContext* Context)
+{
+	if (CommandBuffer) {
+		vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
+	}
 }

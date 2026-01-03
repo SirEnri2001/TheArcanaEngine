@@ -242,7 +242,7 @@ public:
         PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
     }
 };
-
+/*
 class BlinnPhongRenderer {
 public:
     uint32_t IndexBufferSize;
@@ -334,7 +334,7 @@ public:
         MeshDescs.push_back(MeshDesc{&Proxy, &ModelUniform });
     }
 };
-
+*/
 #if 1
 class PathTracerPipeline : public PassPipeline {
 public:
@@ -454,8 +454,11 @@ public:
         RHIFullScreenQuadIndexBuffer.Initialize(&Viewport.Context, sizeof(uint32_t), 6, BufferType::INDEX);
         float3 FullScreenVertices[4] = { float3(-1., -1., 0.), float3(-1., 1., 0.), float3(1., 1., 0.), float3(1., -1., 0.) };
         uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
-        RHIFullScreenQuadBuffer.CopyToBuffer(&Viewport.Context, FullScreenVertices, sizeof(float3) * 8);
-        RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
+
+        RHICommandBuffer CmdBuffer;
+        CmdBuffer.Initialize(&Viewport.Context);
+        RHIFullScreenQuadBuffer.CopyToBuffer(&CmdBuffer, &Viewport.Context, FullScreenVertices, sizeof(float3) * 8);
+        RHIFullScreenQuadIndexBuffer.CopyToBuffer(&CmdBuffer, &Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         CameraUniform.Initialize(&Viewport.Context, sizeof(CameraUniformObject));
         ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &Swapchain, &PresentPass);
         std::vector<RHIImageResource*> ColorRT1 = { &RHIScreenBuffer1 };
@@ -485,11 +488,11 @@ public:
         cuo.screenres.r = Swapchain.GetFrameSize().Width;
         cuo.screenres.g = Swapchain.GetFrameSize().Height;
         CameraUniform.CopyToBuffer(&Context, &cuo, sizeof(CameraUniformObject));
-
-        GraphicDispatcher.WaitForGPUIdle(&Context);
         RHIFrameBuffer* FrameBuffer = nullptr;
+        RHICommandBuffer CommandBuffer;
+        CommandBuffer.Initialize(&Context);
         Swapchain.AcquireFrame(&Context, FrameBuffer, &PresentPass);
-        GraphicDispatcher.BeginFrame(&Context, &Swapchain, &PresentPass);
+        GraphicDispatcher.BeginFrame(&CommandBuffer, &Context, &Swapchain, &PresentPass);
 
         if (Recompile) {
             CompileAllShaders(TestShaders);
@@ -499,14 +502,14 @@ public:
         }
 
         if (swap) {
-            GraphicDispatcher.TransitionImageAsRenderTarget(&RHIScreenBuffer2);
-            GraphicDispatcher.TransitionImageAsShaderRead(&RHIScreenBuffer1);
-            GraphicDispatcher.BeginRenderPass(&PTRenderPass, &FBuffer2);
+            GraphicDispatcher.TransitionImageAsRenderTarget(&CommandBuffer, &RHIScreenBuffer2);
+            GraphicDispatcher.TransitionImageAsShaderRead(&CommandBuffer, &RHIScreenBuffer1);
+            GraphicDispatcher.BeginRenderPass(&CommandBuffer, &PTRenderPass, &FBuffer2);
         }
         else {
-            GraphicDispatcher.TransitionImageAsRenderTarget(&RHIScreenBuffer1);
-            GraphicDispatcher.TransitionImageAsShaderRead(&RHIScreenBuffer2);
-            GraphicDispatcher.BeginRenderPass(&PTRenderPass, &FBuffer1);
+            GraphicDispatcher.TransitionImageAsRenderTarget(&CommandBuffer, &RHIScreenBuffer1);
+            GraphicDispatcher.TransitionImageAsShaderRead(&CommandBuffer, &RHIScreenBuffer2);
+            GraphicDispatcher.BeginRenderPass(&CommandBuffer, &PTRenderPass, &FBuffer1);
         }
         if (!RenderingPaused && !ShaderCompileHasError) {
             Pipeline.PipelineObject.SetUniform(SceneUniform, 0);
@@ -515,37 +518,39 @@ public:
             GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
             GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
             IndexBufferSize = 6;
-            GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
+            GraphicDispatcher.Dispatch(&CommandBuffer, &Pipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
-        GraphicDispatcher.EndRenderPass(&PTRenderPass);
-        GraphicDispatcher.BeginRenderPass(&PresentPass, FrameBuffer);
+        GraphicDispatcher.EndRenderPass(&CommandBuffer, &PTRenderPass);
+        GraphicDispatcher.BeginRenderPass(&CommandBuffer, &PresentPass, FrameBuffer);
         // Comment this line if you don't want ImGUI
         if (!RenderingPaused && !ShaderCompileHasError) {
             PostPipeline.PipelineObject.SetImageSampler(swap ? &RHIScreenBuffer1 : &RHIScreenBuffer2, 0);
             GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
             GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
             IndexBufferSize = 6;
-            GraphicDispatcher.Dispatch(&PostPipeline.PipelineObject, IndexBufferSize, 0, 1);
+            GraphicDispatcher.Dispatch(&CommandBuffer, &PostPipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
-        ImGUI.DispatchImGUI(&GraphicDispatcher);
-        GraphicDispatcher.EndRenderPass(&PresentPass);
-        GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager);
-        Swapchain.PresentFrameAndRelease(&Context, &GraphicDispatcher);
+        ImGUI.DispatchImGUI(&CommandBuffer, &GraphicDispatcher);
+        GraphicDispatcher.EndRenderPass(&CommandBuffer, &PresentPass);
+        GraphicDispatcher.EndFrameAndSubmit(&CommandBuffer, &Context, &Viewport.WindowManager);
+        Swapchain.PresentFrameAndRelease(&Context, &CommandBuffer, &GraphicDispatcher);
         swap  = !swap;
     }
 };
 #endif
 void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, RenderViewport& Viewport)
 {
+    RHICommandBuffer CmdBuffer;
+    CmdBuffer.Initialize(&Viewport.Context);
     OutRenderProxy.RHIVertexBuffer.Initialize(&Viewport.Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
     OutRenderProxy.RHIIndexBuffer.Initialize(&Viewport.Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::INDEX);
-    OutRenderProxy.RHIVertexBuffer.CopyToBuffer(&Viewport.Context, InMesh.Vertices.data(), InMesh.Vertices.size() * sizeof(Mesh::VertexType));
-    OutRenderProxy.RHIIndexBuffer.CopyToBuffer(&Viewport.Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
+    OutRenderProxy.RHIVertexBuffer.CopyToBuffer(&CmdBuffer, &Viewport.Context, InMesh.Vertices.data(), InMesh.Vertices.size() * sizeof(Mesh::VertexType));
+    OutRenderProxy.RHIIndexBuffer.CopyToBuffer(&CmdBuffer, &Viewport.Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
     int texWidth, texHeight, texChannels;
     stbi_uc* pixels = stbi_load(InMesh.TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     assert(texHeight > 0 && texWidth > 0);
     OutRenderProxy.Texture.Initialize(&Viewport.Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB);
-    OutRenderProxy.Texture.CopyToTexture(&Viewport.Context, pixels, 4);
+    OutRenderProxy.Texture.CopyToTexture(&CmdBuffer, &Viewport.Context, pixels, 4);
     OutRenderProxy.IndexBufferSize = InMesh.Indices.size();
     stbi_image_free(pixels);
 }

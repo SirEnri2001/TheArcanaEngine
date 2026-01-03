@@ -221,14 +221,12 @@ void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager*
 
 void RHIVulkanGraphicDispatcher::Initialize(RHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	CommandBufferManaged = new VkCommandBufferManaged(VulkanContext->Device, VulkanContext->CommandPool);
-	CommandBuffer = CommandBufferManaged->Get();
+	// No longer need to create command buffer here
 }
 
 void RHIVulkanGraphicDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* WindowManager)
 {
-	delete CommandBufferManaged;
+	// No longer need to cleanup command buffer here
 }
 
 void RHIVulkanGraphicDispatcher::BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
@@ -248,35 +246,37 @@ void RHIVulkanGraphicDispatcher::BindIndexBuffer(RHIBufferResource* BufferResour
 	IndexBindingInfo.Offset = Offset;
 }
 
-void RHIVulkanGraphicDispatcher::Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIVulkanGraphicDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
 	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject->GetImpl());
-	vkCmdBindPipeline(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->Pipeline);
+	vkCmdBindPipeline(VkCmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->Pipeline);
 
 	for (auto& Info : BindingInfos)
 	{
-		vkCmdBindVertexBuffers(CommandBuffer, Info.BindingIndex, 1, &Info.BufferResource->Buffer, &Info.Offset);
+		vkCmdBindVertexBuffers(VkCmdBuf, Info.BindingIndex, 1, &Info.BufferResource->Buffer, &Info.Offset);
 	}
 	BindingInfos.clear();
-	vkCmdBindIndexBuffer(CommandBuffer, IndexBindingInfo.BufferResource->Buffer, IndexBindingInfo.Offset, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(VkCmdBuf, IndexBindingInfo.BufferResource->Buffer, IndexBindingInfo.Offset, VK_INDEX_TYPE_UINT32);
 	if (VulkanPipeline->WriteDescriptorSets.size()>0)
 	{
-		vkCmdPushDescriptorSetKHR(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->PipelineLayout,
+		vkCmdPushDescriptorSetKHR(VkCmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->PipelineLayout,
 			0, VulkanPipeline->WriteDescriptorSets.size(), VulkanPipeline->WriteDescriptorSets.data());
 	}
 	
 	//if (VulkanPipeline->DescriptorSet)
 	//{
 	//	
-	//	//vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->PipelineLayout, 0, 1,
+	//	//vkCmdBindDescriptorSets(VkCmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->PipelineLayout, 0, 1,
 	//	//	&VulkanPipeline->DescriptorSet, 0, nullptr);
 	//}
 	
-	vkCmdDrawIndexed(CommandBuffer, IndexCount, InstanceCount, IndexOffset, 0, 0);
+	vkCmdDrawIndexed(VkCmdBuf, IndexCount, InstanceCount, IndexOffset, 0, 0);
 }
 
-void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
+void RHIVulkanGraphicDispatcher::BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
 {
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
 	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
 	auto* VulkanFramebuffer = static_cast<RHIVulkanFrameBuffer*>(Framebuffer->GetImpl());
 
@@ -295,7 +295,7 @@ void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIF
 	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	renderPassInfo.pClearValues = clearValues.data();
 
-	vkCmdBeginRenderPass(CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBeginRenderPass(VkCmdBuf, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 	VkViewport viewport{};
 	viewport.x = 0.0f;
 	viewport.y = 0.0f;
@@ -303,18 +303,19 @@ void RHIVulkanGraphicDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIF
 	viewport.height = (float)VulkanFramebuffer->Extent.height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
-	vkCmdSetViewport(CommandBuffer, 0, 1, &viewport);
+	vkCmdSetViewport(VkCmdBuf, 0, 1, &viewport);
 
 	VkRect2D scissor{};
 	scissor.offset = { 0, 0 };
 	scissor.extent = renderPassInfo.renderArea.extent;
-	vkCmdSetScissor(CommandBuffer, 0, 1, &scissor);
+	vkCmdSetScissor(VkCmdBuf, 0, 1, &scissor);
 }
 
-void RHIVulkanGraphicDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
+void RHIVulkanGraphicDispatcher::EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass)
 {
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
 	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
-	vkCmdEndRenderPass(CommandBuffer);
+	vkCmdEndRenderPass(VkCmdBuf);
 }
 
 void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
@@ -323,39 +324,41 @@ void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
 	//vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 }
 
-void RHIVulkanGraphicDispatcher::TransitionImageAsRenderTarget(RHIImageResource* Image) {
+void RHIVulkanGraphicDispatcher::TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) {
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
 	auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image->GetImpl());
-	TransitionImageLayout(VulkanImage->Image, CommandBuffer, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VulkanImage->MipLevel);
+	TransitionImageLayout(VulkanImage->Image, VkCmdBuf, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VulkanImage->MipLevel);
 	VulkanImage->DescriptorInfo.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 }
 
-void RHIVulkanGraphicDispatcher::TransitionImageAsShaderRead(RHIImageResource* Image) {
+void RHIVulkanGraphicDispatcher::TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) {
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
 	auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image->GetImpl());
-	TransitionImageLayout(VulkanImage->Image, CommandBuffer, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VulkanImage->MipLevel);
+	TransitionImageLayout(VulkanImage->Image, VkCmdBuf, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VulkanImage->MipLevel);
 	VulkanImage->DescriptorInfo.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 
-void RHIVulkanGraphicDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
+void RHIVulkanGraphicDispatcher::EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
 {
 	//auto* VulkanFB = static_cast<RHIVulkanFrameBuffer*>(PresentFrameBuffer->GetImpl());
-
+	// EndFrameAndSubmit is handled in PresentFrameAndRelease
 }
 
-
-void RHIVulkanGraphicDispatcher::BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
+void RHIVulkanGraphicDispatcher::BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VulkanSwapchain = static_cast<RHIVulkanSwapchain*>(Swapchain->GetImpl());
 	auto* VulkanPresentPass = static_cast<RHIVulkanRenderPass*>(PresentRenderPass->GetImpl());
 
 	glfwPollEvents();
 	WaitForGPUIdle(Context);
-	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
+	vkResetCommandBuffer(VkCmdBuf, /*VkCommandBufferResetFlagBits*/ 0);
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-	if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
+	if (vkBeginCommandBuffer(VkCmdBuf, &beginInfo) != VK_SUCCESS) {
 		throw std::runtime_error("failed to begin recording command buffer!");
 	}
 }
@@ -405,12 +408,12 @@ void RHIVulkanImGUI::Cleanup()
 	
 }
 
-void RHIVulkanImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
+void RHIVulkanImGUI::DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher)
 {
-    ImDrawData* draw_data = ImGui::GetDrawData();
-    const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
-	auto* VkDispatcher = reinterpret_cast<RHIVulkanGraphicDispatcher*>(Dispatcher->GetImpl());
-	ImGui_ImplVulkan_RenderDrawData(draw_data, VkDispatcher->CommandBuffer, nullptr);
+	ImDrawData* draw_data = ImGui::GetDrawData();
+	const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
+	ImGui_ImplVulkan_RenderDrawData(draw_data, VkCmdBuf, nullptr);
 }
 
 void RHIVulkanPipelineObject::SetUniform(RHIUniform* Uniform, uint32_t Binding)

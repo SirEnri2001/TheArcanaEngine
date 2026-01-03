@@ -9,33 +9,17 @@
 struct GLFWwindow;
 struct GLFWmonitor;
 
-class VkCommandBufferManaged
-{
-    VkCommandBuffer CommandBuffer;
-    VkDevice Device;
-    VkCommandPool CommandPool;
-public:
-    VkCommandBuffer& Get() {
-        return CommandBuffer;
-    }
-
-    VkCommandBufferManaged(VkDevice InDevice, VkCommandPool InCommandPool);
-    VkCommandBufferManaged() = delete;
-    virtual ~VkCommandBufferManaged();
-};
-
 void CreateGLFWContext();
 void CreateGLFWWindow(GLFWwindow*& pGLFWwindow, int width, int height, void* CallbackOwner, void (*framebufferResizeCallback)(GLFWwindow* window, int width, int height));
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
 
-// Should use VkCommandBufferManaged
-//void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool);
+void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool);
 
-void BeginCommandBufferOneTimeSubmit(VkCommandBuffer& InCommandBuffer, VkCommandPool commandPool, VkDevice device);
+void BeginCommandBufferOneTimeSubmit(VkCommandBuffer& InCommandBuffer);
 
-void EndCommandBufferOneTimeSubmit(VkCommandBuffer InCommandBuffer, VkCommandPool commandPool, VkQueue graphicsQueue, VkDevice device);
+void EndCommandBufferOneTimeSubmit(VkCommandBuffer InCommandBuffer, VkQueue graphicsQueue);
 
 void CreateVkInstance(
     VkInstance& OutVkInstance,

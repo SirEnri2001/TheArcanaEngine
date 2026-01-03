@@ -20,10 +20,11 @@ void PBRMeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh, Mate
 
     RHIVertexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
     RHIIndexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Indices.size(), BufferType::INDEX);
-
-    RHIVertexBuffer.CopyToBuffer(&Context->Context, InMesh.Vertices.data(),
+    RHICommandBuffer CmdBuffer;
+    CmdBuffer.Initialize(&Context->Context);
+    RHIVertexBuffer.CopyToBuffer(&CmdBuffer, &Context->Context, InMesh.Vertices.data(),
         InMesh.Vertices.size() * sizeof(Mesh::VertexType));
-    RHIIndexBuffer.CopyToBuffer(&Context->Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
+    RHIIndexBuffer.CopyToBuffer(&CmdBuffer, &Context->Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
 
     IndexBufferSize = InMesh.Indices.size();
 }

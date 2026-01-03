@@ -560,7 +560,7 @@ void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindo
     }
 }
 
-void RHID3D12ImageResource::CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride)
+void RHID3D12ImageResource::CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture.Get(), 0, 1);
@@ -634,7 +634,7 @@ void RHID3D12BufferResource::Initialize(RHIContext* Context, uint32_t Stride, ui
 
 }
 
-void RHID3D12BufferResource::CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes)
+void RHID3D12BufferResource::CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* data, uint32_t TotalBytes)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     // Placeholder implementation
@@ -939,7 +939,7 @@ void RHID3D12GraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResour
     BoundIndexBufferView = D3D12BufferResource->m_indexBufferView;
 }
 
-void RHID3D12GraphicsDispatcher::Dispatch(RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHID3D12GraphicsDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
     auto* D3D12Pipeline = static_cast<RHID3D12PipelineObject*>(Pipeline->GetImpl());
 
@@ -981,7 +981,7 @@ void RHID3D12GraphicsDispatcher::Dispatch(RHIPipelineObject* Pipeline, uint32_t 
 
 }
 
-void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
+void RHID3D12GraphicsDispatcher::BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
 {
     auto* D3D12RenderPass = static_cast<RHID3D12RenderPass*>(RenderPass->GetImpl());
     // Execute the command list.
@@ -1019,7 +1019,7 @@ void RHID3D12GraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIF
 	m_commandList->ClearDepthStencilView(D3D12RenderPass->DepthRT, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0, 0, 0, NULL);
 }
 
-void RHID3D12GraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
+void RHID3D12GraphicsDispatcher::EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
 {
 	//ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
@@ -1044,12 +1044,12 @@ void RHID3D12GraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindo
 }
 
 
-void RHID3D12GraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
+void RHID3D12GraphicsDispatcher::EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass)
 {
 }
 
 
-void RHID3D12GraphicsDispatcher::BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
+void RHID3D12GraphicsDispatcher::BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12Swapchain = static_cast<RHID3D12Swapchain*>(Swapchain->GetImpl());
@@ -1077,11 +1077,11 @@ void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
 }
 
-void RHID3D12GraphicsDispatcher::TransitionImageAsRenderTarget(RHIImageResource* Image)
+void RHID3D12GraphicsDispatcher::TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image)
 {
 }
 
-void RHID3D12GraphicsDispatcher::TransitionImageAsShaderRead(RHIImageResource* Image)
+void RHID3D12GraphicsDispatcher::TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image)
 {
 }
 
@@ -1194,7 +1194,7 @@ void RHID3D12ImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowMana
     ImGui_ImplDX12_Init(&init_info);
 }
 
-void RHID3D12ImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
+void RHID3D12ImGUI::DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher)
 {
     auto* D3D12Dispatcher = static_cast<RHID3D12GraphicsDispatcher*>(Dispatcher->GetImpl());
 
@@ -1265,7 +1265,7 @@ void RHID3D12Swapchain::AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFr
 	
 }
 
-void RHID3D12Swapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher)
+void RHID3D12Swapchain::PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher)
 {
 	
 }

@@ -240,7 +240,7 @@ public:
 	virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
 	virtual void Cleanup(RHIContext* Context) override;
 	virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) override;
-	virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) override;
+	virtual void PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher) override;
 	virtual ImageExtent3D GetFrameSize() override;
 
 private:
@@ -266,7 +266,7 @@ public:
 	void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel) override;
 	void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent,
 	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
-    void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
+    void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
 	void Cleanup(RHIContext* Context) override;
 	VkDescriptorImageInfo& GetDescriptorImageInfo();
 	virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
@@ -283,7 +283,7 @@ public:
 	~RHIVulkanBufferResource() override = default;
 
 	void Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) override;
-	void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
+	void CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* data, uint32_t TotalBytes) override;
 	void Cleanup(RHIContext* Context) override;
 
 	static VkBufferUsageFlags GetVkBufferUsageFlags(BufferType Type);
@@ -396,7 +396,7 @@ public:
 	~RHIVulkanImGUI() override = default;
 
 	void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
-	void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
+	void DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher) override;
 	void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
 	void Cleanup() override;
 };
@@ -405,8 +405,6 @@ class RHIVulkanGraphicDispatcher : public RHIGraphicsDispatcherBase
 {
 public:
 	bool bWindowResizeLastframe = false;
-	VkCommandBufferManaged* CommandBufferManaged;
-	VkCommandBuffer CommandBuffer;
 
 	struct BindingInfo
 	{
@@ -425,15 +423,15 @@ public:
 	void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
 	void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
 	void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
-	void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount,
+	void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount,
 	              uint32_t IndexOffset, uint32_t InstanceCount) override;
-	void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
-	void EndRenderPass(RHIRenderPass* RenderPass) override;
-	void BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
-	void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
+	void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
+	void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) override;
+	void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
+	void EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
 	void WaitForGPUIdle(RHIContext* Context) override;
-	virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
-	virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
+	virtual void TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
+	virtual void TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
 };
 
 class RHIVulkanFrameBuffer : public RHIFrameBufferBase {
@@ -445,5 +443,19 @@ public:
 	virtual ~RHIVulkanFrameBuffer() override;
 	virtual void Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
 		std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) override;
+	virtual void Cleanup(RHIContext* Context) override;
+};
+
+class RHIVulkanCommandBuffer : public RHICommandBufferBase
+{
+public:
+	VkCommandBuffer CommandBuffer;
+	VkDevice Device;
+	VkCommandPool CommandPool;
+	RHIVulkanCommandBuffer() = default;
+	RHIVulkanCommandBuffer(const RHIVulkanCommandBuffer&) = delete;
+	virtual ~RHIVulkanCommandBuffer() override;
+
+	virtual void Initialize(RHIContext* Context) override;
 	virtual void Cleanup(RHIContext* Context) override;
 };

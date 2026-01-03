@@ -123,7 +123,7 @@ public:
     virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) override;
     virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1)  override;
     virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
-    virtual void CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride) override;
+    virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
 
@@ -146,7 +146,7 @@ public:
     virtual ~RHID3D12BufferResource() override = default;
 
     virtual void Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) override;
-    virtual void CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes) override;
+    virtual void CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* data, uint32_t TotalBytes) override;
     virtual void Cleanup(RHIContext* Context) override;
 };
 
@@ -264,14 +264,14 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
-    virtual void Dispatch(RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-    virtual void BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
-	virtual void BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
-    virtual void EndRenderPass(RHIRenderPass* RenderPass) override;
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
+	virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
+    virtual void EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
+    virtual void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) override;
     virtual void WaitForGPUIdle(RHIContext* Context) override;
-    virtual void TransitionImageAsShaderRead(RHIImageResource* Image) override;
-    virtual void TransitionImageAsRenderTarget(RHIImageResource* Image) override;
+    virtual void TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
+    virtual void TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
 };
 
 // RHID3D12ImGUI
@@ -283,7 +283,7 @@ public:
     virtual ~RHID3D12ImGUI() override = default;
 
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
-    virtual void DispatchImGUI(RHIGraphicsDispatcher* Dispatcher) override;
+    virtual void DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher) override;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
     virtual void Cleanup() override;
 };
@@ -307,6 +307,6 @@ public:
     virtual void Initialize(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass) override;
-    virtual void PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher) override;
+    virtual void PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher) override;
     ImageExtent3D GetFrameSize() override;
 };

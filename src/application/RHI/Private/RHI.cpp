@@ -171,9 +171,9 @@ void RHIImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, R
 }
 
 
-void RHIImageResource::CopyToTexture(RHIContext* Context, void* Data, uint32_t Stride)
+void RHIImageResource::CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride)
 {
-	pImpl->CopyToTexture(Context, Data, Stride);
+	pImpl->CopyToTexture(CommandBuffer, Context, Data, Stride);
 }
 
 void RHIImageResource::Cleanup(RHIContext* Context)
@@ -205,9 +205,9 @@ void RHIBufferResource::Initialize(RHIContext* Context, uint32_t Stride, uint32_
 	pImpl->Initialize(Context, Stride, ElementCounts, Type);
 }
 
-void RHIBufferResource::CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes)
+void RHIBufferResource::CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* data, uint32_t TotalBytes)
 {
-	pImpl->CopyToBuffer(Context, data, TotalBytes);
+	pImpl->CopyToBuffer(CommandBuffer, Context, data, TotalBytes);
 }
 
 void RHIBufferResource::Cleanup(RHIContext* Context)
@@ -394,9 +394,9 @@ void RHIImGUI::Cleanup()
 	pImpl->Cleanup();
 }
 
-void RHIImGUI::DispatchImGUI(RHIGraphicsDispatcher* Dispatcher)
+void RHIImGUI::DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher)
 {
-	pImpl->DispatchImGUI(Dispatcher);
+	pImpl->DispatchImGUI(CommandBuffer, Dispatcher);
 }
 
 // RHIGraphicsDispatcher implementation
@@ -433,30 +433,30 @@ void RHIGraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, u
 	pImpl->BindIndexBuffer(BufferResource, Offset);
 }
 
-void RHIGraphicsDispatcher::Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIGraphicsDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-	pImpl->Dispatch(PipelineObject, IndexCount, IndexOffset, InstanceCount);
+	pImpl->Dispatch(CommandBuffer, PipelineObject, IndexCount, IndexOffset, InstanceCount);
 }
 
-void RHIGraphicsDispatcher::BeginRenderPass(RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
+void RHIGraphicsDispatcher::BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
 {
-	pImpl->BeginRenderPass(RenderPass, Framebuffer);
+	pImpl->BeginRenderPass(CommandBuffer, RenderPass, Framebuffer);
 }
 
 
-void RHIGraphicsDispatcher::EndRenderPass(RHIRenderPass* RenderPass)
+void RHIGraphicsDispatcher::EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass)
 {
-	pImpl->EndRenderPass(RenderPass);
+	pImpl->EndRenderPass(CommandBuffer, RenderPass);
 }
 
-void RHIGraphicsDispatcher::BeginFrame(RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
+void RHIGraphicsDispatcher::BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
 {
-	pImpl->BeginFrame(Context, Swapchain, PresentRenderPass);
+	pImpl->BeginFrame(CommandBuffer, Context, Swapchain, PresentRenderPass);
 }
 
-void RHIGraphicsDispatcher::EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
+void RHIGraphicsDispatcher::EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
 {
-	pImpl->EndFrameAndSubmit(Context, WindowManager);
+	pImpl->EndFrameAndSubmit(CommandBuffer, Context, WindowManager, PresentFrameBuffer);
 }
 
 
@@ -466,14 +466,14 @@ void RHIGraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 	pImpl->WaitForGPUIdle(Context);
 }
 
-void RHIGraphicsDispatcher::TransitionImageAsRenderTarget(RHIImageResource* Image)
+void RHIGraphicsDispatcher::TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image)
 {
-	pImpl->TransitionImageAsRenderTarget(Image);
+	pImpl->TransitionImageAsRenderTarget(CommandBuffer, Image);
 }
 
-void RHIGraphicsDispatcher::TransitionImageAsShaderRead(RHIImageResource* Image)
+void RHIGraphicsDispatcher::TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image)
 {
-	pImpl->TransitionImageAsShaderRead(Image);
+	pImpl->TransitionImageAsShaderRead(CommandBuffer, Image);
 }
 
 
@@ -557,13 +557,43 @@ void RHISwapchain::AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBu
 	pImpl->AcquireFrame(Context, OutFrameBuffer, InRenderPass);
 }
 
-void RHISwapchain::PresentFrameAndRelease(RHIContext* Context, RHIGraphicsDispatcher* GDispatcher)
+void RHISwapchain::PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher)
 {
-	pImpl->PresentFrameAndRelease(Context, GDispatcher);
+	pImpl->PresentFrameAndRelease(Context, CommandBuffer, GDispatcher);
 }
 
 
 ImageExtent3D RHISwapchain::GetFrameSize()
 {
 	return pImpl->GetFrameSize();
+}
+
+// RHICommandBuffer implementation
+RHICommandBuffer::RHICommandBuffer()
+{
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanCommandBuffer>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		// TODO: Implement RHID3D12CommandBuffer
+		// pImpl = std::make_unique<RHID3D12CommandBuffer>();
+	}
+}
+
+RHICommandBuffer::~RHICommandBuffer()
+{
+	// pImpl will be automatically cleaned up by unique_ptr
+}
+
+void RHICommandBuffer::Initialize(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->Initialize(Context);
+	}
+}
+
+void RHICommandBuffer::Cleanup(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->Cleanup(Context);
+	}
 }

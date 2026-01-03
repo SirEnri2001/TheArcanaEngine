@@ -45,15 +45,15 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
     return VK_FALSE;
 }
 
-VkCommandBufferManaged::VkCommandBufferManaged(VkDevice InDevice, VkCommandPool InCommandPool)
-    : Device(InDevice), CommandPool(InCommandPool)
-{
-    CreateCommandBuffer(CommandBuffer, Device, CommandPool);
-}
-
-VkCommandBufferManaged::~VkCommandBufferManaged() {
-    vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
-}
+//VkCommandBufferManaged::VkCommandBufferManaged(VkDevice InDevice, VkCommandPool InCommandPool)
+//    : Device(InDevice), CommandPool(InCommandPool)
+//{
+//    CreateCommandBuffer(CommandBuffer, Device, CommandPool);
+//}
+//
+//VkCommandBufferManaged::~VkCommandBufferManaged() {
+//    vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
+//}
 
 void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool)
 {
@@ -68,8 +68,8 @@ void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkC
     }
 }
 
-void BeginCommandBufferOneTimeSubmit(VkCommandBuffer& InCommandBuffer, VkCommandPool commandPool, VkDevice device) {
-    CreateCommandBuffer(InCommandBuffer, device, commandPool);
+void BeginCommandBufferOneTimeSubmit(VkCommandBuffer& InCommandBuffer) {
+    //CreateCommandBuffer(InCommandBuffer, device, commandPool);
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -77,7 +77,7 @@ void BeginCommandBufferOneTimeSubmit(VkCommandBuffer& InCommandBuffer, VkCommand
     vkBeginCommandBuffer(InCommandBuffer, &beginInfo);
 }
 
-void EndCommandBufferOneTimeSubmit(VkCommandBuffer InCommandBuffer, VkCommandPool commandPool, VkQueue graphicsQueue, VkDevice device) {
+void EndCommandBufferOneTimeSubmit(VkCommandBuffer InCommandBuffer, VkQueue graphicsQueue) {
     vkEndCommandBuffer(InCommandBuffer);
 
     VkSubmitInfo submitInfo{};
@@ -87,8 +87,6 @@ void EndCommandBufferOneTimeSubmit(VkCommandBuffer InCommandBuffer, VkCommandPoo
 
     vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(graphicsQueue);
-
-    vkFreeCommandBuffers(device, commandPool, 1, &InCommandBuffer);
 }
 
 void CreateVkInstance(
