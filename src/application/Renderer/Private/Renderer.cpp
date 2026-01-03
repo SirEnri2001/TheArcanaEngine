@@ -109,7 +109,7 @@ void Renderer::UpdateFrame(RendererContext* RContext)
         GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
         GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
         IndexBufferSize = MeshProxy->IndexBufferSize;
-        GraphicDispatcher.Dispatch(&PipelineObject, IndexBufferSize, 0, 1);
+        GraphicDispatcher.Draw(&PipelineObject, IndexBufferSize, 0, 1);
     }
     GraphicDispatcher.EndRenderPass(&RenderPass);
 
@@ -117,7 +117,7 @@ void Renderer::UpdateFrame(RendererContext* RContext)
     //GraphicDispatcher.BeginRenderPass(&PresentPass, TODO);
     GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
     GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
-    GraphicDispatcher.Dispatch(&PresentPipelineObject, 6, 0, 1);
+    GraphicDispatcher.Draw(&PresentPipelineObject, 6, 0, 1);
     // Comment this line if you don't want ImGUI
     RContext->ImGUI.DispatchImGUI(&GraphicDispatcher);
     GraphicDispatcher.EndRenderPass(&PresentPass);

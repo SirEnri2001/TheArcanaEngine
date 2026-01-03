@@ -433,9 +433,9 @@ void RHIGraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, u
 	pImpl->BindIndexBuffer(BufferResource, Offset);
 }
 
-void RHIGraphicsDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIGraphicsDispatcher::Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-	pImpl->Dispatch(CommandBuffer, PipelineObject, IndexCount, IndexOffset, InstanceCount);
+	pImpl->Draw(CommandBuffer, PipelineObject, IndexCount, IndexOffset, InstanceCount);
 }
 
 void RHIGraphicsDispatcher::BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
@@ -595,5 +595,48 @@ void RHICommandBuffer::Cleanup(RHIContext* Context)
 {
 	if (pImpl) {
 		pImpl->Cleanup(Context);
+	}
+}
+
+// RHIComputeDispatcher implementation
+RHIComputeDispatcher::RHIComputeDispatcher()
+{
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanComputeDispatcher>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12ComputeDispatcher>();
+	}
+}
+
+RHIComputeDispatcher::~RHIComputeDispatcher()
+{
+	// pImpl will be automatically cleaned up by unique_ptr
+}
+
+void RHIComputeDispatcher::Initialize(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->Initialize(Context);
+	}
+}
+
+void RHIComputeDispatcher::Cleanup(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->Cleanup(Context);
+	}
+}
+
+void RHIComputeDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
+{
+	if (pImpl) {
+		pImpl->Dispatch(CommandBuffer, PipelineObject, ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+	}
+}
+
+void RHIComputeDispatcher::WaitForGPUIdle(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->WaitForGPUIdle(Context);
 	}
 }

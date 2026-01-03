@@ -264,7 +264,7 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
-    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
     virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
 	virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
     virtual void EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer = nullptr) override;
@@ -272,6 +272,21 @@ public:
     virtual void WaitForGPUIdle(RHIContext* Context) override;
     virtual void TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
     virtual void TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) override;
+};
+
+// RHID3D12ComputeDispatcher
+class RHID3D12ComputeDispatcher : public RHIComputeDispatcherBase
+{
+public:
+    ComPtr<ID3D12GraphicsCommandList> m_commandList;
+    ID3D12DescriptorHeap* pHeaps;
+    RHID3D12ComputeDispatcher() = default;
+    virtual ~RHID3D12ComputeDispatcher() override = default;
+
+    virtual void Initialize(RHIContext* Context) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
+    virtual void WaitForGPUIdle(RHIContext* Context) override;
 };
 
 // RHID3D12ImGUI

@@ -511,7 +511,7 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    virtual void Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
     virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) = 0;
     virtual void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) = 0;
     virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) = 0;
@@ -542,7 +542,7 @@ public:
      * @param IndexOffset 
      * @param InstanceCount 
      */
-    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
     virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
     virtual void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) override;
     virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
@@ -559,19 +559,34 @@ public:
     RHIComputeDispatcherBase(const RHIComputeDispatcherBase&) = delete;
     virtual ~RHIComputeDispatcherBase() = default;
     virtual void Initialize(RHIContext* Context) = 0;
-    virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
-    virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
-    virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
-    virtual void BeginRenderPass(RHIRenderPass* RenderPass) = 0;
-    virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
-    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) = 0;
     virtual void WaitForGPUIdle(RHIContext* Context) = 0;
 };
 
-class RHI_API RHIComputeDispatcher : public RHIComputeDispatcherBase {
-
+/**
+ * RHIComputeDispatcher dispatches compute shader work.
+ */
+class RHI_API RHIComputeDispatcher : public RHIComputeDispatcherBase
+{
+    std::unique_ptr<RHIComputeDispatcherBase> pImpl = nullptr;
+public:
+    RHIComputeDispatcher();
+    RHIComputeDispatcher(const RHIComputeDispatcher&) = delete;
+    virtual ~RHIComputeDispatcher();
+    virtual void Initialize(RHIContext* Context) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    /**
+     * Dispatch compute shader work
+     * @param CommandBuffer Command buffer to record compute dispatch commands
+     * @param PipelineObject Compute pipeline object
+     * @param ThreadGroupX Number of thread groups in X dimension
+     * @param ThreadGroupY Number of thread groups in Y dimension
+     * @param ThreadGroupZ Number of thread groups in Z dimension
+     */
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
+    virtual void WaitForGPUIdle(RHIContext* Context) override;
+    RHIComputeDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
 struct ImGuiSharedGlobals;

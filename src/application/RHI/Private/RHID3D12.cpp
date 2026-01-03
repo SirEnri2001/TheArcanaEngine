@@ -939,7 +939,7 @@ void RHID3D12GraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResour
     BoundIndexBufferView = D3D12BufferResource->m_indexBufferView;
 }
 
-void RHID3D12GraphicsDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHID3D12GraphicsDispatcher::Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
     auto* D3D12Pipeline = static_cast<RHID3D12PipelineObject*>(Pipeline->GetImpl());
 
@@ -1075,6 +1075,58 @@ void RHID3D12GraphicsDispatcher::BeginFrame(RHICommandBuffer* CommandBuffer, RHI
 
 void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
+}
+
+// RHID3D12ComputeDispatcher implementation
+void RHID3D12ComputeDispatcher::Initialize(RHIContext* Context)
+{
+	auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+	
+	// Create the command list for compute
+	ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12Context->m_commandAllocator.Get(),
+		NULL, IID_PPV_ARGS(&m_commandList)));
+	pHeaps = D3D12Context->m_srvheap.Get();
+}
+
+void RHID3D12ComputeDispatcher::Cleanup(RHIContext* Context)
+{
+	// Command list will be cleaned up automatically by ComPtr
+}
+
+void RHID3D12ComputeDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
+{
+	auto* D3D12Pipeline = static_cast<RHID3D12PipelineObject*>(PipelineObject->GetImpl());
+	
+	// Set compute pipeline state
+	m_commandList->SetPipelineState(D3D12Pipeline->m_pipelineState.Get());
+	m_commandList->SetComputeRootSignature(D3D12Pipeline->m_rootSignature.Get());
+	m_commandList->SetDescriptorHeaps(1, &pHeaps);
+	
+	// Set root parameters (similar to graphics dispatcher)
+	uint32_t cbvIndex = 0;
+	for (int i = 0; i < D3D12Pipeline->RootParameters.size(); i++)
+	{
+		const auto& RootParam = D3D12Pipeline->RootParameters[i];
+		if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
+		{
+			// Set samplers/descriptors
+			m_commandList->SetComputeRootDescriptorTable(i, D3D12Pipeline->GpuDescriptorHandles[i]);
+		}
+		else if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV)
+		{
+			m_commandList->SetComputeRootConstantBufferView(i, D3D12Pipeline->cbvDescriptions[i].BufferLocation);
+			cbvIndex++;
+		}
+	}
+	
+	// Dispatch compute shader
+	m_commandList->Dispatch(ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+}
+
+void RHID3D12ComputeDispatcher::WaitForGPUIdle(RHIContext* Context)
+{
+	auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+	D3D12Context->WaitForPreviousFrame();
 }
 
 void RHID3D12GraphicsDispatcher::TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image)

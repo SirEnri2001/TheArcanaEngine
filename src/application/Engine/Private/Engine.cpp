@@ -321,7 +321,7 @@ public:
             GraphicDispatcher.BindIndexBuffer(&MeshDesc.Proxy->RHIIndexBuffer, 0);
             GraphicDispatcher.BindVertexBuffer(&MeshDesc.Proxy->RHIVertexBuffer, 0, 0);
             IndexBufferSize = MeshDesc.Proxy->IndexBufferSize;
-            GraphicDispatcher.Dispatch(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
+            GraphicDispatcher.Draw(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
         // Comment this line if you don't want ImGUI
         ImGUI.DispatchImGUI(&GraphicDispatcher);
@@ -518,7 +518,7 @@ public:
             GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
             GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
             IndexBufferSize = 6;
-            GraphicDispatcher.Dispatch(&CommandBuffer, &Pipeline.PipelineObject, IndexBufferSize, 0, 1);
+            GraphicDispatcher.Draw(&CommandBuffer, &Pipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
         GraphicDispatcher.EndRenderPass(&CommandBuffer, &PTRenderPass);
         GraphicDispatcher.BeginRenderPass(&CommandBuffer, &PresentPass, FrameBuffer);
@@ -528,7 +528,7 @@ public:
             GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
             GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
             IndexBufferSize = 6;
-            GraphicDispatcher.Dispatch(&CommandBuffer, &PostPipeline.PipelineObject, IndexBufferSize, 0, 1);
+            GraphicDispatcher.Draw(&CommandBuffer, &PostPipeline.PipelineObject, IndexBufferSize, 0, 1);
         }
         ImGUI.DispatchImGUI(&CommandBuffer, &GraphicDispatcher);
         GraphicDispatcher.EndRenderPass(&CommandBuffer, &PresentPass);

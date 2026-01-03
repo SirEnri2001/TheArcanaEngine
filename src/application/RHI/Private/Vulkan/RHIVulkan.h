@@ -423,7 +423,7 @@ public:
 	void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
 	void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
 	void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
-	void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount,
+	void Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount,
 	              uint32_t IndexOffset, uint32_t InstanceCount) override;
 	void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
 	void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) override;
@@ -458,4 +458,16 @@ public:
 
 	virtual void Initialize(RHIContext* Context) override;
 	virtual void Cleanup(RHIContext* Context) override;
+};
+
+class RHIVulkanComputeDispatcher : public RHIComputeDispatcherBase
+{
+public:
+	RHIVulkanComputeDispatcher() = default;
+	~RHIVulkanComputeDispatcher() override = default;
+
+	void Initialize(RHIContext* Context) override;
+	void Cleanup(RHIContext* Context) override;
+	void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
+	void WaitForGPUIdle(RHIContext* Context) override;
 };
