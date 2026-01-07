@@ -186,6 +186,12 @@ void RHIImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_t Wid
 	pImpl->Resize(Context, Height, Width);
 }
 
+void RHIImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+{
+	pImpl->Transition(CommandBuffer, InUsage);
+}
+
+
 // RHIBufferResource implementation
 RHIBufferResource::RHIBufferResource()
 {
@@ -339,6 +345,11 @@ void RHIPipelineFactory::SetImageSamplerBinding(uint32_t Binding)
 	pImpl->SetImageSamplerBinding(Binding);
 }
 
+void RHIPipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType)
+{
+	pImpl->SetDescriptorBinding(BindingIndex, BindingDescriptorType);
+}
+
 void RHIPipelineFactory::RemoveAllGlobalBindings()
 {
 	pImpl->RemoveAllGlobalBindings();
@@ -349,6 +360,11 @@ void RHIPipelineFactory::SetShaders(const std::vector<char>& VertShader, const s
 	pImpl->SetShaders(VertShader, FragShader);
 }
 
+void RHIPipelineFactory::SetComputeShaders(const std::vector<char>& ComputeShader)
+{
+	pImpl->SetComputeShaders(ComputeShader);
+}
+
 void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
 {
 	pImpl->InitializePipelineObject(OutPipelineObject, Context, RenderPassResource);
@@ -357,6 +373,11 @@ void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipeline
 void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass)
 {
 	pImpl->InitializePipelineObject(OutPipelineObject, Context, PresentPass);
+}
+
+void RHIPipelineFactory::InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context)
+{
+	pImpl->InitializeComputePipelineObject(OutComputePipelineObject, Context);
 }
 
 void RHIPipelineFactory::Cleanup(RHIContext* Context)
@@ -433,9 +454,9 @@ void RHIGraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, u
 	pImpl->BindIndexBuffer(BufferResource, Offset);
 }
 
-void RHIGraphicsDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIGraphicsDispatcher::Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-	pImpl->Dispatch(CommandBuffer, PipelineObject, IndexCount, IndexOffset, InstanceCount);
+	pImpl->Draw(CommandBuffer, PipelineObject, IndexCount, IndexOffset, InstanceCount);
 }
 
 void RHIGraphicsDispatcher::BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
@@ -498,6 +519,16 @@ void RHIPipelineObject::SetUniform(RHIUniform* Uniform, uint32_t Binding)
 void RHIPipelineObject::SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding)
 {
     pImpl->SetImageSampler(ImageResource, Binding);
+}
+
+void RHIPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource)
+{
+	pImpl->SetBindingResource(BindingIndex, BindingDescriptorType, ImageResource);
+}
+
+void RHIPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform)
+{
+	pImpl->SetBindingResource(BindingIndex, BindingDescriptorType, Uniform);
 }
 
 void RHIPipelineObject::Cleanup(RHIContext* Context)
@@ -595,5 +626,69 @@ void RHICommandBuffer::Cleanup(RHIContext* Context)
 {
 	if (pImpl) {
 		pImpl->Cleanup(Context);
+	}
+}
+
+void RHICommandBuffer::BeginCommandBuffer()
+{
+	if (pImpl) {
+		pImpl->BeginCommandBuffer();
+	}
+}
+
+void RHICommandBuffer::EndCommandBuffer()
+{
+	if (pImpl) {
+		pImpl->EndCommandBuffer();
+	}
+}
+
+void RHICommandBuffer::ResetCommandBuffer()
+{
+	if (pImpl) {
+		pImpl->ResetCommandBuffer();
+	}
+}
+
+// RHIComputeDispatcher implementation
+RHIComputeDispatcher::RHIComputeDispatcher()
+{
+	if (GRHIImplementationSelection == RHIImplement_Vulkan) {
+		pImpl = std::make_unique<RHIVulkanComputeDispatcher>();
+	} else if (GRHIImplementationSelection == RHIImplement_D3D12) {
+		pImpl = std::make_unique<RHID3D12ComputeDispatcher>();
+	}
+}
+
+RHIComputeDispatcher::~RHIComputeDispatcher()
+{
+	// pImpl will be automatically cleaned up by unique_ptr
+}
+
+void RHIComputeDispatcher::Initialize(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->Initialize(Context);
+	}
+}
+
+void RHIComputeDispatcher::Cleanup(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->Cleanup(Context);
+	}
+}
+
+void RHIComputeDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
+{
+	if (pImpl) {
+		pImpl->Dispatch(CommandBuffer, PipelineObject, ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+	}
+}
+
+void RHIComputeDispatcher::WaitForGPUIdle(RHIContext* Context)
+{
+	if (pImpl) {
+		pImpl->WaitForGPUIdle(Context);
 	}
 }

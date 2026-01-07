@@ -84,7 +84,7 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, ui
 void RHIVulkanImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t InMipLevel)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	bHasSampler = InUsage != ImageUsage::IU_COLOR_PRESENT_RT && InUsage != ImageUsage::IU_DPETH_PRESENT_RT;
+	bHasSampler = InUsage != ImageUsage::IU_COLOR_PRESENT_RT && InUsage != ImageUsage::IU_DEPTH_PRESENT_RT;
 	Usage = InUsage;
 	InnerFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
 	ImageExtent = VkExtent3D{RTExtent.Width, RTExtent.Height, RTExtent.Depth};
@@ -93,10 +93,10 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExt
 	// Check if image format supports linear blitting
 	VkFormatProperties formatProperties = RHIVulkanPlatformSupport::Get()->GetFormatProperties(InnerFormat);
 	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
-		throw std::runtime_error("texture image format does not support linear blitting!");
+		//throw std::runtime_error("texture image format does not support linear blitting!");
 	}
 
-	VkImageUsageFlags VkImageUsage;
+	VkImageUsageFlags VkImageUsage = 0;
 	VkImageAspectFlagBits VkImageAspectFlagBits;
 	switch (Usage)
 	{
@@ -112,13 +112,17 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExt
 		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		break;
 	case IU_DEPTH_RT:
-	case IU_DPETH_PRESENT_RT:
+	case IU_DEPTH_PRESENT_RT:
 		VkImageUsage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 		VkImageAspectFlagBits = VK_IMAGE_ASPECT_DEPTH_BIT;
 		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		break;
 	case IU_GENERAL:
 		VkImageUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+		break;
+	case IU_STORAGE:
+		VkImageUsage = VK_IMAGE_USAGE_STORAGE_BIT;
 		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
 		break;
 	default:
@@ -193,6 +197,14 @@ void RHIVulkanImageResource::Cleanup(RHIContext* Context)
 void RHIVulkanImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_t Width) {
 
 }
+
+void RHIVulkanImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+{
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
+	TransitionImageLayout(Image, VkCmdBuf, DescriptorInfo.imageLayout, RHIVulkanPlatformSupport::GetImageLayout(InUsage), MipLevel);
+	DescriptorInfo.imageLayout = RHIVulkanPlatformSupport::GetImageLayout(InUsage);
+}
+
 
 VkBufferUsageFlags RHIVulkanBufferResource::GetVkBufferUsageFlags(BufferType Type)
 {

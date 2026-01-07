@@ -37,6 +37,21 @@ void RHIVulkanPipelineFactory::SetImageSamplerBinding(uint32_t Binding)
 	DescSetLayoutBindings[Binding] = samplerLayoutBinding;
 }
 
+void RHIVulkanPipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType)
+{
+	VkDescriptorSetLayoutBinding LayoutBinding;
+	LayoutBinding.binding = BindingIndex;
+	LayoutBinding.descriptorCount = 1;
+	LayoutBinding.descriptorType = RHIVulkanPlatformSupport::GetDescriptorType(BindingDescriptorType);
+	LayoutBinding.pImmutableSamplers = nullptr;
+	LayoutBinding.stageFlags = bCompute? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_ALL_GRAPHICS;
+	if (DescSetLayoutBindings.size() <= BindingIndex)
+	{
+		DescSetLayoutBindings.resize(BindingIndex + 1);
+	}
+	DescSetLayoutBindings[BindingIndex] = LayoutBinding;
+}
+
 void RHIVulkanPipelineFactory::RemoveAllGlobalBindings()
 {
 	DescSetLayoutBindings.clear();
@@ -49,6 +64,11 @@ void RHIVulkanPipelineFactory::SetShaders(const std::vector<char>& VertShader, c
 	FragShaderBytecode = FragShader;
 }
 
+void RHIVulkanPipelineFactory::SetComputeShaders(const std::vector<char>& ComputeShader)
+{
+	ComputeShaderBytecode = ComputeShader;
+	bCompute = true;
+}
 
 void RHIVulkanPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
 {
@@ -112,6 +132,22 @@ void RHIVulkanPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPi
 		BindingDescriptions, AttributeDescriptions, VulkanPipelineObject->DescriptorSetLayout, VulkanPresentPassResource->RenderPass);
 }
 
+void RHIVulkanPipelineFactory::InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanPipelineObject = static_cast<RHIVulkanPipelineObject*>(OutComputePipelineObject->GetImpl());
+	if (!DescSetLayoutBindings.empty())
+	{
+		CreateDescriptorSetLayout(VulkanPipelineObject->DescriptorSetLayout, DescSetLayoutBindings, VulkanContext->Device);
+	}
+	else
+	{
+		VulkanPipelineObject->DescriptorSetLayout = nullptr;
+	}
+
+	CreateComputePipeline(VulkanPipelineObject->Pipeline, VulkanPipelineObject->PipelineLayout,
+		VulkanContext->Device, ComputeShaderBytecode, "main", VulkanPipelineObject->DescriptorSetLayout);
+}
 
 void RHIVulkanPipelineFactory::Cleanup(RHIContext* Context)
 {
@@ -246,7 +282,7 @@ void RHIVulkanGraphicDispatcher::BindIndexBuffer(RHIBufferResource* BufferResour
 	IndexBindingInfo.Offset = Offset;
 }
 
-void RHIVulkanGraphicDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIVulkanGraphicDispatcher::Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
 	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
 	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject->GetImpl());
@@ -452,6 +488,44 @@ void RHIVulkanPipelineObject::SetImageSampler(RHIImageResource* ImageResource, u
 		WriteDescriptorSets.resize(Binding+1);
 	}
 	WriteDescriptorSets[Binding] = WriteDescSet;
+}
+
+void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource)
+{
+	auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ImageResource->GetImpl());
+	VkWriteDescriptorSet WriteDescSet{};
+	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	WriteDescSet.dstSet = nullptr;
+	WriteDescSet.dstBinding = BindingIndex;
+	WriteDescSet.dstArrayElement = 0;
+	WriteDescSet.descriptorType = RHIVulkanPlatformSupport::GetDescriptorType(BindingDescriptorType);
+	WriteDescSet.descriptorCount = 1;
+	WriteDescSet.pImageInfo = &VulkanImageResource->GetDescriptorImageInfo();
+
+	if (WriteDescriptorSets.size() <= BindingIndex)
+	{
+		WriteDescriptorSets.resize(BindingIndex + 1);
+	}
+	WriteDescriptorSets[BindingIndex] = WriteDescSet;
+}
+
+void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform)
+{
+	auto* VulkanUniform = static_cast<RHIVulkanUniform*>(Uniform->GetImpl());
+	VkWriteDescriptorSet WriteDescSet{};
+	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	WriteDescSet.dstSet = nullptr;
+	WriteDescSet.dstBinding = BindingIndex;
+	WriteDescSet.dstArrayElement = 0;
+	WriteDescSet.descriptorType = RHIVulkanPlatformSupport::GetDescriptorType(BindingDescriptorType);
+	WriteDescSet.descriptorCount = 1;
+	WriteDescSet.pBufferInfo = &VulkanUniform->DescriptorBufferInfo;
+
+	if (WriteDescriptorSets.size() <= BindingIndex)
+	{
+		WriteDescriptorSets.resize(BindingIndex + 1);
+	}
+	WriteDescriptorSets[BindingIndex] = WriteDescSet;
 }
 
 void RHIVulkanPipelineObject::Cleanup(RHIContext* Context)

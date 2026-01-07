@@ -437,3 +437,62 @@ void RHIVulkanCommandBuffer::Cleanup(RHIContext* Context)
 		vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
 	}
 }
+
+void RHIVulkanCommandBuffer::BeginCommandBuffer()
+{
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
+		throw std::runtime_error("failed to begin recording command buffer!");
+	}
+}
+
+void RHIVulkanCommandBuffer::EndCommandBuffer()
+{
+	if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to record command buffer!");
+	}
+}
+
+void RHIVulkanCommandBuffer::ResetCommandBuffer()
+{
+	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
+}
+
+// RHIVulkanComputeDispatcher implementation
+void RHIVulkanComputeDispatcher::Initialize(RHIContext* Context)
+{
+	// No special initialization needed for compute dispatcher
+}
+
+void RHIVulkanComputeDispatcher::Cleanup(RHIContext* Context)
+{
+	// No special cleanup needed for compute dispatcher
+}
+
+void RHIVulkanComputeDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
+{
+	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl());
+	VkCommandBuffer VkCmdBuf = VulkanCommandBuffer->CommandBuffer;
+	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject->GetImpl());
+	
+	// Bind compute pipeline
+	vkCmdBindPipeline(VkCmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, VulkanPipeline->Pipeline);
+	
+	// Push descriptors if needed
+	if (VulkanPipeline->WriteDescriptorSets.size() > 0)
+	{
+		vkCmdPushDescriptorSetKHR(VkCmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, VulkanPipeline->PipelineLayout,
+			0, VulkanPipeline->WriteDescriptorSets.size(), VulkanPipeline->WriteDescriptorSets.data());
+	}
+	
+	// Dispatch compute shader
+	vkCmdDispatch(VkCmdBuf, ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+}
+
+void RHIVulkanComputeDispatcher::WaitForGPUIdle(RHIContext* Context)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	vkDeviceWaitIdle(VulkanContext->Device);
+}

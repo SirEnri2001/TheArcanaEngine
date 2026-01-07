@@ -602,6 +602,12 @@ void RHID3D12ImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_
 
 }
 
+void RHID3D12ImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+{
+	
+}
+
+
 // RHID3D12BufferResource implementation
 void RHID3D12BufferResource::Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type)
 {
@@ -801,6 +807,10 @@ void RHID3D12PipelineFactory::SetShaders(const std::vector<char>& VertShader, co
     }
 }
 
+void RHID3D12PipelineFactory::SetComputeShaders(const std::vector<char>& ComputeShader)
+{
+	
+}
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
@@ -861,6 +871,48 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPassResource)
 {
     
+}
+
+void RHID3D12PipelineFactory::InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context)
+{
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    auto* D3D12PipelineObject = static_cast<RHID3D12PipelineObject*>(OutComputePipelineObject->GetImpl());
+    D3D12PipelineObject->RootParameters = RootParameters;
+    
+    // Create root signature for compute pipeline
+    {
+        D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+        if (FAILED(D3D12Context->m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+        {
+            featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+        }
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(RootParameters.size(), 
+            RootParameters.data(), 
+            Samplers.size(), Samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+        D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+        if(error.Get())
+        {
+            Error("D3DX12SerializeVersionedRootSignature error: ", reinterpret_cast<char*>(error->GetBufferPointer()));
+        }
+        ThrowIfFailed(D3D12Context->m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&D3D12PipelineObject->m_rootSignature)));
+        assert(D3D12PipelineObject->m_rootSignature);
+    }
+
+    // Create the compute pipeline state object (PSO)
+    {
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.pRootSignature = D3D12PipelineObject->m_rootSignature.Get();
+        psoDesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
+        
+        ThrowIfFailed(D3D12Context->m_device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));
+    }
 }
 
 void RHID3D12PipelineFactory::Cleanup(RHIContext* Context)
@@ -939,7 +991,7 @@ void RHID3D12GraphicsDispatcher::BindIndexBuffer(RHIBufferResource* BufferResour
     BoundIndexBufferView = D3D12BufferResource->m_indexBufferView;
 }
 
-void RHID3D12GraphicsDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHID3D12GraphicsDispatcher::Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* Pipeline, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
     auto* D3D12Pipeline = static_cast<RHID3D12PipelineObject*>(Pipeline->GetImpl());
 
@@ -1075,6 +1127,58 @@ void RHID3D12GraphicsDispatcher::BeginFrame(RHICommandBuffer* CommandBuffer, RHI
 
 void RHID3D12GraphicsDispatcher::WaitForGPUIdle(RHIContext* Context)
 {
+}
+
+// RHID3D12ComputeDispatcher implementation
+void RHID3D12ComputeDispatcher::Initialize(RHIContext* Context)
+{
+	auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+	
+	// Create the command list for compute
+	ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12Context->m_commandAllocator.Get(),
+		NULL, IID_PPV_ARGS(&m_commandList)));
+	pHeaps = D3D12Context->m_srvheap.Get();
+}
+
+void RHID3D12ComputeDispatcher::Cleanup(RHIContext* Context)
+{
+	// Command list will be cleaned up automatically by ComPtr
+}
+
+void RHID3D12ComputeDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
+{
+	auto* D3D12Pipeline = static_cast<RHID3D12PipelineObject*>(PipelineObject->GetImpl());
+	
+	// Set compute pipeline state
+	m_commandList->SetPipelineState(D3D12Pipeline->m_pipelineState.Get());
+	m_commandList->SetComputeRootSignature(D3D12Pipeline->m_rootSignature.Get());
+	m_commandList->SetDescriptorHeaps(1, &pHeaps);
+	
+	// Set root parameters (similar to graphics dispatcher)
+	uint32_t cbvIndex = 0;
+	for (int i = 0; i < D3D12Pipeline->RootParameters.size(); i++)
+	{
+		const auto& RootParam = D3D12Pipeline->RootParameters[i];
+		if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
+		{
+			// Set samplers/descriptors
+			m_commandList->SetComputeRootDescriptorTable(i, D3D12Pipeline->GpuDescriptorHandles[i]);
+		}
+		else if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_CBV)
+		{
+			m_commandList->SetComputeRootConstantBufferView(i, D3D12Pipeline->cbvDescriptions[i].BufferLocation);
+			cbvIndex++;
+		}
+	}
+	
+	// Dispatch compute shader
+	m_commandList->Dispatch(ThreadGroupX, ThreadGroupY, ThreadGroupZ);
+}
+
+void RHID3D12ComputeDispatcher::WaitForGPUIdle(RHIContext* Context)
+{
+	auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+	D3D12Context->WaitForPreviousFrame();
 }
 
 void RHID3D12GraphicsDispatcher::TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image)

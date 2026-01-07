@@ -160,6 +160,37 @@ public:
 		return VK_FORMAT_UNDEFINED;
 	}
 
+	static VkDescriptorType GetDescriptorType(DescriptorType Type)
+	{
+		switch (Type)
+		{
+		case UNIFORM:
+			return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		case SAMPLER2D:
+			return VK_DESCRIPTOR_TYPE_SAMPLER;
+		case IMAGE2D:
+			return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		}
+		return VK_DESCRIPTOR_TYPE_SAMPLER;
+	}
+
+	static VkImageLayout GetImageLayout(ImageUsage InUsage)
+	{
+		switch (InUsage)
+		{
+		case IU_GENERAL:
+		case IU_STORAGE:
+			return VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
+		case IU_COLOR_RT:
+		case IU_COLOR_PRESENT_RT:
+			return VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		case IU_DEPTH_RT:
+		case IU_DEPTH_PRESENT_RT:
+			return VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+		}
+		return VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
+	}
+
 	static RHIVulkanPlatformSupport* Get();
 };
 
@@ -270,6 +301,7 @@ public:
 	void Cleanup(RHIContext* Context) override;
 	VkDescriptorImageInfo& GetDescriptorImageInfo();
 	virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
+	virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) override;
 };
 
 class RHIVulkanBufferResource : public RHIBufferResourceBase
@@ -341,7 +373,8 @@ class RHIVulkanPipelineFactory : public RHIPipelineFactoryBase
 {
 	std::vector<char> VertShaderBytecode;
 	std::vector<char> FragShaderBytecode;
-
+	std::vector<char> ComputeShaderBytecode;
+	bool bCompute = false;
 public:
 	std::vector<VkVertexInputBindingDescription> BindingDescriptions;
 	std::vector<VkVertexInputAttributeDescription> AttributeDescriptions;
@@ -363,12 +396,15 @@ public:
     void RemoveAllBufferBindings() override;
 	void SetUniformBinding(uint32_t Binding) override;
 	void SetImageSamplerBinding(uint32_t Binding) override;
+	void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) override;
 	void RemoveAllGlobalBindings() override;
 	void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
+	void SetComputeShaders(const std::vector<char>& ComputeShader) override;
 	void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context,
 	                              RHIRenderPass* RenderPassResource) override;
 	void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context,
 	                              RHIPresentPass* PresentPass) override;
+	void InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context) override;
 	void Cleanup(RHIContext* Context) override;
 };
 
@@ -384,6 +420,8 @@ public:
 
 	void SetUniform(RHIUniform* Uniform, uint32_t Binding) override;
 	void SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
+	void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource) override;
+	void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform) override;
 	void Cleanup(RHIContext* Context) override;
 };
 
@@ -423,7 +461,7 @@ public:
 	void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) override;
 	void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
 	void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) override;
-	void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount,
+	void Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount,
 	              uint32_t IndexOffset, uint32_t InstanceCount) override;
 	void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
 	void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) override;
@@ -458,4 +496,20 @@ public:
 
 	virtual void Initialize(RHIContext* Context) override;
 	virtual void Cleanup(RHIContext* Context) override;
+
+	virtual void BeginCommandBuffer() override;
+	virtual void EndCommandBuffer() override;
+	virtual void ResetCommandBuffer() override;
+};
+
+class RHIVulkanComputeDispatcher : public RHIComputeDispatcherBase
+{
+public:
+	RHIVulkanComputeDispatcher() = default;
+	~RHIVulkanComputeDispatcher() override = default;
+
+	void Initialize(RHIContext* Context) override;
+	void Cleanup(RHIContext* Context) override;
+	void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
+	void WaitForGPUIdle(RHIContext* Context) override;
 };

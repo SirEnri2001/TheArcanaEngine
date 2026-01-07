@@ -702,6 +702,63 @@ void CreateGraphicsPipeline(VkPipeline& OutGraphicsPipeline, VkPipelineLayout& O
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
 }
 
+void CreateComputePipeline(VkPipeline& OutComputePipeline, VkPipelineLayout& OutPipelineLayout,
+    VkDevice device, const std::vector<char>& ComputeShaderBytecode, const char* ComputeShaderMain,
+    const VkDescriptorSetLayout& DescriptorSetLayout)
+{
+    VkShaderModule computeShaderModule;
+    // Create Shader Module for compute shader
+    {
+        VkShaderModuleCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        createInfo.codeSize = ComputeShaderBytecode.size();
+        createInfo.pCode = reinterpret_cast<const uint32_t*>(ComputeShaderBytecode.data());
+        if (vkCreateShaderModule(device, &createInfo, nullptr, &computeShaderModule) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create compute shader module!");
+        }
+    }
+
+    VkPipelineShaderStageCreateInfo computeShaderStageInfo{};
+    computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeShaderStageInfo.module = computeShaderModule;
+    computeShaderStageInfo.pName = ComputeShaderMain;
+
+    // Create pipeline layout
+    {
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = DescriptorSetLayout ? 1 : 0;
+        pipelineLayoutInfo.pSetLayouts = DescriptorSetLayout ? &DescriptorSetLayout : nullptr;
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &OutPipelineLayout) != VK_SUCCESS) {
+            vkDestroyShaderModule(device, computeShaderModule, nullptr);
+            throw std::runtime_error("failed to create compute pipeline layout!");
+        }
+    }
+
+    // Create compute pipeline
+    {
+        VkComputePipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pipelineInfo.stage = computeShaderStageInfo;
+        pipelineInfo.layout = OutPipelineLayout;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.basePipelineIndex = -1;
+
+        VkResult result = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &OutComputePipeline);
+        if (result != VK_SUCCESS) {
+            vkDestroyPipelineLayout(device, OutPipelineLayout, nullptr);
+            vkDestroyShaderModule(device, computeShaderModule, nullptr);
+            throw std::runtime_error("failed to create compute pipeline!");
+        }
+    }
+
+    vkDestroyShaderModule(device, computeShaderModule, nullptr);
+}
+
 void CreateCommandPool(VkCommandPool& OutCommandPool, VkDevice Device, uint32_t GraphcisFamilyIndex) {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -771,6 +828,10 @@ void CreateBuffer(VkBuffer& OutBuffer, VkDevice Device, VkDeviceSize size, VkBuf
 
 
 void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels) {
+    if (oldLayout==newLayout)
+    {
+        return;
+    }
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;
@@ -829,6 +890,13 @@ void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImage
         barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    }
+    else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_GENERAL)
+    {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     }
     else {
         throw std::invalid_argument("unsupported layout transition!");

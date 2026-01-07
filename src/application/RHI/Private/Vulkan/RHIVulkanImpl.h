@@ -85,6 +85,10 @@ void CreateGraphicsPipeline(VkPipeline& OutGraphicsPipeline, VkPipelineLayout& O
     const std::vector<VkVertexInputBindingDescription>& BindingDescriptions, const std::vector<VkVertexInputAttributeDescription>& AttributeDescriptions,
     const VkDescriptorSetLayout& DescriptorSetLayout, const VkRenderPass& RenderPass);
 
+void CreateComputePipeline(VkPipeline& OutComputePipeline, VkPipelineLayout& OutPipelineLayout,
+    VkDevice device, const std::vector<char>& ComputeShaderBytecode, const char* ComputeShaderMain,
+    const VkDescriptorSetLayout& DescriptorSetLayout);
+
 void CreateCommandPool(VkCommandPool& OutCommandPool, VkDevice Device, uint32_t GraphcisFamilyIndex);
 
 void GetMemoryRequirement(VkMemoryRequirements& OutMemoryRequirement, VkDevice Device, VkImage Image);

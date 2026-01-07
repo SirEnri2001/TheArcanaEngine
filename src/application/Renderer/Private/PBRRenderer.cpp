@@ -144,7 +144,7 @@ void PBRRenderer::UpdateFrame()
                 {
                     GraphicDispatcher.BindIndexBuffer(&meshProxy->RHIIndexBuffer, 0);
                     GraphicDispatcher.BindVertexBuffer(&meshProxy->RHIVertexBuffer, 0, 0);
-                    GraphicDispatcher.Dispatch(&PresentPipelineObject, meshProxy->IndexBufferSize, 0, 1);
+                    GraphicDispatcher.Draw(&PresentPipelineObject, meshProxy->IndexBufferSize, 0, 1);
                 }
                 // break;  // TODO: remove the break for multiple materials (currently bugged)
             }

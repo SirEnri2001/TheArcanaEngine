@@ -44,7 +44,13 @@ enum ImageUsage
     IU_COLOR_RT, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget */
     IU_DEPTH_RT, /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget */
     IU_COLOR_PRESENT_RT, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
-    IU_DPETH_PRESENT_RT  /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
+    IU_DEPTH_PRESENT_RT,  /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
+    IU_STORAGE, /**< Storage with read and write access in compute shader */
+};
+
+enum ImageFlag
+{
+	
 };
 
 enum BufferType
@@ -52,6 +58,13 @@ enum BufferType
     GENERAL, /**< General buffer */
     VERTEX, /**< Vertex buffer */
     INDEX /**< Index buffer */
+};
+
+enum DescriptorType
+{
+	UNIFORM,
+    SAMPLER2D,
+    IMAGE2D,
 };
 
 struct ImageExtent3D
@@ -200,6 +213,7 @@ public:
     virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) = 0;
+    virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) = 0;
 };
 
 
@@ -235,6 +249,7 @@ public:
     virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
+    virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) override;
     RHIImageResourceBase* GetImpl() { return pImpl.get(); }
 };
 
@@ -382,10 +397,13 @@ public:
     virtual void RemoveAllBufferBindings() = 0;
     virtual void SetUniformBinding(uint32_t Binding) = 0;
     virtual void SetImageSamplerBinding(uint32_t Binding) = 0;
+    virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) = 0;
     virtual void RemoveAllGlobalBindings() = 0;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) = 0;
+    virtual void SetComputeShaders(const std::vector<char>& ComputeShader) = 0;
     virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource) = 0;
     virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass) = 0;
+    virtual void InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
 };
 
@@ -415,10 +433,13 @@ public:
     virtual void RemoveAllBufferBindings() override;
     virtual void SetUniformBinding(uint32_t Binding) override;
     virtual void SetImageSamplerBinding(uint32_t Binding) override;
+    virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) override;
     virtual void RemoveAllGlobalBindings() override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
+    virtual void SetComputeShaders(const std::vector<char>& ComputeShader) override;
     virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource) override;
     virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass) override;
+    virtual void InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context) override;
     virtual void Cleanup(RHIContext* Context) override;
     RHIPipelineFactoryBase* GetImpl() { return pImpl.get(); }
 };
@@ -429,6 +450,8 @@ public:
     RHIPipelineObjectBase() = default;
     RHIPipelineObjectBase(const RHIPipelineObjectBase&) = delete;
     virtual ~RHIPipelineObjectBase() = default;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource) = 0;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform) = 0;
     virtual void SetUniform(RHIUniform* Uniform, uint32_t Binding) = 0;
     virtual void SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
@@ -443,6 +466,8 @@ class RHI_API RHIPipelineObject : public RHIPipelineObjectBase
 public:
     RHIPipelineObject();
     virtual ~RHIPipelineObject() override;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource) override;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform) override;
     virtual void SetUniform(RHIUniform* Uniform, uint32_t Binding) override;
     virtual void SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
     virtual void Cleanup(RHIContext* Context) override;
@@ -458,6 +483,9 @@ public:
     virtual ~RHICommandBufferBase() = default;
     virtual void Initialize(RHIContext* Context) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
+    virtual void BeginCommandBuffer() = 0;
+    virtual void EndCommandBuffer() = 0;
+    virtual void ResetCommandBuffer() = 0;
 };
 
 /**
@@ -472,6 +500,9 @@ public:
     ~RHICommandBuffer();
     void Initialize(RHIContext* Context);
     void Cleanup(RHIContext* Context);
+    void BeginCommandBuffer();
+    void EndCommandBuffer();
+    void ResetCommandBuffer();
     RHICommandBufferBase* GetImpl() { return pImpl.get(); }
 };
 
@@ -511,7 +542,7 @@ public:
     virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
     virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    virtual void Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
     virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) = 0;
     virtual void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) = 0;
     virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) = 0;
@@ -542,7 +573,7 @@ public:
      * @param IndexOffset 
      * @param InstanceCount 
      */
-    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+    virtual void Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
     virtual void BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer) override;
     virtual void EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass) override;
     virtual void BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, ::RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass) override;
@@ -559,19 +590,34 @@ public:
     RHIComputeDispatcherBase(const RHIComputeDispatcherBase&) = delete;
     virtual ~RHIComputeDispatcherBase() = default;
     virtual void Initialize(RHIContext* Context) = 0;
-    virtual void Cleanup(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
-    virtual void BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
-    virtual void BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    virtual void Dispatch(RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
-    virtual void BeginRenderPass(RHIRenderPass* RenderPass) = 0;
-    virtual void EndRenderPass(RHIRenderPass* RenderPass) = 0;
-    virtual void BeginFrame(RHIContext* Context, RHIWindowManager* WindowManager, RHIRenderPass* PresentRenderPass) = 0;
-    virtual void EndFrameAndSubmit(RHIContext* Context, RHIWindowManager* WindowManager) = 0;
+    virtual void Cleanup(RHIContext* Context) = 0;
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) = 0;
     virtual void WaitForGPUIdle(RHIContext* Context) = 0;
 };
 
-class RHI_API RHIComputeDispatcher : public RHIComputeDispatcherBase {
-
+/**
+ * RHIComputeDispatcher dispatches compute shader work.
+ */
+class RHI_API RHIComputeDispatcher : public RHIComputeDispatcherBase
+{
+    std::unique_ptr<RHIComputeDispatcherBase> pImpl = nullptr;
+public:
+    RHIComputeDispatcher();
+    RHIComputeDispatcher(const RHIComputeDispatcher&) = delete;
+    virtual ~RHIComputeDispatcher();
+    virtual void Initialize(RHIContext* Context) override;
+    virtual void Cleanup(RHIContext* Context) override;
+    /**
+     * Dispatch compute shader work
+     * @param CommandBuffer Command buffer to record compute dispatch commands
+     * @param PipelineObject Compute pipeline object
+     * @param ThreadGroupX Number of thread groups in X dimension
+     * @param ThreadGroupY Number of thread groups in Y dimension
+     * @param ThreadGroupZ Number of thread groups in Z dimension
+     */
+    virtual void Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
+    virtual void WaitForGPUIdle(RHIContext* Context) override;
+    RHIComputeDispatcherBase* GetImpl() { return pImpl.get(); }
 };
 
 struct ImGuiSharedGlobals;
