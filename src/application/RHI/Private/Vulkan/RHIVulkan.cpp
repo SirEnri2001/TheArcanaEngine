@@ -438,6 +438,28 @@ void RHIVulkanCommandBuffer::Cleanup(RHIContext* Context)
 	}
 }
 
+void RHIVulkanCommandBuffer::BeginCommandBuffer()
+{
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	if (vkBeginCommandBuffer(CommandBuffer, &beginInfo) != VK_SUCCESS) {
+		throw std::runtime_error("failed to begin recording command buffer!");
+	}
+}
+
+void RHIVulkanCommandBuffer::EndCommandBuffer()
+{
+	if (vkEndCommandBuffer(CommandBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to record command buffer!");
+	}
+}
+
+void RHIVulkanCommandBuffer::ResetCommandBuffer()
+{
+	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
+}
+
 // RHIVulkanComputeDispatcher implementation
 void RHIVulkanComputeDispatcher::Initialize(RHIContext* Context)
 {

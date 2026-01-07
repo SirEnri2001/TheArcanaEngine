@@ -186,6 +186,12 @@ void RHIImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_t Wid
 	pImpl->Resize(Context, Height, Width);
 }
 
+void RHIImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+{
+	pImpl->Transition(CommandBuffer, InUsage);
+}
+
+
 // RHIBufferResource implementation
 RHIBufferResource::RHIBufferResource()
 {
@@ -339,6 +345,11 @@ void RHIPipelineFactory::SetImageSamplerBinding(uint32_t Binding)
 	pImpl->SetImageSamplerBinding(Binding);
 }
 
+void RHIPipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType)
+{
+	pImpl->SetDescriptorBinding(BindingIndex, BindingDescriptorType);
+}
+
 void RHIPipelineFactory::RemoveAllGlobalBindings()
 {
 	pImpl->RemoveAllGlobalBindings();
@@ -349,6 +360,11 @@ void RHIPipelineFactory::SetShaders(const std::vector<char>& VertShader, const s
 	pImpl->SetShaders(VertShader, FragShader);
 }
 
+void RHIPipelineFactory::SetComputeShaders(const std::vector<char>& ComputeShader)
+{
+	pImpl->SetComputeShaders(ComputeShader);
+}
+
 void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
 {
 	pImpl->InitializePipelineObject(OutPipelineObject, Context, RenderPassResource);
@@ -357,6 +373,11 @@ void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipeline
 void RHIPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass)
 {
 	pImpl->InitializePipelineObject(OutPipelineObject, Context, PresentPass);
+}
+
+void RHIPipelineFactory::InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context)
+{
+	pImpl->InitializeComputePipelineObject(OutComputePipelineObject, Context);
 }
 
 void RHIPipelineFactory::Cleanup(RHIContext* Context)
@@ -500,6 +521,16 @@ void RHIPipelineObject::SetImageSampler(RHIImageResource* ImageResource, uint32_
     pImpl->SetImageSampler(ImageResource, Binding);
 }
 
+void RHIPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource)
+{
+	pImpl->SetBindingResource(BindingIndex, BindingDescriptorType, ImageResource);
+}
+
+void RHIPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform)
+{
+	pImpl->SetBindingResource(BindingIndex, BindingDescriptorType, Uniform);
+}
+
 void RHIPipelineObject::Cleanup(RHIContext* Context)
 {
     pImpl->Cleanup(Context);
@@ -595,6 +626,27 @@ void RHICommandBuffer::Cleanup(RHIContext* Context)
 {
 	if (pImpl) {
 		pImpl->Cleanup(Context);
+	}
+}
+
+void RHICommandBuffer::BeginCommandBuffer()
+{
+	if (pImpl) {
+		pImpl->BeginCommandBuffer();
+	}
+}
+
+void RHICommandBuffer::EndCommandBuffer()
+{
+	if (pImpl) {
+		pImpl->EndCommandBuffer();
+	}
+}
+
+void RHICommandBuffer::ResetCommandBuffer()
+{
+	if (pImpl) {
+		pImpl->ResetCommandBuffer();
 	}
 }
 

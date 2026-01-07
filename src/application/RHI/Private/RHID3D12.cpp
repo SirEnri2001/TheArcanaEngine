@@ -602,6 +602,12 @@ void RHID3D12ImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_
 
 }
 
+void RHID3D12ImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+{
+	
+}
+
+
 // RHID3D12BufferResource implementation
 void RHID3D12BufferResource::Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type)
 {
@@ -801,6 +807,10 @@ void RHID3D12PipelineFactory::SetShaders(const std::vector<char>& VertShader, co
     }
 }
 
+void RHID3D12PipelineFactory::SetComputeShaders(const std::vector<char>& ComputeShader)
+{
+	
+}
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
@@ -861,6 +871,48 @@ void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPip
 void RHID3D12PipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPassResource)
 {
     
+}
+
+void RHID3D12PipelineFactory::InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context)
+{
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
+    auto* D3D12PipelineObject = static_cast<RHID3D12PipelineObject*>(OutComputePipelineObject->GetImpl());
+    D3D12PipelineObject->RootParameters = RootParameters;
+    
+    // Create root signature for compute pipeline
+    {
+        D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+        if (FAILED(D3D12Context->m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+        {
+            featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+        }
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(RootParameters.size(), 
+            RootParameters.data(), 
+            Samplers.size(), Samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+        ComPtr<ID3DBlob> signature;
+        ComPtr<ID3DBlob> error;
+        D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+        if(error.Get())
+        {
+            Error("D3DX12SerializeVersionedRootSignature error: ", reinterpret_cast<char*>(error->GetBufferPointer()));
+        }
+        ThrowIfFailed(D3D12Context->m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&D3D12PipelineObject->m_rootSignature)));
+        assert(D3D12PipelineObject->m_rootSignature);
+    }
+
+    // Create the compute pipeline state object (PSO)
+    {
+        D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.pRootSignature = D3D12PipelineObject->m_rootSignature.Get();
+        psoDesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
+        
+        ThrowIfFailed(D3D12Context->m_device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));
+    }
 }
 
 void RHID3D12PipelineFactory::Cleanup(RHIContext* Context)

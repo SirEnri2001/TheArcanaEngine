@@ -1,26 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
 
 # these shader files are relative paths to ./shader folder
-set(SHADER_SOURCES
-./glsl/BlinnPhong.frag
-./glsl/BlinnPhong.vert
-./glsl/PathTracer.frag
-./glsl/PathTracer.vert
-./glsl/ScreenPost.frag
-./glsl/ScreenPost.vert
-)
+# set(SHADER_SOURCES
+# ./glsl/BlinnPhong.frag
+# ./glsl/BlinnPhong.vert
+# ./glsl/PathTracer.frag
+# ./glsl/PathTracer.vert
+# ./glsl/ScreenPost.frag
+# ./glsl/ScreenPost.vert
+# )
+file(GLOB_RECURSE SHADER_SOURCES RELATIVE ${CMAKE_SOURCE_DIR}/shaders "*/glsl/*.frag" "*/glsl/*.vert" "/glsl/*.comp")
+file(GLOB_RECURSE SHADER_SOURCES_ABS "*/shaders/glsl/*.frag" "*/shaders/glsl/*.vert" "*/shaders/glsl/*.comp")
+# message(WARNING ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 set(SHADER_BYTECODE_DIRECTORY ${CMAKE_SOURCE_DIR}/shaderbytecode)
 # ensure all folders
 make_directory(${SHADER_BYTECODE_DIRECTORY}/glsl/)
 add_custom_target(glslCompile 
 DEPENDS ${SHADER_SOURCES}
-WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
 )
 
 foreach(SHADER_FILE ${SHADER_SOURCES})
-    add_custom_command(TARGET glslCompile
+    add_custom_command(TARGET glslCompile  POST_BUILD
     COMMAND 
-        glslc ${SHADER_FILE} -o ${SHADER_BYTECODE_DIRECTORY}/${SHADER_FILE}
+        glslc ${SHADER_FILE} -o ${SHADER_BYTECODE_DIRECTORY}/${SHADER_FILE}.spv
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
     )
 endforeach()

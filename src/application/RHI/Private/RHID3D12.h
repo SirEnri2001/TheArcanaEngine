@@ -126,6 +126,7 @@ public:
     virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
+    virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) override;
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
@@ -197,11 +198,6 @@ public:
 	virtual void OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager) override;
 };
 
-enum DescriptorType
-{
-	
-};
-
 // RHID3D12Pipeline
 class RHID3D12PipelineObject : public RHIPipelineObjectBase
 {
@@ -218,6 +214,8 @@ public:
     
     virtual void SetUniform(RHIUniform* Uniform, uint32_t Binding) override;
     virtual void SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding) override;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform) override {}
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource) override {}
     virtual void Cleanup(RHIContext* Context) override;
 
     bool bShouldInitHeap = false;
@@ -227,6 +225,7 @@ class RHID3D12PipelineFactory : public RHIPipelineFactoryBase
 {
     ComPtr<ID3DBlob> vertexShader;
     ComPtr<ID3DBlob> pixelShader;
+    ComPtr<ID3DBlob> computeShader;
     std::vector<D3D12_INPUT_ELEMENT_DESC> inputElementDescs;
     std::vector<CD3DX12_DESCRIPTOR_RANGE1> Ranges;
     std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
@@ -244,8 +243,11 @@ public:
     virtual void SetImageSamplerBinding(uint32_t Binding) override;
     virtual void RemoveAllGlobalBindings() override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
+    virtual void SetComputeShaders(const std::vector<char>& ComputeShader) override;
+    virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) override {}
     virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource) override;
     virtual void InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass) override;
+    virtual void InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context) override;
     virtual void Cleanup(RHIContext* Context) override;
 };
 
