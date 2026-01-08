@@ -32,21 +32,68 @@ enum RHIFormat
 	R8G8B8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
     B8G8R8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
 	R8G8B8A8_UNORM, /**< float4 in hlsl, used in color rendertargets */
-    R32G32B32A32_SFLOAT, /**< float3 */
+    R32G32B32A32_SFLOAT, /**< float4 */
     R32G32B32_SFLOAT, /**< float3 */
     R32G32_SFLOAT, /**< float2, uv coords */
     D32_SFLOAT /**< float, depth value */
 };
 
-enum ImageUsage
-{
-    IU_GENERAL,  /**< General texture usage */
-    IU_COLOR_RT, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget */
-    IU_DEPTH_RT, /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget */
-    IU_COLOR_PRESENT_RT, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
-    IU_DEPTH_PRESENT_RT,  /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
-    IU_STORAGE, /**< Storage with read and write access in compute shader */
+//enum class RHIImageUsageBits : uint32_t
+//{
+//    GENERAL = 0x0001u,  /**< General texture usage */
+//    COLOR_RT = 0x0002u, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget */
+//    DEPTH_RT = 0x0004u, /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget */
+//    COLOR_PRESENT_RT = 0x0008u, /**< Color rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
+//    DEPTH_PRESENT_RT = 0x0010u,  /**< Depth rendertarget, created with RHIImageResource::InitializeRenderTarget, specified for present on surface */
+//    STORAGE = 0x0020u, /**< Storage with read and write access in compute shader */
+//    SAMPLER = 0x0040u,
+//    TRANSFER_DST = 0x0080u,
+//};
+//
+//inline RHIImageUsageBits operator&(RHIImageUsageBits Mask1, RHIImageUsageBits Mask2)
+//{
+//    return static_cast<RHIImageUsageBits>(static_cast<uint32_t>(Mask1) & static_cast<uint32_t>(Mask2));
+//}
+
+enum class RHIResourceState : uint32_t {
+    UNDEFINED = 0,
+
+    // Shader
+    SHADER_READ = 1 << 0,
+    SHADER_WRITE = 1 << 1,
+    SHADER_READWRITE = 1 << 2,
+
+    // Attachments
+    COLOR_ATTACHMENT = 1 << 3,
+    DEPTH_ATTACHMENT = 1 << 4,
+
+    // Transfer
+    COPY_SRC = 1 << 5,
+    COPY_DST = 1 << 6,
+
+    // Present
+    PRESENTABLE = 1 << 7,
 };
+
+inline RHIResourceState operator&(RHIResourceState Mask1, RHIResourceState Mask2)
+{
+    return static_cast<RHIResourceState>(static_cast<uint32_t>(Mask1) & static_cast<uint32_t>(Mask2));
+}
+
+inline RHIResourceState operator|(RHIResourceState Mask1, RHIResourceState Mask2)
+{
+    return static_cast<RHIResourceState>(static_cast<uint32_t>(Mask1) | static_cast<uint32_t>(Mask2));
+}
+
+inline bool HasAnyFlags(RHIResourceState Mask)
+{
+    return static_cast<uint32_t>(Mask) != 0;
+}
+
+inline bool HasFlag(RHIResourceState Mask, RHIResourceState Flag)
+{
+    return static_cast<uint32_t>(Mask & Flag) != 0;
+}
 
 enum ImageFlag
 {
@@ -207,13 +254,13 @@ public:
     RHIImageResourceBase() = default;
     RHIImageResourceBase(const RHIImageResourceBase&) = delete;
     virtual ~RHIImageResourceBase() = default;
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) = 0;
-    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) = 0;
-    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) = 0;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1) = 0;
+    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1) = 0;
+    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount = 1) = 0;
     virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) = 0;
     virtual void Cleanup(RHIContext* Context) = 0;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) = 0;
-    virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) = 0;
+    virtual void Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState) = 0;
 };
 
 
@@ -227,7 +274,7 @@ public:
     RHIImageResource();
     virtual ~RHIImageResource() override;
 
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) override;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1) override;
     /**
      * Create a rendertarget that can be displayed on screen.
      * @param Context 
@@ -237,8 +284,8 @@ public:
      * @param MultiSamplesCount Use 1, 2, 4, 8, ... for msaa
      * @see RHIRenderPass::Initialize()
      */
-    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
-    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1)  override;
+    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount = 1) override;
+    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1)  override;
     /**
      * Copy data to texture
      * @param CommandBuffer Command buffer to record copy commands
@@ -249,7 +296,7 @@ public:
     virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
-    virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) override;
+    virtual void Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState) override;
     RHIImageResourceBase* GetImpl() { return pImpl.get(); }
 };
 

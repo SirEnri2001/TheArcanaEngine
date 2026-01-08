@@ -246,7 +246,7 @@ void RHIVulkanSwapchain::Initialize(RHIContext* Context, RHIWindowManager* Windo
 		RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.GraphicsQueueFamilyIndex,
 		RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PresentQueueFamilyIndex);
 	DepthImageResource = new RHIVulkanImageResource();
-	DepthImageResource->InitializeRenderTarget(Context, nullptr, { SwapchainExtent.width, SwapchainExtent.height, 1 }, IU_DEPTH_RT);
+	DepthImageResource->Initialize(Context, { SwapchainExtent.width, SwapchainExtent.height, 1 }, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
 	SwapchainFrameBuffers.resize(SwapchainImageViews.size());
 	for (size_t i = 0; i < SwapchainImages.size(); i++) {
 		SwapchainFrameBuffers[i] = new RHIFrameBuffer();
@@ -300,50 +300,55 @@ void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHICommandB
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	auto* VkDispatcher = static_cast<RHIVulkanGraphicDispatcher*>(GDispatcher->GetImpl());
 	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-	RHICommandBuffer TransitionCmdBuffer;
-	TransitionCmdBuffer.Initialize(Context);
-	auto VkTransitionCmdBuf = static_cast<RHIVulkanCommandBuffer*>(TransitionCmdBuffer.GetImpl())->CommandBuffer;
 
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &ImageAvailableSemaphore;
-	submitInfo.pWaitDstStageMask = waitStages;
-
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &VkCmdBuf;
-
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &RenderFinishSemaphore;
+	// Transition swapchain image to presentable format
+	auto ColorAttachmentDesc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::COLOR_ATTACHMENT);
+	auto PresentableDesc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::PRESENTABLE);
+	TransitionImageLayout(SwapchainImages[CurrentImageIndex], VkCmdBuf, ColorAttachmentDesc.ImageLayout, PresentableDesc.ImageLayout,
+		ColorAttachmentDesc.Access, PresentableDesc.Access,
+		ColorAttachmentDesc.PipelineStage, PresentableDesc.PipelineStage, 1);
 
 	if (vkEndCommandBuffer(VkCmdBuf) != VK_SUCCESS) {
 		throw std::runtime_error("failed to record command buffer!");
 	}
 
-	if (vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence) != VK_SUCCESS) {
-		throw std::runtime_error("failed to submit draw command buffer!");
+	{
+		// submit recorded commandbuffer
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &ImageAvailableSemaphore;
+		submitInfo.pWaitDstStageMask = waitStages;
+
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &VkCmdBuf;
+
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &RenderFinishSemaphore;
+
+
+		if (vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence) != VK_SUCCESS) {
+			throw std::runtime_error("failed to submit draw command buffer!");
+		}
 	}
 
-	VkPresentInfoKHR presentInfo{};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &RenderFinishSemaphore;
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &Swapchain;
-	presentInfo.pImageIndices = &CurrentImageIndex;
-
-	// Transition to presentable format
-	BeginCommandBufferOneTimeSubmit(VkTransitionCmdBuf);
-	TransitionImageLayout(SwapchainImages[CurrentImageIndex], VkTransitionCmdBuf, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 1);
-	EndCommandBufferOneTimeSubmit(VkTransitionCmdBuf, VulkanContext->GraphicsQueue);
-
-	auto result = vkQueuePresentKHR(VulkanContext->PresentQueue, &presentInfo);
-
-	if (result != VK_SUCCESS) {
-		throw std::runtime_error("failed to present swap chain image!");
+	{
+		// present swapchain frame buffer
+		VkPresentInfoKHR presentInfo{};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = &RenderFinishSemaphore;
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = &Swapchain;
+		presentInfo.pImageIndices = &CurrentImageIndex;
+		auto result = vkQueuePresentKHR(VulkanContext->PresentQueue, &presentInfo);
+		if (result != VK_SUCCESS) {
+			throw std::runtime_error("failed to present swap chain image!");
+		}
 	}
+
 }
 
 void RHIVulkanSwapchain::CreateFramebuffers(RHIVulkanContext* VulkanContext, VkRenderPass VkRP)

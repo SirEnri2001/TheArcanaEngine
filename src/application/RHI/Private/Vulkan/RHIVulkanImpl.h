@@ -102,7 +102,18 @@ void CreateImage(VkImage& Image,
 
 void CreateBuffer(VkBuffer& OutBuffer, VkDevice Device, VkDeviceSize size, VkBufferUsageFlags usage);
 
-void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
+//void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
+
+void TransitionImageLayout(
+    VkImage image,
+    VkCommandBuffer commandBuffer,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout,
+    VkAccessFlags srcAccessMask,
+    VkAccessFlags dstAccessMask,
+    VkPipelineStageFlags srcPipelineStageMask,
+    VkPipelineStageFlags dstPipelineStageMask,
+    uint32_t mipLevels);
 
 void CopyBufferToImage(VkBuffer buffer, VkImage image, VkCommandBuffer commandBuffer, uint32_t width, uint32_t height);
 

@@ -464,10 +464,10 @@ public:
         // create renderer
         Swapchain.Initialize(&Viewport.Context, &Viewport.WindowManager);
         ImageExtent3D ext = Swapchain.GetFrameSize();
-        RHIScreenBuffer1.Initialize(&Viewport.Context, ext, RHIFormat::R8G8B8A8_SRGB, ImageUsage::IU_COLOR_RT, 1);
-        RHIScreenBuffer2.Initialize(&Viewport.Context, ext, RHIFormat::R8G8B8A8_SRGB, ImageUsage::IU_COLOR_RT, 1);
-        RHIScreenBufferDepth.InitializeRenderTarget(&Viewport.Context, &Viewport.WindowManager, ext, IU_DEPTH_RT);
-        RHIStoreImage.Initialize(&Viewport.Context, ext, RHIFormat::R32G32B32A32_SFLOAT, ImageUsage::IU_STORAGE, 1);
+        RHIScreenBuffer1.Initialize(&Viewport.Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
+        RHIScreenBuffer2.Initialize(&Viewport.Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
+        RHIScreenBufferDepth.Initialize(&Viewport.Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
+        RHIStoreImage.Initialize(&Viewport.Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE, 1);
         std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
         std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
         PTRenderPass.Initialize(&Viewport.Context, ColorRTFormats);
@@ -521,6 +521,7 @@ public:
         RHICommandBuffer CommandBuffer;
         CommandBuffer.Initialize(&Context);
         Swapchain.AcquireFrame(&Context, FrameBuffer, &PresentPass);
+        CommandBuffer.BeginCommandBuffer();
         GraphicDispatcher.BeginFrame(&CommandBuffer, &Context, &Swapchain, &PresentPass);
 
         if (Recompile) {
@@ -530,17 +531,21 @@ public:
             Recompile = false;
         }
 
-        RHIStoreImage.Transition(&CommandBuffer, ImageUsage::IU_GENERAL);
+        RHIStoreImage.Transition(&CommandBuffer, RHIResourceState::SHADER_WRITE);
         TestCompPipeline.PipelineObject.SetBindingResource(0, DescriptorType::IMAGE2D, &RHIStoreImage);
         ComputeDispatcher.Dispatch(&CommandBuffer, &TestCompPipeline.PipelineObject, 16, 16, 1);
         if (swap) {
-            GraphicDispatcher.TransitionImageAsRenderTarget(&CommandBuffer, &RHIScreenBuffer2);
-            GraphicDispatcher.TransitionImageAsShaderRead(&CommandBuffer, &RHIScreenBuffer1);
+            RHIScreenBuffer2.Transition(&CommandBuffer, RHIResourceState::COLOR_ATTACHMENT);
+            RHIScreenBuffer1.Transition(&CommandBuffer, RHIResourceState::SHADER_READ);
+            //GraphicDispatcher.TransitionImageAsRenderTarget(&CommandBuffer, &RHIScreenBuffer2);
+            //GraphicDispatcher.TransitionImageAsShaderRead(&CommandBuffer, &RHIScreenBuffer1);
             GraphicDispatcher.BeginRenderPass(&CommandBuffer, &PTRenderPass, &FBuffer2);
         }
         else {
-            GraphicDispatcher.TransitionImageAsRenderTarget(&CommandBuffer, &RHIScreenBuffer1);
-            GraphicDispatcher.TransitionImageAsShaderRead(&CommandBuffer, &RHIScreenBuffer2);
+            RHIScreenBuffer1.Transition(&CommandBuffer, RHIResourceState::COLOR_ATTACHMENT);
+            RHIScreenBuffer2.Transition(&CommandBuffer, RHIResourceState::SHADER_READ);
+            //GraphicDispatcher.TransitionImageAsRenderTarget(&CommandBuffer, &RHIScreenBuffer1);
+            //GraphicDispatcher.TransitionImageAsShaderRead(&CommandBuffer, &RHIScreenBuffer2);
             GraphicDispatcher.BeginRenderPass(&CommandBuffer, &PTRenderPass, &FBuffer1);
         }
         if (!RenderingPaused && !ShaderCompileHasError) {
@@ -568,6 +573,7 @@ public:
         GraphicDispatcher.EndRenderPass(&CommandBuffer, &PresentPass);
         GraphicDispatcher.EndFrameAndSubmit(&CommandBuffer, &Context, &Viewport.WindowManager);
         Swapchain.PresentFrameAndRelease(&Context, &CommandBuffer, &GraphicDispatcher);
+        Viewport.Context.WaitDeviceIdle();
         swap  = !swap;
     }
 };
@@ -583,7 +589,7 @@ void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, Re
     int texWidth, texHeight, texChannels;
     stbi_uc* pixels = stbi_load(InMesh.TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     assert(texHeight > 0 && texWidth > 0);
-    OutRenderProxy.Texture.Initialize(&Viewport.Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB);
+    OutRenderProxy.Texture.Initialize(&Viewport.Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::SHADER_READ);
     OutRenderProxy.Texture.CopyToTexture(&CmdBuffer, &Viewport.Context, pixels, 4);
     OutRenderProxy.IndexBufferSize = InMesh.Indices.size();
     stbi_image_free(pixels);

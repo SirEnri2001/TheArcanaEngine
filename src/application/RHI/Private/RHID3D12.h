@@ -120,13 +120,13 @@ public:
     ComPtr<ID3D12Resource> m_texture;
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 
-    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1) override;
-    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t MipLevel = -1)  override;
-    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+    virtual void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1) override;
+    virtual void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1)  override;
+    virtual void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount = 1) override;
     virtual void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
     virtual void Cleanup(RHIContext* Context) override;
     virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
-    virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) override;
+    virtual void Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState) override;
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;

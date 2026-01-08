@@ -26,7 +26,7 @@ void MeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh)
     int texWidth, texHeight, texChannels;
 	stbi_uc* pixels = stbi_load(InMesh.TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	assert(texHeight > 0 && texWidth > 0);
-    Texture.Initialize(&Context->Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB);
+    Texture.Initialize(&Context->Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::SHADER_READ);
 	Texture.CopyToTexture(&CmdBuffer, &Context->Context, pixels, 4);
     IndexBufferSize = InMesh.Indices.size();
 	stbi_image_free(pixels);

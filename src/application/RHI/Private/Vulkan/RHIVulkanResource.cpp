@@ -4,54 +4,54 @@
 #include "RHIVulkan.h"
 #include "RHIVulkanImpl.h"
 
-void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
+void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	VkImageUsageFlags VkImageUsage;
-	VkImageAspectFlagBits VkImageAspectFlagBits;
-	Usage = InUsage;
-	switch (Usage)
-	{
-	case IU_COLOR_RT:
-		InnerFormat = VK_FORMAT_B8G8R8A8_SRGB;
-		VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
-		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	//auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	//VkImageUsageFlags VkImageUsage;
+	//VkImageAspectFlagBits VkImageAspectFlagBits;
+	//Usage = InUsage;
+	//switch (Usage)
+	//{
+	//case IU_COLOR_RT:
+	//	InnerFormat = VK_FORMAT_B8G8R8A8_SRGB;
+	//	VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	//	VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+	//	DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-		CreateSampler(DescriptorInfo.sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
-		bHasSampler = true;
-		// VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL
-		break;
-	case IU_COLOR_PRESENT_RT:
-		InnerFormat = VK_FORMAT_B8G8R8A8_SRGB;
-		VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
-		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		break;
-	case IU_DEPTH_RT:
-		InnerFormat = RHIVulkanPlatformSupport::Get()->GetDepthFormat();
-		VkImageUsage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_DEPTH_BIT;
-		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		break;
-	default:
-		throw std::runtime_error("Invalid usage bit for init a rendertarget");
-	}
-	ImageExtent.height = RTExtent.Height;
-	ImageExtent.width = RTExtent.Width;
-	ImageExtent.depth = RTExtent.Depth;
-	CreateImage(Image, VulkanContext->Device, ImageExtent, 1, static_cast<VkSampleCountFlagBits>(MultiSamplesCount), InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
-	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-	vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
-	CreateImageView(DescriptorInfo.imageView, Image, VulkanContext->Device, InnerFormat, VkImageAspectFlagBits, 1);
+	//	CreateSampler(DescriptorInfo.sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
+	//	bHasSampler = true;
+	//	// VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL
+	//	break;
+	//case IU_COLOR_PRESENT_RT:
+	//	InnerFormat = VK_FORMAT_B8G8R8A8_SRGB;
+	//	VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	//	VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+	//	DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	//	break;
+	//case IU_DEPTH_RT:
+	//	InnerFormat = RHIVulkanPlatformSupport::Get()->GetDepthFormat();
+	//	VkImageUsage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	//	VkImageAspectFlagBits = VK_IMAGE_ASPECT_DEPTH_BIT;
+	//	DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	//	break;
+	//default:
+	//	throw std::runtime_error("Invalid usage bit for init a rendertarget");
+	//}
+	//ImageExtent.height = RTExtent.Height;
+	//ImageExtent.width = RTExtent.Width;
+	//ImageExtent.depth = RTExtent.Depth;
+	//CreateImage(Image, VulkanContext->Device, ImageExtent, 1, static_cast<VkSampleCountFlagBits>(MultiSamplesCount), InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
+ //   VkMemoryRequirements memRequirements;
+ //   vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
+	//CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, RHIVulkanPlatformSupport::Get()->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	//vkBindImageMemory(VulkanContext->Device, Image, DeviceMemory, 0);
+	//CreateImageView(DescriptorInfo.imageView, Image, VulkanContext->Device, InnerFormat, VkImageAspectFlagBits, 1);
 }
 
 
-void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage, int32_t InMipLevel)
+void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	/*auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	Usage = IU_GENERAL;
 	InnerFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
 	// Check if image format supports linear blitting
@@ -77,17 +77,24 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, ui
 		CreateSampler(DescriptorInfo.sampler, VulkanContext->Device, RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
 	}
 	bHasSampler = true;
-	DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;*/
+
+	Initialize(Context, ImageExtent3D{ Width, Height, 1 }, InFormat, InUsageMask, InMipLevel);
 }
 
 
-void RHIVulkanImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t InMipLevel)
+void RHIVulkanImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	bHasSampler = InUsage != ImageUsage::IU_COLOR_PRESENT_RT && InUsage != ImageUsage::IU_DEPTH_PRESENT_RT;
-	Usage = InUsage;
+	bHasSampler = HasFlag(InUsageMask, RHIResourceState::SHADER_READ);
+	//Usage = InUsage;
 	InnerFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
 	ImageExtent = VkExtent3D{RTExtent.Width, RTExtent.Height, RTExtent.Depth};
+
+	if (InMipLevel == -1)
+	{
+		InMipLevel = static_cast<uint32_t>(std::floor(std::log2(std::max(ImageExtent.width, ImageExtent.height)))) + 1;
+	}
 	MipLevel = bHasSampler ? InMipLevel : 1;
 
 	// Check if image format supports linear blitting
@@ -97,37 +104,33 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExt
 	}
 
 	VkImageUsageFlags VkImageUsage = 0;
-	VkImageAspectFlagBits VkImageAspectFlagBits;
-	switch (Usage)
+	if (HasFlag(InUsageMask, RHIResourceState::SHADER_READ))
 	{
-	case IU_COLOR_RT:
-		VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
-		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		// VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL
-		break;
-	case IU_COLOR_PRESENT_RT:
-		VkImageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
-		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		break;
-	case IU_DEPTH_RT:
-	case IU_DEPTH_PRESENT_RT:
-		VkImageUsage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_DEPTH_BIT;
-		DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		break;
-	case IU_GENERAL:
-		VkImageUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
-		break;
-	case IU_STORAGE:
-		VkImageUsage = VK_IMAGE_USAGE_STORAGE_BIT;
-		VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
-		break;
-	default:
-		throw std::runtime_error("Invalid usage bit for init a rendertarget");
+		VkImageUsage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 	}
+	if (HasFlag(InUsageMask, RHIResourceState::SHADER_WRITE))
+	{
+		VkImageUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
+	}
+	if (HasFlag(InUsageMask, RHIResourceState::COPY_DST))
+	{
+		VkImageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	}
+	if (HasFlag(InUsageMask, RHIResourceState::COLOR_ATTACHMENT))
+	{
+		VkImageUsage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+	if (HasFlag(InUsageMask, RHIResourceState::DEPTH_ATTACHMENT))
+	{
+		VkImageUsage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	}
+	VkImageAspectFlagBits VkImageAspectFlagBits = VK_IMAGE_ASPECT_COLOR_BIT;
+	if (HasFlag(InUsageMask, RHIResourceState::DEPTH_ATTACHMENT))
+	{
+		VkImageAspectFlagBits = VK_IMAGE_ASPECT_DEPTH_BIT;
+	}
+	DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	Desc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::UNDEFINED);
 	CreateImage(Image, VulkanContext->Device, ImageExtent, 1, VK_SAMPLE_COUNT_1_BIT, InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
 	VkMemoryRequirements memRequirements;
 	vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
@@ -171,10 +174,12 @@ void RHIVulkanImageResource::CopyToTexture(RHICommandBuffer* CommandBuffer, RHIC
 	}
 
 	BeginCommandBufferOneTimeSubmit(VkCmdBuf);
-	TransitionImageLayout(Image, VkCmdBuf, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevel);
+	//TransitionImageLayout(Image, VkCmdBuf, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevel);
+	Transition(CommandBuffer, RHIResourceState::COPY_DST);
 	CopyBufferToImage(stagingBuffer, Image, VkCmdBuf, ImageExtent.width, ImageExtent.height);
 	CreateMipmapForImage(VkCmdBuf, Image, ImageExtent.width, ImageExtent.height, MipLevel);
-	TransitionImageLayout(Image, VkCmdBuf, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevel);
+	//TransitionImageLayout(Image, VkCmdBuf, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevel);
+	Transition(CommandBuffer, RHIResourceState::SHADER_READ);
 	EndCommandBufferOneTimeSubmit(VkCmdBuf, VulkanContext->GraphicsQueue);
 
 	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);
@@ -198,11 +203,14 @@ void RHIVulkanImageResource::Resize(RHIContext* Context, uint32_t Height, uint32
 
 }
 
-void RHIVulkanImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+void RHIVulkanImageResource::Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState)
 {
 	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-	TransitionImageLayout(Image, VkCmdBuf, DescriptorInfo.imageLayout, RHIVulkanPlatformSupport::GetImageLayout(InUsage), MipLevel);
-	DescriptorInfo.imageLayout = RHIVulkanPlatformSupport::GetImageLayout(InUsage);
+	VkImageStateDesc NewDesc = RHIVulkanPlatformSupport::GetStateDesc(InState);
+	TransitionImageLayout(Image, VkCmdBuf, Desc.ImageLayout, NewDesc.ImageLayout, Desc.Access, NewDesc.Access, 
+		Desc.PipelineStage, NewDesc.PipelineStage, MipLevel);
+	Desc = NewDesc;
+	DescriptorInfo.imageLayout = Desc.ImageLayout;
 }
 
 

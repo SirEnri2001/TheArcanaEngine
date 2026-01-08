@@ -154,20 +154,20 @@ RHIImageResource::~RHIImageResource()
 {
 }
 
-void RHIImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
+void RHIImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel)
 {
-	pImpl->Initialize(Context, Height, Width, InFormat, InUsage, MipLevel);
+	pImpl->Initialize(Context, Height, Width, InFormat, InUsageMask, MipLevel);
 }
 
 
-void RHIImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
+void RHIImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount)
 {
 	pImpl->InitializeRenderTarget(Context, WindowManager, RTExtent, InUsage, MultiSamplesCount);
 }
 
-void RHIImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
+void RHIImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel)
 {
-	pImpl->Initialize(Context, RTExtent, InFormat, InUsage, MipLevel);
+	pImpl->Initialize(Context, RTExtent, InFormat, InUsageMask, MipLevel);
 }
 
 
@@ -186,9 +186,9 @@ void RHIImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_t Wid
 	pImpl->Resize(Context, Height, Width);
 }
 
-void RHIImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+void RHIImageResource::Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState)
 {
-	pImpl->Transition(CommandBuffer, InUsage);
+	pImpl->Transition(CommandBuffer, InState);
 }
 
 

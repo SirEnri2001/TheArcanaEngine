@@ -827,7 +827,16 @@ void CreateBuffer(VkBuffer& OutBuffer, VkDevice Device, VkDeviceSize size, VkBuf
 
 
 
-void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels) {
+void TransitionImageLayout(
+    VkImage image,
+	VkCommandBuffer commandBuffer,
+	VkImageLayout oldLayout,
+	VkImageLayout newLayout,
+	VkAccessFlags srcAccessMask,
+	VkAccessFlags dstAccessMask,
+	VkPipelineStageFlags srcPipelineStageMask,
+	VkPipelineStageFlags dstPipelineStageMask,
+	uint32_t mipLevels) {
     if (oldLayout==newLayout)
     {
         return;
@@ -844,11 +853,19 @@ void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImage
     barrier.subresourceRange.levelCount = mipLevels;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
-
+    barrier.srcAccessMask = srcAccessMask;
+    barrier.dstAccessMask = dstAccessMask;
+    /*
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
-
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
@@ -901,10 +918,10 @@ void TransitionImageLayout(VkImage image, VkCommandBuffer commandBuffer, VkImage
     else {
         throw std::invalid_argument("unsupported layout transition!");
     }
-
+	*/
     vkCmdPipelineBarrier(
         commandBuffer,
-        sourceStage, destinationStage,
+        srcPipelineStageMask, dstPipelineStageMask,
         0,
         0, nullptr,
         0, nullptr,

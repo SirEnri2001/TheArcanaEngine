@@ -452,7 +452,7 @@ void RHID3D12Context::WaitForPreviousFrame()
 }
 
 
-void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
+void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
@@ -493,14 +493,14 @@ void RHID3D12ImageResource::Initialize(RHIContext* Context, uint32_t InHeight, u
     }
 }
 
-void RHID3D12ImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel)
+void RHID3D12ImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel)
 {
 	
 }
 
 
-void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, ImageUsage InUsage, uint32_t MultiSamplesCount)
-{
+void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount)
+{/*
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context->GetImpl());
     auto* D3D12WindowManager = static_cast<RHID3D12WindowManager*>(WindowManager->GetImpl());
 
@@ -557,7 +557,7 @@ void RHID3D12ImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindo
         ds_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         D3D12Context->DSVHeapAllocator.Alloc(&RTDSVCpuDescriptorHandle, &RTDSVGpuDescriptorHandle);
         D3D12Context->m_device->CreateDepthStencilView(m_texture.Get(), NULL, RTDSVCpuDescriptorHandle);
-    }
+    }*/
 }
 
 void RHID3D12ImageResource::CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride)
@@ -602,7 +602,7 @@ void RHID3D12ImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_
 
 }
 
-void RHID3D12ImageResource::Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage)
+void RHID3D12ImageResource::Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState)
 {
 	
 }

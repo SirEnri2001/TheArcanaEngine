@@ -18,6 +18,13 @@ class VkCommandBufferManaged;
 struct GLFWwindow;
 struct ImDrawData;
 
+struct VkImageStateDesc
+{
+	VkPipelineStageFlags PipelineStage;
+	VkAccessFlags Access;
+	VkImageLayout ImageLayout;
+};
+
 class RHIVulkanPlatformSupport : public RHIPlatformSupportBase
 {
 	static RHIVulkanPlatformSupport* GInstance;
@@ -173,7 +180,7 @@ public:
 		}
 		return VK_DESCRIPTOR_TYPE_SAMPLER;
 	}
-
+	/*
 	static VkImageLayout GetImageLayout(ImageUsage InUsage)
 	{
 		switch (InUsage)
@@ -187,8 +194,61 @@ public:
 		case IU_DEPTH_RT:
 		case IU_DEPTH_PRESENT_RT:
 			return VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+		case IU_SHADER_READ:
+			return VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		}
-		return VkImageLayout::VK_IMAGE_LAYOUT_GENERAL;
+		return VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+	}
+	*/
+	static VkImageStateDesc GetStateDesc(RHIResourceState InState)
+	{
+		VkImageStateDesc StateDesc{};
+		// Principle: wide stage bits, narrow access bits - by ChatGPT
+		switch (InState)
+		{
+		case RHIResourceState::UNDEFINED:
+			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			StateDesc.Access = 0;
+			StateDesc.PipelineStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			break;
+		case RHIResourceState::SHADER_READ:
+			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			StateDesc.Access = VK_ACCESS_SHADER_READ_BIT;
+			StateDesc.PipelineStage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			break;
+		case RHIResourceState::SHADER_WRITE:
+			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+			StateDesc.Access = VK_ACCESS_SHADER_WRITE_BIT;
+			StateDesc.PipelineStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+			break;
+		case RHIResourceState::SHADER_READWRITE:
+			break;
+		case RHIResourceState::COLOR_ATTACHMENT:
+			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			StateDesc.Access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			StateDesc.PipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			break;
+		case RHIResourceState::DEPTH_ATTACHMENT:
+			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			StateDesc.Access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			StateDesc.PipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			break;
+		case RHIResourceState::COPY_SRC:
+			break;
+		case RHIResourceState::COPY_DST:
+			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			StateDesc.Access = VK_ACCESS_TRANSFER_WRITE_BIT;
+			StateDesc.PipelineStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			break;
+		case RHIResourceState::PRESENTABLE:
+			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+			StateDesc.Access = VK_ACCESS_MEMORY_READ_BIT;
+			StateDesc.PipelineStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+			break;
+		default:
+			break;
+		}
+		return StateDesc;
 	}
 
 	static RHIVulkanPlatformSupport* Get();
@@ -283,9 +343,10 @@ class RHIVulkanImageResource : public RHIImageResourceBase
 public:
 	VkImage Image;
 	VkDeviceMemory DeviceMemory;
+	VkImageStateDesc Desc;
 	VkDescriptorImageInfo DescriptorInfo;
 	bool bHasSampler = false;
-	ImageUsage Usage;
+	//ImageUsage Usage;
 	VkFormat InnerFormat;
 	VkExtent3D ImageExtent;
 	uint32_t MipLevel = -1;
@@ -293,15 +354,15 @@ public:
 	RHIVulkanImageResource() = default;
 	~RHIVulkanImageResource() override = default;
 
-    void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, ImageUsage InUsage = IU_COLOR_RT, int32_t InMipLevel = -1) override;
-	void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, ImageUsage InUsage, int32_t MipLevel) override;
+    void Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel = -1) override;
+	void Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel) override;
 	void InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent,
-	                            ImageUsage InUsage = IU_COLOR_RT, uint32_t MultiSamplesCount = 1) override;
+	                            RHIResourceState InUsage, uint32_t MultiSamplesCount = 1) override;
     void CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride) override;
 	void Cleanup(RHIContext* Context) override;
 	VkDescriptorImageInfo& GetDescriptorImageInfo();
 	virtual void Resize(RHIContext* Context, uint32_t Height, uint32_t Width) override;
-	virtual void Transition(RHICommandBuffer* CommandBuffer, ImageUsage InUsage) override;
+	virtual void Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState) override;
 };
 
 class RHIVulkanBufferResource : public RHIBufferResourceBase
