@@ -4,9 +4,9 @@
 #include "RHIVulkan.h"
 #include "RHIVulkanImpl.h"
 
-void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount)
+void RHIVulkanImageResource::InitializeRenderTarget(IRHIContext* Context, IRHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount)
 {
-	//auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	//auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	//VkImageUsageFlags VkImageUsage;
 	//VkImageAspectFlagBits VkImageAspectFlagBits;
 	//Usage = InUsage;
@@ -49,9 +49,9 @@ void RHIVulkanImageResource::InitializeRenderTarget(RHIContext* Context, RHIWind
 }
 
 
-void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel)
+void RHIVulkanImageResource::Initialize(IRHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel)
 {
-	/*auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	/*auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	Usage = IU_GENERAL;
 	InnerFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
 	// Check if image format supports linear blitting
@@ -83,9 +83,9 @@ void RHIVulkanImageResource::Initialize(RHIContext* Context, uint32_t Height, ui
 }
 
 
-void RHIVulkanImageResource::Initialize(RHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel)
+void RHIVulkanImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	bHasSampler = HasFlag(InUsageMask, RHIResourceState::SHADER_READ);
 	//Usage = InUsage;
 	InnerFormat = RHIVulkanPlatformSupport::GetVkFormat(InFormat);
@@ -150,10 +150,10 @@ VkDescriptorImageInfo& RHIVulkanImageResource::GetDescriptorImageInfo() {
 	return Desc;
 }
 
-void RHIVulkanImageResource::CopyToTexture(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* Data, uint32_t Stride)
+void RHIVulkanImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer);
 	VkCommandBuffer VkCmdBuf = VulkanCommandBuffer->CommandBuffer;
 	
 	VkDeviceSize imageSize = ImageExtent.width * ImageExtent.height * Stride;
@@ -187,9 +187,9 @@ void RHIVulkanImageResource::CopyToTexture(RHICommandBuffer* CommandBuffer, RHIC
 }
 
 
-void RHIVulkanImageResource::Cleanup(RHIContext* Context)
+void RHIVulkanImageResource::Cleanup(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkDestroyImage(VulkanContext->Device, Image, nullptr);
 	vkDestroyImageView(VulkanContext->Device, DescriptorInfo.imageView, nullptr);
 	vkFreeMemory(VulkanContext->Device, DeviceMemory, nullptr);
@@ -199,13 +199,13 @@ void RHIVulkanImageResource::Cleanup(RHIContext* Context)
 	}
 }
 
-void RHIVulkanImageResource::Resize(RHIContext* Context, uint32_t Height, uint32_t Width) {
+void RHIVulkanImageResource::Resize(IRHIContext* Context, uint32_t Height, uint32_t Width) {
 
 }
 
-void RHIVulkanImageResource::Transition(RHICommandBuffer* CommandBuffer, RHIResourceState InState)
+void RHIVulkanImageResource::Transition(IRHICommandBuffer* CommandBuffer, RHIResourceState InState)
 {
-	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
 	VkImageStateDesc NewDesc = RHIVulkanPlatformSupport::GetStateDesc(InState);
 	TransitionImageLayout(Image, VkCmdBuf, Desc.ImageLayout, NewDesc.ImageLayout, Desc.Access, NewDesc.Access, 
 		Desc.PipelineStage, NewDesc.PipelineStage, MipLevel);
@@ -229,9 +229,9 @@ VkBufferUsageFlags RHIVulkanBufferResource::GetVkBufferUsageFlags(BufferType Typ
 }
 
 
-void RHIVulkanBufferResource::Initialize(RHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType InType)
+void RHIVulkanBufferResource::Initialize(IRHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType InType)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	Type = InType;
 	CreateBuffer(Buffer, VulkanContext->Device, Stride * ElementCounts, GetVkBufferUsageFlags(Type) | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 	VkMemoryRequirements MemRequirements;
@@ -240,10 +240,10 @@ void RHIVulkanBufferResource::Initialize(RHIContext* Context, uint32_t Stride, u
 	vkBindBufferMemory(VulkanContext->Device, Buffer, DeviceMemory, 0);
 }
 
-void RHIVulkanBufferResource::CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIContext* Context, void* data, uint32_t TotalBytes)
+void RHIVulkanBufferResource::CopyToBuffer(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* data, uint32_t TotalBytes)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer);
 	VkCommandBuffer VkCmdBuf = VulkanCommandBuffer->CommandBuffer;
 	
 	VkBuffer stagingBuffer;
@@ -264,16 +264,16 @@ void RHIVulkanBufferResource::CopyToBuffer(RHICommandBuffer* CommandBuffer, RHIC
 	vkFreeMemory(VulkanContext->Device, stagingBufferMemory, nullptr);
 }
 
-void RHIVulkanBufferResource::Cleanup(RHIContext* Context)
+void RHIVulkanBufferResource::Cleanup(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkDestroyBuffer(VulkanContext->Device, Buffer, nullptr);
 	vkFreeMemory(VulkanContext->Device, DeviceMemory, nullptr);
 }
 
-void RHIVulkanUniform::Initialize(RHIContext* Context, uint32_t UniformStructSize)
+void RHIVulkanUniform::Initialize(IRHIContext* Context, uint32_t UniformStructSize)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	CreateBuffer(Buffer, VulkanContext->Device, UniformStructSize,	VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 	VkMemoryRequirements MemRequirements;
 	vkGetBufferMemoryRequirements(VulkanContext->Device, Buffer, &MemRequirements);
@@ -287,15 +287,15 @@ void RHIVulkanUniform::Initialize(RHIContext* Context, uint32_t UniformStructSiz
 	Size = UniformStructSize;
 }
 
-void RHIVulkanUniform::CopyToBuffer(RHIContext* Context, void* data, uint32_t TotalBytes)
+void RHIVulkanUniform::CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	memcpy(MappedMemory, data, TotalBytes);
 }
 
-void RHIVulkanUniform::Cleanup(RHIContext* Context)
+void RHIVulkanUniform::Cleanup(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkUnmapMemory(VulkanContext->Device, DeviceMemory);
 	vkDestroyBuffer(VulkanContext->Device, Buffer, nullptr);
 	vkFreeMemory(VulkanContext->Device, DeviceMemory, nullptr);

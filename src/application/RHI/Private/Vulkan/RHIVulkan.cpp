@@ -21,7 +21,7 @@ RHIVulkanPlatformSupport* RHIVulkanPlatformSupport::GInstance = nullptr;
 
 RHIVulkanPlatformSupport* RHIVulkanPlatformSupport::Get()
 {
-	return reinterpret_cast<RHIVulkanPlatformSupport*>(RHIPlatformSupport::Get()->GetImpl());
+	return static_cast<RHIVulkanPlatformSupport*>(IRHIPlatformSupport::Get());
 }
 
 
@@ -73,9 +73,9 @@ void RHIVulkanPlatformSupport::Cleanup()
 RHIVulkanContext::RHIVulkanContext() {}
 RHIVulkanContext::~RHIVulkanContext() {}
 
-void RHIVulkanContext::Initialize(RHIPlatformSupport* PlatformSupport)
+void RHIVulkanContext::Initialize(IRHIPlatformSupport* PlatformSupport)
 {
-	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport->GetImpl());
+	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport);
 	assert(VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice != nullptr);
 	CreateVkDevice(Device, GraphicsQueue, PresentQueue, VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, 
 		VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex, VulkanPlatformSupport->CurrentPhysicalDevice.PresentQueueFamilyIndex, VulkanPlatformSupport->PhysicalDeviceExtensions);
@@ -92,10 +92,29 @@ void RHIVulkanContext::WaitDeviceIdle()
 {
 	vkDeviceWaitIdle(Device);
 }
-
-void RHIVulkanWindowManager::Initialize(RHIPlatformSupport* InPlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth)
+std::unique_ptr<IRHIContext> RHIVulkanPlatformSupport::CreateRHIContext()
 {
-	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(InPlatformSupport->GetImpl());
+	return std::make_unique<RHIVulkanContext>();
+}
+
+std::unique_ptr<IRHIBufferResource    > RHIVulkanContext::CreateRHIBufferResource     () { return std::make_unique<RHIVulkanBufferResource    >(); }
+std::unique_ptr<IRHICommandBuffer     > RHIVulkanContext::CreateRHICommandBuffer      () { return std::make_unique<RHIVulkanCommandBuffer     >(); }
+std::unique_ptr<IRHIComputeDispatcher > RHIVulkanContext::CreateRHIComputeDispatcher  () { return std::make_unique<RHIVulkanComputeDispatcher >(); }
+std::unique_ptr<IRHIFrameBuffer       > RHIVulkanContext::CreateRHIFrameBuffer        () { return std::make_unique<RHIVulkanFrameBuffer       >(); }
+std::unique_ptr<IRHIGraphicsDispatcher> RHIVulkanContext::CreateRHIGraphicsDispatcher () { return std::make_unique<RHIVulkanGraphicsDispatcher>(); }
+std::unique_ptr<IRHIImageResource     > RHIVulkanContext::CreateRHIImageResource      () { return std::make_unique<RHIVulkanImageResource     >(); }
+std::unique_ptr<IRHIImGUI             > RHIVulkanContext::CreateRHIImGUI              () { return std::make_unique<RHIVulkanImGUI             >(); }
+std::unique_ptr<IRHIPipelineFactory   > RHIVulkanContext::CreateRHIPipelineFactory    () { return std::make_unique<RHIVulkanPipelineFactory   >(); }
+std::unique_ptr<IRHIPipelineObject    > RHIVulkanContext::CreateRHIPipelineObject     () { return std::make_unique<RHIVulkanPipelineObject    >(); }
+std::unique_ptr<IRHIPresentPass       > RHIVulkanContext::CreateRHIPresentPass        () { return std::make_unique<RHIVulkanPresentPass       >(); }
+std::unique_ptr<IRHIRenderPass        > RHIVulkanContext::CreateRHIRenderPass         () { return std::make_unique<RHIVulkanRenderPass        >(); }
+std::unique_ptr<IRHISwapchain         > RHIVulkanContext::CreateRHISwapchain          () { return std::make_unique<RHIVulkanSwapchain         >(); }
+std::unique_ptr<IRHIUniform           > RHIVulkanContext::CreateRHIUniform            () { return std::make_unique<RHIVulkanUniform           >(); }
+std::unique_ptr<IRHIWindowManager     > RHIVulkanContext::CreateRHIWindowManager      () { return std::make_unique<RHIVulkanWindowManager     >(); }
+
+void RHIVulkanWindowManager::Initialize(IRHIPlatformSupport* InPlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth)
+{
+	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(InPlatformSupport);
 	PlatformSupport = InPlatformSupport;
 	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
 	CreateVkSurface(VulkanPlatformSupport->Instance, pGLFWwindow, Surface);
@@ -113,7 +132,7 @@ void RHIVulkanWindowManager::Initialize(RHIPlatformSupport* InPlatformSupport, u
 	}
 }
 
-void RHIVulkanWindowManager::CleanupSwapchain(RHIContext* Context)
+void RHIVulkanWindowManager::CleanupSwapchain(IRHIContext* Context)
 {
 //	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 //	for (auto* ImageResource : SwapchainImageResources) {
@@ -124,7 +143,7 @@ void RHIVulkanWindowManager::CleanupSwapchain(RHIContext* Context)
 //	DepthImageResource->Cleanup(Context);
 }
 
-void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatformSupport* PlatformSupport)
+void RHIVulkanWindowManager::InitializeSwapchain(IRHIContext* Context, IRHIPlatformSupport* PlatformSupport)
 {
 //	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 //	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport->GetImpl());
@@ -141,7 +160,7 @@ void RHIVulkanWindowManager::InitializeSwapchain(RHIContext* Context, RHIPlatfor
 //	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface, &SurfaceCapabilities);
 }
 
-void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRenderPass, RHIContext* Context)
+void RHIVulkanWindowManager::InitializeRenderPassAsPresent(IRHIRenderPass* OutRenderPass, IRHIContext* Context)
 {
 	//auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 	//auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(OutRenderPass->GetImpl());
@@ -181,22 +200,22 @@ void RHIVulkanWindowManager::InitializeRenderPassAsPresent(RHIRenderPass* OutRen
 }
 
 
-void RHIVulkanWindowManager::RecreateSwapchain(RHIContext* Context)
+void RHIVulkanWindowManager::RecreateSwapchain(IRHIContext* Context)
 {
 //	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
 //	CleanupSwapchain(Context);
 //	InitializeSwapchain(Context, PlatformSupport);
 }
 
-void RHIVulkanWindowManager::AddScreenSizeTexture(RHIImageResource* ImageResource)
+void RHIVulkanWindowManager::AddScreenSizeTexture(IRHIImageResource* ImageResource)
 {
-	auto* VkImage = static_cast<RHIVulkanImageResource*>(ImageResource->GetImpl());
+	auto* VkImage = static_cast<RHIVulkanImageResource*>(ImageResource);
 	ScreenSizeImages.push_back(VkImage);
 }
 
-void RHIVulkanWindowManager::RemoveScreenSizeTexture(RHIImageResource* ImageResource)
+void RHIVulkanWindowManager::RemoveScreenSizeTexture(IRHIImageResource* ImageResource)
 {
-	auto* VkImage = static_cast<RHIVulkanImageResource*>(ImageResource->GetImpl());
+	auto* VkImage = static_cast<RHIVulkanImageResource*>(ImageResource);
 	ScreenSizeImages.erase(std::remove(ScreenSizeImages.begin(), ScreenSizeImages.end(), VkImage), ScreenSizeImages.end());
 }
 
@@ -207,9 +226,9 @@ void RHIVulkanWindowManager::OnWindowResize(GLFWwindow* window, int width, int h
 	std::cout<<"Windows Resize!\n";
 }
 
-void RHIVulkanWindowManager::Cleanup(RHIPlatformSupport* PlatformSupport)
+void RHIVulkanWindowManager::Cleanup(IRHIPlatformSupport* PlatformSupport)
 {
-	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport->GetImpl());
+	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport);
 	vkDestroySurfaceKHR(VulkanPlatformSupport->Instance, Surface, nullptr);
 	glfwDestroyWindow(pGLFWwindow);
 	glfwTerminate();
@@ -231,10 +250,10 @@ RHIVulkanSwapchain::~RHIVulkanSwapchain()
 
 }
 
-void RHIVulkanSwapchain::Initialize(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIVulkanSwapchain::Initialize(IRHIContext* Context, IRHIWindowManager* WindowManager)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindow = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanWindow = static_cast<RHIVulkanWindowManager*>(WindowManager);
 	vkDeviceWaitIdle(VulkanContext->Device);
 	CreateSwapchain(
 		Swapchain, SwapchainImages, SwapchainImageViews, SwapchainImageFormat, SwapchainExtent,
@@ -249,7 +268,7 @@ void RHIVulkanSwapchain::Initialize(RHIContext* Context, RHIWindowManager* Windo
 	DepthImageResource->Initialize(Context, { SwapchainExtent.width, SwapchainExtent.height, 1 }, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
 	SwapchainFrameBuffers.resize(SwapchainImageViews.size());
 	for (size_t i = 0; i < SwapchainImages.size(); i++) {
-		SwapchainFrameBuffers[i] = new RHIFrameBuffer();
+		SwapchainFrameBuffers[i] = new RHIVulkanFrameBuffer();
 	}
 	CachedRenderPass = nullptr;
 
@@ -262,23 +281,24 @@ void RHIVulkanSwapchain::Initialize(RHIContext* Context, RHIWindowManager* Windo
 
 	if (vkCreateSemaphore(VulkanContext->Device, &semaphoreInfo, nullptr, &ImageAvailableSemaphore) != VK_SUCCESS ||
 		vkCreateSemaphore(VulkanContext->Device, &semaphoreInfo, nullptr, &RenderFinishSemaphore) != VK_SUCCESS ||
-		vkCreateFence(VulkanContext->Device, &fenceInfo, nullptr, &InFlightFence) != VK_SUCCESS) {
+		vkCreateFence(VulkanContext->Device, &fenceInfo, nullptr, &InFlightFence) != VK_SUCCESS || 
+		vkCreateSemaphore(VulkanContext->Device, &semaphoreInfo, nullptr, &TransitionFinishSemaphore) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create synchronization objects for a frame!");
 	}
 }
 
-void RHIVulkanSwapchain::Cleanup(RHIContext* Context)
+void RHIVulkanSwapchain::Cleanup(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkDestroySemaphore(VulkanContext->Device, ImageAvailableSemaphore, nullptr);
 	vkDestroySemaphore(VulkanContext->Device, RenderFinishSemaphore, nullptr);
 	vkDestroyFence(VulkanContext->Device, InFlightFence, nullptr);
 }
 
-void RHIVulkanSwapchain::AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutFrameBuffer, RHIRenderPass* InRenderPass)
+void RHIVulkanSwapchain::AcquireFrame(IRHIContext* Context, IRHIFrameBuffer*& OutFrameBuffer, IRHIRenderPass* InRenderPass)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	RHIVulkanRenderPass* VkRenderPass = static_cast<RHIVulkanRenderPass*>(InRenderPass->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	RHIVulkanRenderPass* VkRenderPass = static_cast<RHIVulkanRenderPass*>(InRenderPass);
 	if (VkRenderPass->RenderPass!=CachedRenderPass)
 	{
 		CreateFramebuffers(VulkanContext, VkRenderPass->RenderPass);
@@ -293,24 +313,41 @@ void RHIVulkanSwapchain::AcquireFrame(RHIContext* Context, RHIFrameBuffer*& OutF
 	}
 
 	OutFrameBuffer = SwapchainFrameBuffers[CurrentImageIndex];
+
+
+	RHIVulkanCommandBuffer TransitionCommandBuffer;
+	// Transition swapchain image to presentable format
+	auto ColorAttachmentDesc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::COLOR_ATTACHMENT);
+	auto UnDefinedDesc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::UNDEFINED);
+	TransitionCommandBuffer.Initialize(Context);
+	TransitionCommandBuffer.BeginCommandBuffer();
+	TransitionImageLayout(SwapchainImages[CurrentImageIndex], TransitionCommandBuffer.CommandBuffer, UnDefinedDesc.ImageLayout, ColorAttachmentDesc.ImageLayout,
+		UnDefinedDesc.Access, ColorAttachmentDesc.Access,
+		UnDefinedDesc.PipelineStage, ColorAttachmentDesc.PipelineStage, 1);
+	TransitionCommandBuffer.EndCommandBuffer();
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &TransitionCommandBuffer.CommandBuffer;
+
+	vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(VulkanContext->GraphicsQueue);
 }
 
-void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* GDispatcher)
+void RHIVulkanSwapchain::PresentFrameAndRelease(IRHIContext* Context, IRHICommandBuffer* CommandBuffer)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VkDispatcher = static_cast<RHIVulkanGraphicDispatcher*>(GDispatcher->GetImpl());
-	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
+	RHIVulkanCommandBuffer TransitionCommandBuffer;
 	// Transition swapchain image to presentable format
 	auto ColorAttachmentDesc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::COLOR_ATTACHMENT);
 	auto PresentableDesc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::PRESENTABLE);
-	TransitionImageLayout(SwapchainImages[CurrentImageIndex], VkCmdBuf, ColorAttachmentDesc.ImageLayout, PresentableDesc.ImageLayout,
+	TransitionCommandBuffer.Initialize(Context);
+	TransitionCommandBuffer.BeginCommandBuffer();
+	TransitionImageLayout(SwapchainImages[CurrentImageIndex], TransitionCommandBuffer.CommandBuffer, ColorAttachmentDesc.ImageLayout, PresentableDesc.ImageLayout,
 		ColorAttachmentDesc.Access, PresentableDesc.Access,
 		ColorAttachmentDesc.PipelineStage, PresentableDesc.PipelineStage, 1);
-
-	if (vkEndCommandBuffer(VkCmdBuf) != VK_SUCCESS) {
-		throw std::runtime_error("failed to record command buffer!");
-	}
+	TransitionCommandBuffer.EndCommandBuffer();
 
 	{
 		// submit recorded commandbuffer
@@ -334,12 +371,24 @@ void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHICommandB
 		}
 	}
 
+	VkSubmitInfo submitInfo{};
+	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT };
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &TransitionCommandBuffer.CommandBuffer;
+	submitInfo.pWaitSemaphores = &RenderFinishSemaphore;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &TransitionFinishSemaphore;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pWaitDstStageMask = waitStages;
+	vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(VulkanContext->GraphicsQueue);
 	{
 		// present swapchain frame buffer
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &RenderFinishSemaphore;
+		presentInfo.pWaitSemaphores = &TransitionFinishSemaphore;
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = &Swapchain;
 		presentInfo.pImageIndices = &CurrentImageIndex;
@@ -354,7 +403,7 @@ void RHIVulkanSwapchain::PresentFrameAndRelease(RHIContext* Context, RHICommandB
 void RHIVulkanSwapchain::CreateFramebuffers(RHIVulkanContext* VulkanContext, VkRenderPass VkRP)
 {
 	for (size_t i = 0; i < SwapchainImages.size(); i++) {
-		RHIVulkanFrameBuffer* VulkanFB = static_cast<RHIVulkanFrameBuffer*>(SwapchainFrameBuffers[i]->GetImpl());
+		RHIVulkanFrameBuffer* VulkanFB = static_cast<RHIVulkanFrameBuffer*>(SwapchainFrameBuffers[i]);
 		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = VkRP;
@@ -428,15 +477,15 @@ RHIVulkanCommandBuffer::~RHIVulkanCommandBuffer()
 	}
 }
 
-void RHIVulkanCommandBuffer::Initialize(RHIContext* Context)
+void RHIVulkanCommandBuffer::Initialize(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	Device = VulkanContext->Device;
 	CommandPool = VulkanContext->CommandPool;
 	CreateCommandBuffer(CommandBuffer, VulkanContext->Device, VulkanContext->CommandPool);
 }
 
-void RHIVulkanCommandBuffer::Cleanup(RHIContext* Context)
+void RHIVulkanCommandBuffer::Cleanup(IRHIContext* Context)
 {
 	if (CommandBuffer) {
 		vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
@@ -466,21 +515,21 @@ void RHIVulkanCommandBuffer::ResetCommandBuffer()
 }
 
 // RHIVulkanComputeDispatcher implementation
-void RHIVulkanComputeDispatcher::Initialize(RHIContext* Context)
+void RHIVulkanComputeDispatcher::Initialize(IRHIContext* Context)
 {
 	// No special initialization needed for compute dispatcher
 }
 
-void RHIVulkanComputeDispatcher::Cleanup(RHIContext* Context)
+void RHIVulkanComputeDispatcher::Cleanup(IRHIContext* Context)
 {
 	// No special cleanup needed for compute dispatcher
 }
 
-void RHIVulkanComputeDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
+void RHIVulkanComputeDispatcher::Dispatch(IRHICommandBuffer* CommandBuffer, IRHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
 {
-	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl());
+	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer);
 	VkCommandBuffer VkCmdBuf = VulkanCommandBuffer->CommandBuffer;
-	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject->GetImpl());
+	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject);
 	
 	// Bind compute pipeline
 	vkCmdBindPipeline(VkCmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, VulkanPipeline->Pipeline);
@@ -496,8 +545,8 @@ void RHIVulkanComputeDispatcher::Dispatch(RHICommandBuffer* CommandBuffer, RHIPi
 	vkCmdDispatch(VkCmdBuf, ThreadGroupX, ThreadGroupY, ThreadGroupZ);
 }
 
-void RHIVulkanComputeDispatcher::WaitForGPUIdle(RHIContext* Context)
+void RHIVulkanComputeDispatcher::WaitForGPUIdle(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkDeviceWaitIdle(VulkanContext->Device);
 }

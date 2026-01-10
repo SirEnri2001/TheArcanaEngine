@@ -70,11 +70,11 @@ void RHIVulkanPipelineFactory::SetComputeShaders(const std::vector<char>& Comput
 	bCompute = true;
 }
 
-void RHIVulkanPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIRenderPass* RenderPassResource)
+void RHIVulkanPipelineFactory::InitializePipelineObject(IRHIPipelineObject* OutPipelineObject, IRHIContext* Context, IRHIRenderPass* RenderPassResource)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanRenderPassResource = static_cast<RHIVulkanRenderPass*>(RenderPassResource->GetImpl());
-	auto* VulkanPipelineObject = static_cast<RHIVulkanPipelineObject*>(OutPipelineObject->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanRenderPassResource = static_cast<RHIVulkanRenderPass*>(RenderPassResource);
+	auto* VulkanPipelineObject = static_cast<RHIVulkanPipelineObject*>(OutPipelineObject);
 	if (!DescSetLayoutBindings.empty())
 	{
 		CreateDescriptorSetLayout(VulkanPipelineObject->DescriptorSetLayout, DescSetLayoutBindings, VulkanContext->Device);
@@ -100,11 +100,11 @@ void RHIVulkanPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPi
 }
 
 
-void RHIVulkanPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPipelineObject, RHIContext* Context, RHIPresentPass* PresentPass)
+void RHIVulkanPipelineFactory::InitializePipelineObject(IRHIPipelineObject* OutPipelineObject, IRHIContext* Context, IRHIPresentPass* PresentPass)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanPresentPassResource = static_cast<RHIVulkanPresentPass*>(PresentPass->GetImpl());
-	auto* VulkanPipelineObject = static_cast<RHIVulkanPipelineObject*>(OutPipelineObject->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanPresentPassResource = static_cast<RHIVulkanPresentPass*>(PresentPass);
+	auto* VulkanPipelineObject = static_cast<RHIVulkanPipelineObject*>(OutPipelineObject);
 	if (!DescSetLayoutBindings.empty())
 	{
 		DescSetLayoutBindings.erase(std::remove_if(DescSetLayoutBindings.begin(), DescSetLayoutBindings.end(), [](VkDescriptorSetLayoutBinding Desc){return Desc.descriptorCount==0;}), DescSetLayoutBindings.end());
@@ -132,10 +132,10 @@ void RHIVulkanPipelineFactory::InitializePipelineObject(RHIPipelineObject* OutPi
 		BindingDescriptions, AttributeDescriptions, VulkanPipelineObject->DescriptorSetLayout, VulkanPresentPassResource->RenderPass);
 }
 
-void RHIVulkanPipelineFactory::InitializeComputePipelineObject(RHIPipelineObject* OutComputePipelineObject, RHIContext* Context)
+void RHIVulkanPipelineFactory::InitializeComputePipelineObject(IRHIPipelineObject* OutComputePipelineObject, IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanPipelineObject = static_cast<RHIVulkanPipelineObject*>(OutComputePipelineObject->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanPipelineObject = static_cast<RHIVulkanPipelineObject*>(OutComputePipelineObject);
 	if (!DescSetLayoutBindings.empty())
 	{
 		CreateDescriptorSetLayout(VulkanPipelineObject->DescriptorSetLayout, DescSetLayoutBindings, VulkanContext->Device);
@@ -149,7 +149,7 @@ void RHIVulkanPipelineFactory::InitializeComputePipelineObject(RHIPipelineObject
 		VulkanContext->Device, ComputeShaderBytecode, "main", VulkanPipelineObject->DescriptorSetLayout);
 }
 
-void RHIVulkanPipelineFactory::Cleanup(RHIContext* Context)
+void RHIVulkanPipelineFactory::Cleanup(IRHIContext* Context)
 {
 }
 
@@ -171,10 +171,10 @@ void RHIVulkanPipelineFactory::RemoveAllBufferBindings()
 	AttributeDescriptions.clear();
 }
 
-void RHIVulkanRenderPass::Initialize(RHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat)
+void RHIVulkanRenderPass::Initialize(IRHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth, RHIFormat DepthFormat)
 {
 	// Initialize: std::vector<VkAttachmentDescription> & VkRenderPass & VkFramebuffer
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	for(size_t i = 0; i < ColorRTFormats.size(); i++)
 	{
 		VkAttachmentDescription AttachmentDesc{};
@@ -209,7 +209,7 @@ void RHIVulkanRenderPass::Initialize(RHIContext* Context, std::vector<RHIFormat>
 	CreateRenderPassSingleSubpass(RenderPass, VulkanContext->Device, Attachments, DepthAttachmentIndex);
 }
 
-void RHIVulkanRenderPass::Cleanup(RHIContext* Context)
+void RHIVulkanRenderPass::Cleanup(IRHIContext* Context)
 {
 
 }
@@ -225,24 +225,24 @@ RHIVulkanPresentPass::~RHIVulkanPresentPass()
     // Cleanup any Vulkan-specific resources here
 }
 
-void RHIVulkanPresentPass::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, uint32_t MSAASamples, RHIImageResource* InColorRT, RHIImageResource* InDepthRT)
+void RHIVulkanPresentPass::Initialize(IRHIContext* Context, IRHIWindowManager* WindowManager, uint32_t MSAASamples, IRHIImageResource* InColorRT, IRHIImageResource* InDepthRT)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	ColorRT = static_cast<RHIVulkanImageResource*>(InColorRT->GetImpl());
-	DepthRT = static_cast<RHIVulkanImageResource*>(InDepthRT->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanWindowManager = static_cast<RHIVulkanWindowManager*>(WindowManager);
+	ColorRT = static_cast<RHIVulkanImageResource*>(InColorRT);
+	DepthRT = static_cast<RHIVulkanImageResource*>(InDepthRT);
 	msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 	CreatePresentableRenderPass(RenderPass, VulkanContext->Device, DepthRT!=nullptr, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), 
 		VulkanWindowManager->ScreenSizeImages[0]->InnerFormat, msaaSamples);
 }
 
-void RHIVulkanPresentPass::Cleanup(RHIContext* Context)
+void RHIVulkanPresentPass::Cleanup(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkDestroyRenderPass(VulkanContext->Device, RenderPass, nullptr);
 }
 
-void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIVulkanPresentPass::OnWindowResize(IRHIContext* Context, IRHIWindowManager* WindowManager)
 {
 	//WindowManager->RecreateSwapchain(Context);
 	//ColorRT->Cleanup(Context);
@@ -255,19 +255,19 @@ void RHIVulkanPresentPass::OnWindowResize(RHIContext* Context, RHIWindowManager*
 	//DepthRT->InitializeRenderTarget(Context, WindowManager, RenderTargetExtent, IU_DEPTH_RT, msaaSamples);
 }
 
-void RHIVulkanGraphicDispatcher::Initialize(RHIContext* Context)
+void RHIVulkanGraphicsDispatcher::Initialize(IRHIContext* Context)
 {
 	// No longer need to create command buffer here
 }
 
-void RHIVulkanGraphicDispatcher::Cleanup(RHIContext* Context, RHIWindowManager* WindowManager)
+void RHIVulkanGraphicsDispatcher::Cleanup(IRHIContext* Context, IRHIWindowManager* WindowManager)
 {
 	// No longer need to cleanup command buffer here
 }
 
-void RHIVulkanGraphicDispatcher::BindVertexBuffer(RHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
+void RHIVulkanGraphicsDispatcher::BindVertexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
 {
-	auto* VulkanBufferResource = static_cast<RHIVulkanBufferResource*>(BufferResource->GetImpl());
+	auto* VulkanBufferResource = static_cast<RHIVulkanBufferResource*>(BufferResource);
 	BindingInfo Info;
 	Info.BindingIndex = BindingIndex;
 	Info.BufferResource = VulkanBufferResource;
@@ -275,17 +275,17 @@ void RHIVulkanGraphicDispatcher::BindVertexBuffer(RHIBufferResource* BufferResou
 	BindingInfos.push_back(Info);
 }
 
-void RHIVulkanGraphicDispatcher::BindIndexBuffer(RHIBufferResource* BufferResource, uint32_t Offset)
+void RHIVulkanGraphicsDispatcher::BindIndexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset)
 {
-	auto* VulkanBufferResource = static_cast<RHIVulkanBufferResource*>(BufferResource->GetImpl());
+	auto* VulkanBufferResource = static_cast<RHIVulkanBufferResource*>(BufferResource);
 	IndexBindingInfo.BufferResource = VulkanBufferResource;
 	IndexBindingInfo.Offset = Offset;
 }
 
-void RHIVulkanGraphicDispatcher::Draw(RHICommandBuffer* CommandBuffer, RHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
+void RHIVulkanGraphicsDispatcher::Draw(IRHICommandBuffer* CommandBuffer, IRHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {
-	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject->GetImpl());
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
+	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject);
 	vkCmdBindPipeline(VkCmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, VulkanPipeline->Pipeline);
 
 	for (auto& Info : BindingInfos)
@@ -310,11 +310,11 @@ void RHIVulkanGraphicDispatcher::Draw(RHICommandBuffer* CommandBuffer, RHIPipeli
 	vkCmdDrawIndexed(VkCmdBuf, IndexCount, InstanceCount, IndexOffset, 0, 0);
 }
 
-void RHIVulkanGraphicDispatcher::BeginRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass, RHIFrameBuffer* Framebuffer)
+void RHIVulkanGraphicsDispatcher::BeginRenderPass(IRHICommandBuffer* CommandBuffer, IRHIRenderPass* RenderPass, IRHIFrameBuffer* Framebuffer)
 {
-	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
-	auto* VulkanFramebuffer = static_cast<RHIVulkanFrameBuffer*>(Framebuffer->GetImpl());
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
+	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass);
+	auto* VulkanFramebuffer = static_cast<RHIVulkanFrameBuffer*>(Framebuffer);
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -347,52 +347,52 @@ void RHIVulkanGraphicDispatcher::BeginRenderPass(RHICommandBuffer* CommandBuffer
 	vkCmdSetScissor(VkCmdBuf, 0, 1, &scissor);
 }
 
-void RHIVulkanGraphicDispatcher::EndRenderPass(RHICommandBuffer* CommandBuffer, RHIRenderPass* RenderPass)
+void RHIVulkanGraphicsDispatcher::EndRenderPass(IRHICommandBuffer* CommandBuffer, IRHIRenderPass* RenderPass)
 {
-	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
+	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass);
 	vkCmdEndRenderPass(VkCmdBuf);
 }
 
-void RHIVulkanGraphicDispatcher::WaitForGPUIdle(RHIContext* Context)
+void RHIVulkanGraphicsDispatcher::WaitForGPUIdle(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	//vkWaitForFences(VulkanContext->Device, 1, &InFlightFence, VK_TRUE, UINT64_MAX);
 }
 
-void RHIVulkanGraphicDispatcher::TransitionImageAsRenderTarget(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) {
-	//auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-	//auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image->GetImpl());
+void RHIVulkanGraphicsDispatcher::TransitionImageAsRenderTarget(IRHICommandBuffer* CommandBuffer, IRHIImageResource* Image) {
+	//auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
+	//auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image);
 	//TransitionImageLayout(VulkanImage->Image, VkCmdBuf, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VulkanImage->MipLevel);
 	//VulkanImage->DescriptorInfo.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 }
 
-void RHIVulkanGraphicDispatcher::TransitionImageAsShaderRead(RHICommandBuffer* CommandBuffer, RHIImageResource* Image) {
-	//auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
-	//auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image->GetImpl());
+void RHIVulkanGraphicsDispatcher::TransitionImageAsShaderRead(IRHICommandBuffer* CommandBuffer, IRHIImageResource* Image) {
+	//auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
+	//auto* VulkanImage = static_cast<RHIVulkanImageResource*>(Image);
 	//TransitionImageLayout(VulkanImage->Image, VkCmdBuf, VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VulkanImage->MipLevel);
 	//VulkanImage->DescriptorInfo.imageLayout = VkImageLayout::VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 
-void RHIVulkanGraphicDispatcher::EndFrameAndSubmit(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHIWindowManager* WindowManager, RHIFrameBuffer* PresentFrameBuffer)
+void RHIVulkanGraphicsDispatcher::EndFrameAndSubmit(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, IRHIWindowManager* WindowManager, IRHIFrameBuffer* PresentFrameBuffer)
 {
-	//auto* VulkanFB = static_cast<RHIVulkanFrameBuffer*>(PresentFrameBuffer->GetImpl());
+	//auto* VulkanFB = static_cast<RHIVulkanFrameBuffer*>(PresentFrameBuffer);
 	// EndFrameAndSubmit is handled in PresentFrameAndRelease
 }
 
-void RHIVulkanGraphicDispatcher::BeginFrame(RHICommandBuffer* CommandBuffer, RHIContext* Context, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
+void RHIVulkanGraphicsDispatcher::BeginFrame(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass)
 {
 	glfwPollEvents();
 }
 
 
-void RHIVulkanImGUI::Initialize(RHIContext* Context, RHIWindowManager* WindowManager, RHISwapchain* Swapchain, RHIRenderPass* PresentRenderPass)
+void RHIVulkanImGUI::Initialize(IRHIContext* Context, IRHIWindowManager* WindowManager, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass)
 {
-	auto VulkanPlatform = static_cast<RHIVulkanPlatformSupport*>(RHIPlatformSupport::Get()->GetImpl());
-	auto vkWindow = static_cast<RHIVulkanWindowManager*>(WindowManager->GetImpl());
-	auto vkContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto vkPresentPass = static_cast<RHIVulkanRenderPass*>(PresentRenderPass->GetImpl());
-	auto vkSwapchain = static_cast<RHIVulkanSwapchain*>(Swapchain->GetImpl());
+	auto VulkanPlatform = static_cast<RHIVulkanPlatformSupport*>(IRHIPlatformSupport::Get());
+	auto vkWindow = static_cast<RHIVulkanWindowManager*>(WindowManager);
+	auto vkContext = static_cast<RHIVulkanContext*>(Context);
+	auto vkPresentPass = static_cast<RHIVulkanRenderPass*>(PresentRenderPass);
+	auto vkSwapchain = static_cast<RHIVulkanSwapchain*>(Swapchain);
 	
     ImGlobals.Context = ImGui::CreateContext();
 	ImGui::GetAllocatorFunctions(&ImGlobals.MemAllocFunc, &ImGlobals.MemFreeFunc, &ImGlobals.UserData);
@@ -430,17 +430,17 @@ void RHIVulkanImGUI::Cleanup()
 	
 }
 
-void RHIVulkanImGUI::DispatchImGUI(RHICommandBuffer* CommandBuffer, RHIGraphicsDispatcher* Dispatcher)
+void RHIVulkanImGUI::DispatchImGUI(IRHICommandBuffer* CommandBuffer, IRHIGraphicsDispatcher* Dispatcher)
 {
 	ImDrawData* draw_data = ImGui::GetDrawData();
 	const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
-	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer->GetImpl())->CommandBuffer;
+	auto VkCmdBuf = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer)->CommandBuffer;
 	ImGui_ImplVulkan_RenderDrawData(draw_data, VkCmdBuf, nullptr);
 }
 
-void RHIVulkanPipelineObject::SetUniform(RHIUniform* Uniform, uint32_t Binding)
+void RHIVulkanPipelineObject::SetUniform(IRHIUniform* Uniform, uint32_t Binding)
 {
-	auto* VulkanUniform = static_cast<RHIVulkanUniform*>(Uniform->GetImpl());
+	auto* VulkanUniform = static_cast<RHIVulkanUniform*>(Uniform);
 	VkWriteDescriptorSet WriteDescSet{};
 	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	WriteDescSet.dstSet = nullptr;
@@ -457,9 +457,9 @@ void RHIVulkanPipelineObject::SetUniform(RHIUniform* Uniform, uint32_t Binding)
 	WriteDescriptorSets[Binding] = WriteDescSet;
 }
 
-void RHIVulkanPipelineObject::SetImageSampler(RHIImageResource* ImageResource, uint32_t Binding)
+void RHIVulkanPipelineObject::SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding)
 {
-	auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ImageResource->GetImpl());
+	auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ImageResource);
 	VkWriteDescriptorSet WriteDescSet{};
 	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	WriteDescSet.dstSet = nullptr;
@@ -476,9 +476,9 @@ void RHIVulkanPipelineObject::SetImageSampler(RHIImageResource* ImageResource, u
 	WriteDescriptorSets[Binding] = WriteDescSet;
 }
 
-void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIImageResource* ImageResource)
+void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIImageResource* ImageResource)
 {
-	auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ImageResource->GetImpl());
+	auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ImageResource);
 	VkWriteDescriptorSet WriteDescSet{};
 	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	WriteDescSet.dstSet = nullptr;
@@ -495,9 +495,9 @@ void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, Descript
 	WriteDescriptorSets[BindingIndex] = WriteDescSet;
 }
 
-void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, RHIUniform* Uniform)
+void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIUniform* Uniform)
 {
-	auto* VulkanUniform = static_cast<RHIVulkanUniform*>(Uniform->GetImpl());
+	auto* VulkanUniform = static_cast<RHIVulkanUniform*>(Uniform);
 	VkWriteDescriptorSet WriteDescSet{};
 	WriteDescSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	WriteDescSet.dstSet = nullptr;
@@ -514,9 +514,9 @@ void RHIVulkanPipelineObject::SetBindingResource(uint32_t BindingIndex, Descript
 	WriteDescriptorSets[BindingIndex] = WriteDescSet;
 }
 
-void RHIVulkanPipelineObject::Cleanup(RHIContext* Context)
+void RHIVulkanPipelineObject::Cleanup(IRHIContext* Context)
 {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkDestroyPipeline(VulkanContext->Device, Pipeline, nullptr);
 	vkDestroyPipelineLayout(VulkanContext->Device, PipelineLayout, nullptr);
 	vkDestroyDescriptorSetLayout(VulkanContext->Device, DescriptorSetLayout, nullptr);
@@ -528,17 +528,17 @@ RHIVulkanFrameBuffer::RHIVulkanFrameBuffer() {
 RHIVulkanFrameBuffer::~RHIVulkanFrameBuffer() {
 
 }
-void RHIVulkanFrameBuffer::Initialize(RHIContext* Context, RHIRenderPass* RenderPass,
-	std::vector<RHIImageResource*> ColorRTs, RHIImageResource* DepthRT) {
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass->GetImpl());
+void RHIVulkanFrameBuffer::Initialize(IRHIContext* Context, IRHIRenderPass* RenderPass,
+	std::vector<IRHIImageResource*> ColorRTs, IRHIImageResource* DepthRT) {
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(RenderPass);
 	std::vector<VkImageView> ImageViews;
 	for (auto& ColorRT : ColorRTs)
 	{
-		auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ColorRT->GetImpl());
+		auto* VulkanImageResource = static_cast<RHIVulkanImageResource*>(ColorRT);
 		ImageViews.push_back(VulkanImageResource->DescriptorInfo.imageView);
 	}
-	auto* VulkanDepthRT = static_cast<RHIVulkanImageResource*>(DepthRT->GetImpl());
+	auto* VulkanDepthRT = static_cast<RHIVulkanImageResource*>(DepthRT);
 	ImageViews.push_back(VulkanDepthRT->DescriptorInfo.imageView);
 	VkFramebufferCreateInfo framebufferInfo{};
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -556,7 +556,7 @@ void RHIVulkanFrameBuffer::Initialize(RHIContext* Context, RHIRenderPass* Render
 	Extent.width = VulkanDepthRT->ImageExtent.width;
 	Extent.depth = 1;
 }
-void RHIVulkanFrameBuffer::Cleanup(RHIContext* Context) {
+void RHIVulkanFrameBuffer::Cleanup(IRHIContext* Context) {
 
 }
 
