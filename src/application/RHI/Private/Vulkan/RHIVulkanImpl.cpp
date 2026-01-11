@@ -13,6 +13,26 @@
 
 #include "GLFW/glfw3.h"
 
+VulkanAPILoader APILoader;
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateDebugUtilsMessengerEXT(
+    VkInstance instance,
+    const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+    const VkAllocationCallbacks* pAllocator,
+    VkDebugUtilsMessengerEXT* pMessenger) {
+	return APILoader.vkCreateDebugUtilsMessengerEXT(instance, pCreateInfo, pAllocator, pMessenger);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
+    VkCommandBuffer                             commandBuffer,
+    VkPipelineBindPoint                         pipelineBindPoint,
+    VkPipelineLayout                            layout,
+    uint32_t                                    set,
+    uint32_t                                    descriptorWriteCount,
+    const VkWriteDescriptorSet* pDescriptorWrites) {
+	return APILoader.vkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount, pDescriptorWrites);
+}
+
 // Implementation helpers
 void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool);
 
@@ -44,16 +64,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
     }
     return VK_FALSE;
 }
-
-//VkCommandBufferManaged::VkCommandBufferManaged(VkDevice InDevice, VkCommandPool InCommandPool)
-//    : Device(InDevice), CommandPool(InCommandPool)
-//{
-//    CreateCommandBuffer(CommandBuffer, Device, CommandPool);
-//}
-//
-//VkCommandBufferManaged::~VkCommandBufferManaged() {
-//    vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
-//}
 
 void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool)
 {

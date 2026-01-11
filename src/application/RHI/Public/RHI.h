@@ -4,6 +4,7 @@
 
 
 #pragma once
+#include "RHI.h"
 
 #ifdef RHI_IMPLEMENT
 #define RHI_API __declspec(dllexport)
@@ -22,20 +23,16 @@
 
 class IRHIBufferResource;
 class IRHICommandBuffer;
-class IRHIComputeDispatcher;
 class IRHIContext;
 class IRHIFrameBuffer;
-class IRHIGraphicsDispatcher;
 class IRHIImageResource;
 class IRHIImGUI;
 class IRHIPipelineFactory;
 class IRHIPipelineObject;
 class IRHIPlatformSupport;
-class IRHIPresentPass;
 class IRHIRenderPass;
 class IRHISwapchain;
 class IRHIUniform;
-class IRHIWindowManager;
 
 /** Pixel format used in all RHI implementations.
  * Every RHI implementation should always write its own convert function.
@@ -143,8 +140,6 @@ enum RHIImplementationSelection
 
 extern RHI_API RHIImplementationSelection GRHIImplementationSelection; /**< Specify which implementation we are currently using in the application */
 
-class IRHIWindowManager;
-
 /**
  * IRHIPlatformSupport provides Graphics API environment context. 
  * This class serves as a helper class to create & destroy window manager and context, and should be referenced as few as possible in the pipeline creation process. 
@@ -179,55 +174,21 @@ class RHI_API IRHIContext
 public:
     IRHIContext() {}
     virtual ~IRHIContext() {}
-    virtual void Initialize(IRHIPlatformSupport* PlatformSupport) = 0;
+    virtual void Initialize(uint32_t WindowWidth, uint32_t WindowHeight) = 0;
     virtual void Cleanup() = 0;
     virtual void WaitDeviceIdle() = 0;
+    virtual void ProcessFrameInput() = 0;
+    virtual bool IsWindowAlive() = 0;
     virtual std::unique_ptr<IRHIBufferResource    > CreateRHIBufferResource     () = 0;
     virtual std::unique_ptr<IRHICommandBuffer     > CreateRHICommandBuffer      () = 0;
-    virtual std::unique_ptr<IRHIComputeDispatcher > CreateRHIComputeDispatcher  () = 0;
     virtual std::unique_ptr<IRHIFrameBuffer       > CreateRHIFrameBuffer        () = 0;
-    virtual std::unique_ptr<IRHIGraphicsDispatcher> CreateRHIGraphicsDispatcher () = 0;
     virtual std::unique_ptr<IRHIImageResource     > CreateRHIImageResource      () = 0;
     virtual std::unique_ptr<IRHIImGUI             > CreateRHIImGUI              () = 0;
     virtual std::unique_ptr<IRHIPipelineFactory   > CreateRHIPipelineFactory    () = 0;
     virtual std::unique_ptr<IRHIPipelineObject    > CreateRHIPipelineObject     () = 0;
-    virtual std::unique_ptr<IRHIPresentPass       > CreateRHIPresentPass        () = 0;
     virtual std::unique_ptr<IRHIRenderPass        > CreateRHIRenderPass         () = 0;
     virtual std::unique_ptr<IRHISwapchain         > CreateRHISwapchain          () = 0;
     virtual std::unique_ptr<IRHIUniform           > CreateRHIUniform            () = 0;
-    virtual std::unique_ptr<IRHIWindowManager     > CreateRHIWindowManager      () = 0;
-};
-
-/** IRHIWindowManager provide a wrapper for window, e.g.\ glfwwindow.
- * IRHIWindowManager is also responsible for dealing with window resize, full screen mode and v-sync, and swapchain recreation.
- */
-class RHI_API IRHIWindowManager
-{
-public:
-    IRHIWindowManager() {}
-    virtual ~IRHIWindowManager() {}
-    /**
-     * Initialize and create a new window. 
-     * @param PlatformSupport Initialized Platform support. Should immediately call RHIPlatformSupport::InitializePhysicalDevice after calling this function
-     * @param WindowHeight 
-     * @param WindowWidth 
-     */
-    virtual void Initialize(IRHIPlatformSupport* PlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth) = 0;
-    virtual void Cleanup(IRHIPlatformSupport* PlatformSupport) = 0;
-    /**
-     * Call this after IRHIPlatformSupport::InitializePhysicalDevice
-     * @param Context 
-     * @param PlatformSupport 
-     */
-    virtual void InitializeSwapchain(IRHIContext* Context, IRHIPlatformSupport* PlatformSupport) = 0;
-    virtual void CleanupSwapchain(IRHIContext* Context) = 0;
-    virtual void RecreateSwapchain(IRHIContext* Context) = 0;
-    virtual void AddScreenSizeTexture(IRHIImageResource* ImageResource) = 0;
-    virtual void RemoveScreenSizeTexture(IRHIImageResource* ImageResource) = 0;
-    virtual void InitializeRenderPassAsPresent(IRHIRenderPass* OutRenderPass, IRHIContext* Context) = 0;
-    virtual bool IsAlive() = 0;
-    virtual IRHIImageResource* GetColorRenderTarget() = 0;
-    virtual IRHIImageResource* GetDepthRenderTarget() = 0;
 };
 
 /**
@@ -240,16 +201,6 @@ public:
     virtual ~IRHIImageResource() {}
 
     virtual void Initialize(IRHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1) = 0;
-    /**
-     * Create a rendertarget that can be displayed on screen.
-     * @param Context 
-     * @param WindowManager 
-     * @param RTExtent Generally should be {WindowManager.GetWidth(), WindowManager.GetHeight(), 1}. 
-     * @param InUsage Specify rendertarget to store color or depth
-     * @param MultiSamplesCount Use 1, 2, 4, 8, ... for msaa
-     * @see RHIRenderPass::Initialize()
-     */
-    virtual void InitializeRenderTarget(IRHIContext* Context, IRHIWindowManager* WindowManager, ImageExtent3D RTExtent, RHIResourceState InUsage, uint32_t MultiSamplesCount = 1) = 0;
     virtual void Initialize(IRHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1)  = 0;
     /**
      * Copy data to texture
@@ -307,6 +258,8 @@ public:
     virtual ~IRHIRenderPass() {}
 	virtual void Initialize(IRHIContext* Context, std::vector<RHIFormat> ColorRTFormats, bool hasDepth = true, RHIFormat DepthFormat = RHIFormat::D32_SFLOAT) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
+    virtual void BeginRenderPass(IRHICommandBuffer* CommandBuffer, IRHIFrameBuffer* Framebuffer) = 0;
+    virtual void EndRenderPass(IRHICommandBuffer* CommandBuffer) = 0;
 };
 
 class RHI_API IRHIFrameBuffer
@@ -318,19 +271,6 @@ public:
     virtual void Initialize(IRHIContext* Context, IRHIRenderPass* RenderPass,
         std::vector<IRHIImageResource*> ColorRTs, IRHIImageResource* DepthRT) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
-};
-
-/**
- * IRHIRenderPass stores framebuffers, and manages rendertargets.
- */
-class RHI_API IRHIPresentPass
-{
-public:
-    IRHIPresentPass() {}
-    virtual ~IRHIPresentPass() {}
-    virtual void Initialize(IRHIContext* Context, IRHIWindowManager* WindowManager, uint32_t MSAASamples, IRHIImageResource* ColorRT, IRHIImageResource* DepthRT) = 0;
-    virtual void Cleanup(IRHIContext* Context) = 0;
-    virtual void OnWindowResize(IRHIContext* Context, IRHIWindowManager* WindowManager) = 0;
 };
 
 /**
@@ -363,7 +303,6 @@ public:
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) = 0;
     virtual void SetComputeShaders(const std::vector<char>& ComputeShader) = 0;
     virtual void InitializePipelineObject(IRHIPipelineObject* OutPipelineObject, IRHIContext* Context, IRHIRenderPass* RenderPassResource) = 0;
-    virtual void InitializePipelineObject(IRHIPipelineObject* OutPipelineObject, IRHIContext* Context, IRHIPresentPass* PresentPass) = 0;
     virtual void InitializeComputePipelineObject(IRHIPipelineObject* OutComputePipelineObject, IRHIContext* Context) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
 };
@@ -380,7 +319,12 @@ public:
     virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIUniform* Uniform) = 0;
     virtual void SetUniform(IRHIUniform* Uniform, uint32_t Binding) = 0;
     virtual void SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding) = 0;
+    virtual void BindVertexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
+    virtual void BindIndexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
+
+    virtual void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
+    virtual void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) = 0;
 };
 
 /**
@@ -404,64 +348,11 @@ public:
     IRHISwapchain() {}
     IRHISwapchain(const IRHISwapchain&) = delete;
     virtual ~IRHISwapchain() {}
-    virtual void Initialize(IRHIContext* Context, IRHIWindowManager* WindowManager) = 0;
+    virtual void Initialize(IRHIContext* Context) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
     virtual void AcquireFrame(IRHIContext* Context, IRHIFrameBuffer*& OutFrameBuffer, IRHIRenderPass* InRenderPass) = 0;
     virtual void PresentFrameAndRelease(IRHIContext* Context, IRHICommandBuffer* CommandBuffer) = 0;
     virtual ImageExtent3D GetFrameSize() = 0;
-};
-
-/**
- * IRHIGraphicsDispatcher binds the actual buffers with the pipeline, and conduct the actual rendering (record commandbuffers and submit to surface)
- */
-class RHI_API IRHIGraphicsDispatcher
-{
-public:
-    IRHIGraphicsDispatcher() {}
-    virtual ~IRHIGraphicsDispatcher() {}
-    virtual void Initialize(IRHIContext* Context) = 0;
-    virtual void Cleanup(IRHIContext* Context, IRHIWindowManager* WindowManager) = 0;
-    virtual void BindVertexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
-    virtual void BindIndexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset) = 0;
-    /**
-     * Call this between BeginRenderPass & EndRenderPass 
-     * @param CommandBuffer Command buffer to record commands
-     * @param PipelineObject 
-     * @param IndexCount 
-     * @param IndexOffset 
-     * @param InstanceCount 
-     */
-    virtual void Draw(IRHICommandBuffer* CommandBuffer, IRHIPipelineObject* PipelineObject, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
-    virtual void BeginRenderPass(IRHICommandBuffer* CommandBuffer, IRHIRenderPass* RenderPass, IRHIFrameBuffer* Framebuffer) = 0;
-    virtual void EndRenderPass(IRHICommandBuffer* CommandBuffer, IRHIRenderPass* RenderPass) = 0;
-    virtual void BeginFrame(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, ::IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass) = 0;
-    virtual void EndFrameAndSubmit(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, IRHIWindowManager* WindowManager, IRHIFrameBuffer* PresentFrameBuffer = nullptr) = 0;
-    virtual void WaitForGPUIdle(IRHIContext* Context) = 0;
-    virtual void TransitionImageAsShaderRead(IRHICommandBuffer* CommandBuffer, IRHIImageResource* Image) = 0;
-    virtual void TransitionImageAsRenderTarget(IRHICommandBuffer* CommandBuffer, IRHIImageResource* Image) = 0;
-};
-
-/**
- * IRHIComputeDispatcher dispatches compute shader work.
- */
-class RHI_API IRHIComputeDispatcher
-{
-public:
-    IRHIComputeDispatcher() {}
-    IRHIComputeDispatcher(const IRHIComputeDispatcher&) = delete;
-    virtual ~IRHIComputeDispatcher() {}
-    virtual void Initialize(IRHIContext* Context) = 0;
-    virtual void Cleanup(IRHIContext* Context) = 0;
-    /**
-     * Dispatch compute shader work
-     * @param CommandBuffer Command buffer to record compute dispatch commands
-     * @param PipelineObject Compute pipeline object
-     * @param ThreadGroupX Number of thread groups in X dimension
-     * @param ThreadGroupY Number of thread groups in Y dimension
-     * @param ThreadGroupZ Number of thread groups in Z dimension
-     */
-    virtual void Dispatch(IRHICommandBuffer* CommandBuffer, IRHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) = 0;
-    virtual void WaitForGPUIdle(IRHIContext* Context) = 0;
 };
 
 struct ImGuiSharedGlobals;
@@ -475,12 +366,12 @@ public:
     IRHIImGUI() {}
     IRHIImGUI(const IRHIImGUI&) = delete;
     virtual ~IRHIImGUI() {}
-    virtual void Initialize(IRHIContext* Context, IRHIWindowManager* WindowManager, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass) = 0;
+    virtual void Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass) = 0;
     /**
      * Executes drawcalls for ImGUI.
      * @param CommandBuffer Command buffer to record ImGUI draw commands
      */
-    virtual void DispatchImGUI(IRHICommandBuffer* CommandBuffer, IRHIGraphicsDispatcher* Dispatcher) = 0;
+    virtual void DispatchImGUI(IRHICommandBuffer* CommandBuffer) = 0;
     /**
      * UI components are defined here. 
      */

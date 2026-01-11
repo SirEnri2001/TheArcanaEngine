@@ -18,9 +18,6 @@ IRHIPlatformSupport* IRHIPlatformSupport::Get()
 	{
 		return GInstance;
 	}
-	if (GRHIImplementationSelection == RHIImplement_Vulkan)
-	{
-		GInstance = new RHIVulkanPlatformSupport();
-	}
+	GInstance = new RHIVulkanPlatformSupport();
 	return GInstance;
 }

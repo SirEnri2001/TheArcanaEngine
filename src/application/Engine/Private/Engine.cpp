@@ -191,7 +191,6 @@ int PBRRendererTest();
 class RenderViewport {
 public:
     std::unique_ptr<IRHIContext> Context;
-    std::unique_ptr<IRHIWindowManager> WindowManager;
 
     RenderViewport() {
     }
@@ -199,14 +198,7 @@ public:
     void InitializeViewport(int Width, int Height) {
         IRHIPlatformSupport::Get()->Initialize();
         Context = IRHIPlatformSupport::Get()->CreateRHIContext();
-        WindowManager = Context->CreateRHIWindowManager();
-        WindowManager->Initialize(IRHIPlatformSupport::Get(), Height, Width);
-        Context->Initialize(IRHIPlatformSupport::Get());
-        WindowManager->InitializeSwapchain(Context.get(), IRHIPlatformSupport::Get());
-    }
-
-    bool IsWindowAlive() {
-        return WindowManager->IsAlive();
+        Context->Initialize(Width, Height);
     }
 };
 
@@ -436,8 +428,6 @@ public:
     std::unique_ptr<IRHIImageResource> RHIScreenBuffer2;
     std::unique_ptr<IRHIImageResource> RHIScreenBufferDepth;
     std::unique_ptr<IRHIImageResource> RHIStoreImage;
-    std::unique_ptr<IRHIGraphicsDispatcher> GraphicDispatcher;
-    std::unique_ptr<IRHIComputeDispatcher> ComputeDispatcher;
     std::unique_ptr<IRHIRenderPass> PresentPass;
     std::unique_ptr<IRHIRenderPass> PTRenderPass;
     std::unique_ptr<IRHIUniform> CameraUniform;
@@ -473,8 +463,6 @@ public:
         RHIScreenBuffer2 = Context->CreateRHIImageResource();
         RHIScreenBufferDepth = Context->CreateRHIImageResource();
         RHIStoreImage = Context->CreateRHIImageResource();
-        GraphicDispatcher = Context->CreateRHIGraphicsDispatcher();
-        ComputeDispatcher = Context->CreateRHIComputeDispatcher();
         PresentPass = Context->CreateRHIRenderPass();
         PTRenderPass = Context->CreateRHIRenderPass();
         CameraUniform = Context->CreateRHIUniform();
@@ -485,7 +473,7 @@ public:
         ImGUI = Context->CreateRHIImGUI();
 
         // create renderer
-        Swapchain->Initialize(Context, Viewport.WindowManager.get());
+        Swapchain->Initialize(Context);
         ImageExtent3D ext = Swapchain->GetFrameSize();
         RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
         RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
@@ -495,8 +483,6 @@ public:
         std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
         PTRenderPass->Initialize(Context, ColorRTFormats);
         PresentPass->Initialize(Context, ColorRTFormats1);
-        GraphicDispatcher->Initialize(Context);
-        ComputeDispatcher->Initialize(Context);
 
         Pipeline.InitializePipeline(Viewport, *PTRenderPass);
         PostPipeline.InitializePipeline(Viewport, *PresentPass);
@@ -512,7 +498,7 @@ public:
         RHIFullScreenQuadBuffer->CopyToBuffer(CmdBuffer.get(), Context, FullScreenVertices, sizeof(float3) * 8);
         RHIFullScreenQuadIndexBuffer->CopyToBuffer(CmdBuffer.get(), Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         CameraUniform->Initialize(Context, sizeof(CameraUniformObject));
-        ImGUI->Initialize(Context, Viewport.WindowManager.get(), Swapchain.get(), PresentPass.get());
+        ImGUI->Initialize(Context, Swapchain.get(), PresentPass.get());
         std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
         std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
         FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
@@ -542,8 +528,6 @@ public:
         CommandBuffer->Initialize(Context);
         Swapchain->AcquireFrame(Context, FrameBuffer, PresentPass.get());
         CommandBuffer->BeginCommandBuffer();
-        GraphicDispatcher->BeginFrame(CommandBuffer.get(), Context, Swapchain.get(), PresentPass.get());
-
         if (Recompile) {
             CompileAllShaders(TestShaders);
             Pipeline.ReloadPipeline(Viewport, *PTRenderPass);
@@ -553,42 +537,42 @@ public:
 
         RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_WRITE);
         TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
-        ComputeDispatcher->Dispatch(CommandBuffer.get(), TestCompPipeline.PipelineObject.get(), 16, 16, 1);
+        TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), 16, 16, 1);
         if (swap) {
             RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
             RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
-            GraphicDispatcher->BeginRenderPass(CommandBuffer.get(), PTRenderPass.get(), FBuffer2.get());
+            PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer2.get());
         }
         else {
             RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
             RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
-            GraphicDispatcher->BeginRenderPass(CommandBuffer.get(), PTRenderPass.get(), FBuffer1.get());
+            PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer1.get());
         }
         if (!RenderingPaused && !ShaderCompileHasError) {
             Pipeline.PipelineObject->SetUniform(SceneUniform.get(), 0);
             Pipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
             Pipeline.PipelineObject->SetImageSampler(swap ? RHIScreenBuffer1.get() : RHIScreenBuffer2.get(), 2);
-            GraphicDispatcher->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
-            GraphicDispatcher->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
+            Pipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
+            Pipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
             IndexBufferSize = 6;
-            GraphicDispatcher->Draw(CommandBuffer.get(), Pipeline.PipelineObject.get(), IndexBufferSize, 0, 1);
+            Pipeline.PipelineObject->Draw(CommandBuffer.get(), IndexBufferSize, 0, 1);
         }
-        GraphicDispatcher->EndRenderPass(CommandBuffer.get(), PTRenderPass.get());
-        GraphicDispatcher->BeginRenderPass(CommandBuffer.get(), PresentPass.get(), FrameBuffer);
+        PTRenderPass->EndRenderPass(CommandBuffer.get());
+        PresentPass->BeginRenderPass(CommandBuffer.get(), FrameBuffer);
         // Comment this line if you don't want ImGUI
         if (!RenderingPaused && !ShaderCompileHasError) {
             PostPipeline.PipelineObject->SetImageSampler(swap ? RHIScreenBuffer1.get() : RHIScreenBuffer2.get(), 0);
-            GraphicDispatcher->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
-            GraphicDispatcher->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
+            PostPipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
+            PostPipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
             IndexBufferSize = 6;
-            GraphicDispatcher->Draw(CommandBuffer.get(), PostPipeline.PipelineObject.get(), IndexBufferSize, 0, 1);
+            PostPipeline.PipelineObject->Draw(CommandBuffer.get(), IndexBufferSize, 0, 1);
         }
-        ImGUI->DispatchImGUI(CommandBuffer.get(), GraphicDispatcher.get());
-        GraphicDispatcher->EndRenderPass(CommandBuffer.get(), PresentPass.get());
+        ImGUI->DispatchImGUI(CommandBuffer.get());
+        PresentPass->EndRenderPass(CommandBuffer.get());
         CommandBuffer->EndCommandBuffer();
-        GraphicDispatcher->EndFrameAndSubmit(CommandBuffer.get(), Context, Viewport.WindowManager.get());
         Swapchain->PresentFrameAndRelease(Context, CommandBuffer.get());
         Viewport.Context->WaitDeviceIdle();
+        Context->ProcessFrameInput();
         swap  = !swap;
     }
 };
@@ -719,7 +703,7 @@ int main() {
 
     static auto startTime = std::chrono::high_resolution_clock::now();
 
-    while (Viewport.IsWindowAlive())
+    while (Viewport.Context->IsWindowAlive())
     {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();

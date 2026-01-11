@@ -6,6 +6,41 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
+
+class VulkanAPILoader
+{
+public:
+    VkInstance Instance;
+
+    // Vulkan api loaders
+    VKAPI_ATTR VkResult VKAPI_CALL vkCreateDebugUtilsMessengerEXT(
+        VkInstance instance,
+        const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+        const VkAllocationCallbacks* pAllocator,
+        VkDebugUtilsMessengerEXT* pMessenger)
+    {
+        static auto myvkCreateDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(Instance, "vkCreateDebugUtilsMessengerEXT"));
+        return myvkCreateDebugUtilsMessengerEXT(instance, pCreateInfo, pAllocator, pMessenger);
+    }
+
+    VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
+        VkCommandBuffer commandBuffer,
+        VkPipelineBindPoint pipelineBindPoint,
+        VkPipelineLayout layout,
+        uint32_t set,
+        uint32_t descriptorWriteCount,
+        const VkWriteDescriptorSet* pDescriptorWrites)
+    {
+        static auto myvkCmdPushDescriptorSetKHR = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetInstanceProcAddr(
+            Instance, "vkCmdPushDescriptorSetKHR"));
+        return myvkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount,
+            pDescriptorWrites);
+    }
+};
+
+extern VulkanAPILoader APILoader;
+
 struct GLFWwindow;
 struct GLFWmonitor;
 

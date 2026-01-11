@@ -27,19 +27,39 @@ RHIVulkanPlatformSupport* RHIVulkanPlatformSupport::Get()
 
 void RHIVulkanPlatformSupport::Initialize()
 {
+
+}
+
+void RHIVulkanPlatformSupport::Cleanup()
+{
+}
+
+RHIVulkanContext::RHIVulkanContext() {}
+RHIVulkanContext::~RHIVulkanContext() {}
+
+void RHIVulkanContext::OnWindowResize(GLFWwindow* window, int width, int height)
+{
+	auto self = reinterpret_cast<RHIVulkanContext*>(glfwGetWindowUserPointer(window));
+	std::cout << "Windows Resize!\n";
+}
+
+void RHIVulkanContext::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
+{
 	CreateGLFWContext();
 	VkDebugUtilsMessengerCreateInfoEXT DebugCreateInfo{};
-    DebugCreateInfo.flags = 0;
-    DebugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    DebugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    DebugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    DebugCreateInfo.pfnUserCallback = debugCallback;
+	DebugCreateInfo.flags = 0;
+	DebugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	DebugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	DebugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	DebugCreateInfo.pfnUserCallback = debugCallback;
 	CreateVkInstance(Instance, DebugCreateInfo, DebugMessenger, InstanceExtensions);
-	
 
-    if (vkCreateDebugUtilsMessengerEXT(Instance, &DebugCreateInfo, nullptr, &DebugMessenger) != VK_SUCCESS) {
-        throw std::runtime_error("failed to set up debug messenger!");
-    }
+	// Global Vulkan API Loader
+	APILoader.Instance = Instance;
+
+	if (vkCreateDebugUtilsMessengerEXT(Instance, &DebugCreateInfo, nullptr, &DebugMessenger) != VK_SUCCESS) {
+		throw std::runtime_error("failed to set up debug messenger!");
+	}
 	PhysicalDeviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
@@ -53,7 +73,7 @@ void RHIVulkanPlatformSupport::Initialize()
 	{
 		VkPhysicalDeviceProperties PDProp;
 		vkGetPhysicalDeviceProperties(PD, &PDProp);
-        Log("  ", PDProp.deviceName);
+		Log("  ", PDProp.deviceName);
 	}
 
 	// Grab first physical device
@@ -63,35 +83,55 @@ void RHIVulkanPlatformSupport::Initialize()
 	vkGetPhysicalDeviceMemoryProperties(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDMemoryProperties);
 
 	Log("Select Physical Device: ", CurrentPhysicalDevice.PDProperties.deviceName);
-}
 
-void RHIVulkanPlatformSupport::Cleanup()
-{
-	vkDestroyInstance(Instance, nullptr);
-}
+	// create glfw window
+	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
+	CreateVkSurface(Instance, pGLFWwindow, Surface);
+	SurfaceFormats.clear();
+	PresentModes.clear();
+	if (PhysicalDeviceSupportSurface(SurfaceCapabilities, SurfaceFormats, PresentModes, CurrentPhysicalDevice.PhysicalDevice, Surface)
+		&& PhysicalDevideSupportQueueFamilies(CurrentPhysicalDevice.GraphicsQueueFamilyIndex,
+			CurrentPhysicalDevice.PresentQueueFamilyIndex, CurrentPhysicalDevice.PhysicalDevice, Surface)
+		&& CurrentPhysicalDevice.PDFeatures.samplerAnisotropy)
+	{
+	}
+	else {
+		Error("Physical Device does not support this window context! ");
+	}
 
-RHIVulkanContext::RHIVulkanContext() {}
-RHIVulkanContext::~RHIVulkanContext() {}
-
-void RHIVulkanContext::Initialize(IRHIPlatformSupport* PlatformSupport)
-{
-	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport);
-	assert(VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice != nullptr);
-	CreateVkDevice(Device, GraphicsQueue, PresentQueue, VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, 
-		VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex, VulkanPlatformSupport->CurrentPhysicalDevice.PresentQueueFamilyIndex, VulkanPlatformSupport->PhysicalDeviceExtensions);
-	CreateCommandPool(CommandPool, Device, VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex);
+	assert(CurrentPhysicalDevice.PhysicalDevice != nullptr);
+	CreateVkDevice(Device, GraphicsQueue, PresentQueue, CurrentPhysicalDevice.PhysicalDevice, 
+		CurrentPhysicalDevice.GraphicsQueueFamilyIndex, CurrentPhysicalDevice.PresentQueueFamilyIndex, PhysicalDeviceExtensions);
+	CreateCommandPool(CommandPool, Device, CurrentPhysicalDevice.GraphicsQueueFamilyIndex);
 }
 
 void RHIVulkanContext::Cleanup()
 {
+	vkDestroySurfaceKHR(Instance, Surface, nullptr);
+	glfwDestroyWindow(pGLFWwindow);
+	glfwTerminate();
 	vkDestroyCommandPool(Device, CommandPool, nullptr);
 	vkDestroyDevice(Device, nullptr);
+	vkDestroyInstance(Instance, nullptr);
 }
 
 void RHIVulkanContext::WaitDeviceIdle()
 {
 	vkDeviceWaitIdle(Device);
 }
+
+void RHIVulkanContext::ProcessFrameInput()
+{
+	glfwPollEvents();
+}
+
+
+bool RHIVulkanContext::IsWindowAlive()
+{
+	return !glfwWindowShouldClose(pGLFWwindow);
+}
+
+
 std::unique_ptr<IRHIContext> RHIVulkanPlatformSupport::CreateRHIContext()
 {
 	return std::make_unique<RHIVulkanContext>();
@@ -99,145 +139,14 @@ std::unique_ptr<IRHIContext> RHIVulkanPlatformSupport::CreateRHIContext()
 
 std::unique_ptr<IRHIBufferResource    > RHIVulkanContext::CreateRHIBufferResource     () { return std::make_unique<RHIVulkanBufferResource    >(); }
 std::unique_ptr<IRHICommandBuffer     > RHIVulkanContext::CreateRHICommandBuffer      () { return std::make_unique<RHIVulkanCommandBuffer     >(); }
-std::unique_ptr<IRHIComputeDispatcher > RHIVulkanContext::CreateRHIComputeDispatcher  () { return std::make_unique<RHIVulkanComputeDispatcher >(); }
 std::unique_ptr<IRHIFrameBuffer       > RHIVulkanContext::CreateRHIFrameBuffer        () { return std::make_unique<RHIVulkanFrameBuffer       >(); }
-std::unique_ptr<IRHIGraphicsDispatcher> RHIVulkanContext::CreateRHIGraphicsDispatcher () { return std::make_unique<RHIVulkanGraphicsDispatcher>(); }
 std::unique_ptr<IRHIImageResource     > RHIVulkanContext::CreateRHIImageResource      () { return std::make_unique<RHIVulkanImageResource     >(); }
 std::unique_ptr<IRHIImGUI             > RHIVulkanContext::CreateRHIImGUI              () { return std::make_unique<RHIVulkanImGUI             >(); }
 std::unique_ptr<IRHIPipelineFactory   > RHIVulkanContext::CreateRHIPipelineFactory    () { return std::make_unique<RHIVulkanPipelineFactory   >(); }
 std::unique_ptr<IRHIPipelineObject    > RHIVulkanContext::CreateRHIPipelineObject     () { return std::make_unique<RHIVulkanPipelineObject    >(); }
-std::unique_ptr<IRHIPresentPass       > RHIVulkanContext::CreateRHIPresentPass        () { return std::make_unique<RHIVulkanPresentPass       >(); }
 std::unique_ptr<IRHIRenderPass        > RHIVulkanContext::CreateRHIRenderPass         () { return std::make_unique<RHIVulkanRenderPass        >(); }
 std::unique_ptr<IRHISwapchain         > RHIVulkanContext::CreateRHISwapchain          () { return std::make_unique<RHIVulkanSwapchain         >(); }
 std::unique_ptr<IRHIUniform           > RHIVulkanContext::CreateRHIUniform            () { return std::make_unique<RHIVulkanUniform           >(); }
-std::unique_ptr<IRHIWindowManager     > RHIVulkanContext::CreateRHIWindowManager      () { return std::make_unique<RHIVulkanWindowManager     >(); }
-
-void RHIVulkanWindowManager::Initialize(IRHIPlatformSupport* InPlatformSupport, uint32_t WindowHeight, uint32_t WindowWidth)
-{
-	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(InPlatformSupport);
-	PlatformSupport = InPlatformSupport;
-	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
-	CreateVkSurface(VulkanPlatformSupport->Instance, pGLFWwindow, Surface);
-	SurfaceFormats.clear();
-	PresentModes.clear();
-	if (PhysicalDeviceSupportSurface(SurfaceCapabilities, SurfaceFormats, PresentModes, VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface)
-		&& PhysicalDevideSupportQueueFamilies(VulkanPlatformSupport->CurrentPhysicalDevice.GraphicsQueueFamilyIndex, 
-			VulkanPlatformSupport->CurrentPhysicalDevice.PresentQueueFamilyIndex, VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface)
-		&& VulkanPlatformSupport->CurrentPhysicalDevice.PDFeatures.samplerAnisotropy)
-	{
-		return;
-	}
-	else {
-		Error("Physical Device does not support this window context! ");
-	}
-}
-
-void RHIVulkanWindowManager::CleanupSwapchain(IRHIContext* Context)
-{
-//	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-//	for (auto* ImageResource : SwapchainImageResources) {
-//		auto* VulkanImgRes = static_cast<RHIVulkanImageResource*>(ImageResource);
-//		vkDestroyImageView(VulkanContext->Device, VulkanImgRes->DescriptorInfo.imageView, nullptr);
-//	}
-//	vkDestroySwapchainKHR(VulkanContext->Device, CurrentSwapchain.Swapchain, nullptr);
-//	DepthImageResource->Cleanup(Context);
-}
-
-void RHIVulkanWindowManager::InitializeSwapchain(IRHIContext* Context, IRHIPlatformSupport* PlatformSupport)
-{
-//	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-//	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport->GetImpl());
-//
-//	std::vector<VkImage> SwapchainImages;
-//	std::vector<VkImageView> SwapchainImageViews;
-//	VkFormat SwapchainImageFormat;
-//	glfwGetFramebufferSize(pGLFWwindow, reinterpret_cast<int*>(&SwapchainExtent.width), reinterpret_cast<int*>(&SwapchainExtent.height));
-//	while (SwapchainExtent.width == 0 || SwapchainExtent.height == 0) {
-//		glfwGetFramebufferSize(pGLFWwindow, reinterpret_cast<int*>(&SwapchainExtent.width), reinterpret_cast<int*>(&SwapchainExtent.height));
-//		glfwWaitEvents();
-//	}
-//
-//	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VulkanPlatformSupport->CurrentPhysicalDevice.PhysicalDevice, Surface, &SurfaceCapabilities);
-}
-
-void RHIVulkanWindowManager::InitializeRenderPassAsPresent(IRHIRenderPass* OutRenderPass, IRHIContext* Context)
-{
-	//auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-	//auto* VulkanRenderPass = static_cast<RHIVulkanRenderPass*>(OutRenderPass->GetImpl());
-	//PresentRenderPass = OutRenderPass;
-	//VulkanRenderPass->DepthRenderTargets = CurrentSwapchain.DepthRT;
-	//CreatePresentableRenderPass(VulkanRenderPass->RenderPass, VulkanContext->Device, VulkanRenderPass->DepthRenderTargets != nullptr, RHIVulkanPlatformSupport::Get()->GetDepthFormat(), CurrentSwapchain.SwapchainImageFormat, VK_SAMPLE_COUNT_1_BIT);
-	//CurrentSwapchain.SwapchainFramebuffers.resize(CurrentSwapchain.SwapchainImageViews.size());
-	//for (size_t i = 0; i < CurrentSwapchain.SwapchainImageViews.size(); i++) {
-	//	VkFramebufferCreateInfo framebufferInfo{};
-	//	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	//	framebufferInfo.renderPass = VulkanRenderPass->RenderPass;
-	//	framebufferInfo.attachmentCount = 1;//static_cast<uint32_t>(attachments.size());
-	//	framebufferInfo.pAttachments = &CurrentSwapchain.SwapchainImageViews[i];//attachments.data();
-
-	//	framebufferInfo.width = CurrentSwapchain.SwapchainExtent.width;
-	//	framebufferInfo.height = CurrentSwapchain.SwapchainExtent.height;
-	//	framebufferInfo.layers = 1;
-	//	if (VulkanRenderPass->DepthRenderTargets != nullptr) {
-	//		std::array<VkImageView, 2> attachments = {
-	//			CurrentSwapchain.SwapchainImageViews[i],
- //               VulkanRenderPass->DepthRenderTargets->DescriptorInfo.imageView
-	//		};
-
-	//		framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-	//		framebufferInfo.pAttachments = attachments.data();
-
-	//		if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
-	//			throw std::runtime_error("failed to create framebuffer!");
-	//		}
-	//	}
-	//	else {
-	//		if (vkCreateFramebuffer(VulkanContext->Device, &framebufferInfo, nullptr, &CurrentSwapchain.SwapchainFramebuffers[i]) != VK_SUCCESS) {
-	//			throw std::runtime_error("failed to create framebuffer!");
-	//		}
-	//	}
-	//}
-}
-
-
-void RHIVulkanWindowManager::RecreateSwapchain(IRHIContext* Context)
-{
-//	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context->GetImpl());
-//	CleanupSwapchain(Context);
-//	InitializeSwapchain(Context, PlatformSupport);
-}
-
-void RHIVulkanWindowManager::AddScreenSizeTexture(IRHIImageResource* ImageResource)
-{
-	auto* VkImage = static_cast<RHIVulkanImageResource*>(ImageResource);
-	ScreenSizeImages.push_back(VkImage);
-}
-
-void RHIVulkanWindowManager::RemoveScreenSizeTexture(IRHIImageResource* ImageResource)
-{
-	auto* VkImage = static_cast<RHIVulkanImageResource*>(ImageResource);
-	ScreenSizeImages.erase(std::remove(ScreenSizeImages.begin(), ScreenSizeImages.end(), VkImage), ScreenSizeImages.end());
-}
-
-
-void RHIVulkanWindowManager::OnWindowResize(GLFWwindow* window, int width, int height)
-{
-	auto self = reinterpret_cast<RHIVulkanContext*>(glfwGetWindowUserPointer(window));
-	std::cout<<"Windows Resize!\n";
-}
-
-void RHIVulkanWindowManager::Cleanup(IRHIPlatformSupport* PlatformSupport)
-{
-	auto* VulkanPlatformSupport = static_cast<RHIVulkanPlatformSupport*>(PlatformSupport);
-	vkDestroySurfaceKHR(VulkanPlatformSupport->Instance, Surface, nullptr);
-	glfwDestroyWindow(pGLFWwindow);
-	glfwTerminate();
-}
-
-bool RHIVulkanWindowManager::IsAlive()
-{
-	return !glfwWindowShouldClose(pGLFWwindow);
-}
 
 
 RHIVulkanSwapchain::RHIVulkanSwapchain()
@@ -250,20 +159,19 @@ RHIVulkanSwapchain::~RHIVulkanSwapchain()
 
 }
 
-void RHIVulkanSwapchain::Initialize(IRHIContext* Context, IRHIWindowManager* WindowManager)
+void RHIVulkanSwapchain::Initialize(IRHIContext* Context)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
-	auto* VulkanWindow = static_cast<RHIVulkanWindowManager*>(WindowManager);
 	vkDeviceWaitIdle(VulkanContext->Device);
 	CreateSwapchain(
 		Swapchain, SwapchainImages, SwapchainImageViews, SwapchainImageFormat, SwapchainExtent,
 		VulkanContext->Device, 
-		VulkanWindow->Surface, 
-		VulkanWindow->SurfaceCapabilities, 
-		VulkanWindow->SurfaceFormats, 
-		VulkanWindow->PresentModes,
-		RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.GraphicsQueueFamilyIndex,
-		RHIVulkanPlatformSupport::Get()->CurrentPhysicalDevice.PresentQueueFamilyIndex);
+		VulkanContext->Surface, 
+		VulkanContext->SurfaceCapabilities, 
+		VulkanContext->SurfaceFormats, 
+		VulkanContext->PresentModes,
+		VulkanContext->CurrentPhysicalDevice.GraphicsQueueFamilyIndex,
+		VulkanContext->CurrentPhysicalDevice.PresentQueueFamilyIndex);
 	DepthImageResource = new RHIVulkanImageResource();
 	DepthImageResource->Initialize(Context, { SwapchainExtent.width, SwapchainExtent.height, 1 }, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
 	SwapchainFrameBuffers.resize(SwapchainImageViews.size());
@@ -449,24 +357,6 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 	}
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateDebugUtilsMessengerEXT(
-    VkInstance instance,
-    const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-    const VkAllocationCallbacks* pAllocator,
-    VkDebugUtilsMessengerEXT* pMessenger) {
-	return RHIVulkanPlatformSupport::Get()->vkCreateDebugUtilsMessengerEXT(instance, pCreateInfo, pAllocator, pMessenger);
-}
-
-VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
-    VkCommandBuffer                             commandBuffer,
-    VkPipelineBindPoint                         pipelineBindPoint,
-    VkPipelineLayout                            layout,
-    uint32_t                                    set,
-    uint32_t                                    descriptorWriteCount,
-    const VkWriteDescriptorSet* pDescriptorWrites) {
-	return RHIVulkanPlatformSupport::Get()->vkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount, pDescriptorWrites);
-}
-
 // RHIVulkanCommandBuffer implementation
 RHIVulkanCommandBuffer::~RHIVulkanCommandBuffer()
 {
@@ -512,41 +402,4 @@ void RHIVulkanCommandBuffer::EndCommandBuffer()
 void RHIVulkanCommandBuffer::ResetCommandBuffer()
 {
 	vkResetCommandBuffer(CommandBuffer, /*VkCommandBufferResetFlagBits*/ 0);
-}
-
-// RHIVulkanComputeDispatcher implementation
-void RHIVulkanComputeDispatcher::Initialize(IRHIContext* Context)
-{
-	// No special initialization needed for compute dispatcher
-}
-
-void RHIVulkanComputeDispatcher::Cleanup(IRHIContext* Context)
-{
-	// No special cleanup needed for compute dispatcher
-}
-
-void RHIVulkanComputeDispatcher::Dispatch(IRHICommandBuffer* CommandBuffer, IRHIPipelineObject* PipelineObject, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ)
-{
-	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer);
-	VkCommandBuffer VkCmdBuf = VulkanCommandBuffer->CommandBuffer;
-	auto* VulkanPipeline = static_cast<RHIVulkanPipelineObject*>(PipelineObject);
-	
-	// Bind compute pipeline
-	vkCmdBindPipeline(VkCmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, VulkanPipeline->Pipeline);
-	
-	// Push descriptors if needed
-	if (VulkanPipeline->WriteDescriptorSets.size() > 0)
-	{
-		vkCmdPushDescriptorSetKHR(VkCmdBuf, VK_PIPELINE_BIND_POINT_COMPUTE, VulkanPipeline->PipelineLayout,
-			0, VulkanPipeline->WriteDescriptorSets.size(), VulkanPipeline->WriteDescriptorSets.data());
-	}
-	
-	// Dispatch compute shader
-	vkCmdDispatch(VkCmdBuf, ThreadGroupX, ThreadGroupY, ThreadGroupZ);
-}
-
-void RHIVulkanComputeDispatcher::WaitForGPUIdle(IRHIContext* Context)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
-	vkDeviceWaitIdle(VulkanContext->Device);
 }
