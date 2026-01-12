@@ -31,3 +31,8 @@ else()
     message(WARNING "DXC not found! Need to manually set DXC_EXE_PATH or run the batch script under ./src/thirdparties/dxc_2025_02_20 to download one.")
     set(DXC_EXE_PATH "" CACHE FILEPATH "Path to DirectX Shader Compiler with SPIRV CodeGen enabled")
 endif()
+
+add_subdirectory(./SPIRV-Cross-vulkan-sdk-1.4.335.0)
+set_target_properties(spirv-cross spirv-cross-c spirv-cross-core spirv-cross-cpp 
+spirv-cross-glsl spirv-cross-hlsl spirv-cross-msl spirv-cross-reflect spirv-cross-util 
+PROPERTIES FOLDER "Thirdparties/SPIRV-Cross-vulkan-sdk-1.4.335.0")

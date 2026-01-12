@@ -3,6 +3,7 @@
 #define RENDERER_INCLUDE
 #define SHADERCOMPILER_INCLUDE
 #define PBR_RENDERER_INCLUDE
+#define RHI_INCLUDE
 
 #include <chrono>
 #include <fstream>
@@ -12,8 +13,9 @@
 #include "CoreGeometry.h"
 #include "CoreScene.h"
 #include "CoreLog.inl"
-#include "PBRRenderer.h"
-#include "Renderer.h"
+//#include "PBRRenderer.h"
+//#include "Renderer.h"
+#include "RHI.h"
 #include "RHIImGuiHelper.h"
 #include "ShaderCompiler.h"
 
@@ -53,6 +55,53 @@ std::vector<char> readFile(const std::string& filename) {
 
     return buffer;
 }
+
+
+void readFile_U32I(const std::string& filename, std::vector<uint32_t>& buffer_u32) {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open()) {
+        throw std::runtime_error("failed to open file!");
+    }
+
+    size_t fileSize = (size_t)file.tellg();
+    std::vector<char> buffer(fileSize);
+
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+
+    file.close();
+    buffer_u32.resize(buffer.size()/4);
+    for (int i = 0; i < buffer.size(); i+=4) {
+        // Assuming little-endian file format; adjust if needed
+        buffer_u32[i / 4] = static_cast<uint32_t>(buffer[i]) |
+            (static_cast<uint32_t>(buffer[i + 1]) << 8) |
+            (static_cast<uint32_t>(buffer[i + 2]) << 16) |
+            (static_cast<uint32_t>(buffer[i + 3]) << 24);
+    }
+}
+
+std::vector<uint32_t> read_spirv_file(const char* path)
+{
+    FILE* file = fopen(path, "rb");
+    if (!file)
+    {
+        fprintf(stderr, "Failed to open SPIR-V file: %s\n", path);
+        return {};
+    }
+
+    fseek(file, 0, SEEK_END);
+    long len = ftell(file) / sizeof(uint32_t);
+    rewind(file);
+
+    std::vector<uint32_t> spirv(len);
+    if (fread(spirv.data(), sizeof(uint32_t), len, file) != size_t(len))
+        spirv.clear();
+
+    fclose(file);
+    return spirv;
+}
+
 float4 ViewPos = { 2.,2.,2.,1. };
 float4 ViewForward;
 float4 ViewUp;
@@ -652,7 +701,7 @@ void CompileAllShaders(bool CompileTest) {
     }
 }
 
-#if 1
+#if 0
 int main() {
     GRHIImplementationSelection = RHIImplement_Vulkan;
     do {
@@ -713,6 +762,49 @@ int main() {
     }
     return 0;
 }
+#elif 1
+
+#include "spirv_glsl.hpp"
+#include <vector>
+#include <utility>
+
+int main()
+{
+    //readFile("shaderbytecode/glsl/PathTracer.frag");
+    // Read SPIR-V from disk or similar.
+    
+    std::vector<uint32_t> spirv_binary = read_spirv_file("shaderbytecode/glsl/PathTracer.vert");
+
+    spirv_cross::CompilerGLSL glsl(spirv_binary);
+
+    // The SPIR-V is now parsed, and we can perform reflection on it.
+    spirv_cross::ShaderResources resources = glsl.get_shader_resources();
+
+    // Get all sampled images in the shader.
+    for (auto& resource : resources.sampled_images)
+    {
+        unsigned set = glsl.get_decoration(resource.id, spv::DecorationDescriptorSet);
+        unsigned binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
+        printf("Image %s at set = %u, binding = %u\n", resource.name.c_str(), set, binding);
+
+        // Modify the decoration to prepare it for GLSL.
+        glsl.unset_decoration(resource.id, spv::DecorationDescriptorSet);
+
+        // Some arbitrary remapping if we want.
+        glsl.set_decoration(resource.id, spv::DecorationBinding, set * 16 + binding);
+    }
+
+    // Set some options.
+    spirv_cross::CompilerGLSL::Options options;
+    options.version = 310;
+    options.es = true;
+    glsl.set_common_options(options);
+
+    // Compile to GLSL, ready to give to GL driver.
+    std::string source = glsl.compile();
+    std::cout << source;
+}
+
 #else
 int BlinnPhongMain();
 int main()
