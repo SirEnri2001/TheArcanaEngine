@@ -18,6 +18,6 @@ IRHIPlatformSupport* IRHIPlatformSupport::Get()
 	{
 		return GInstance;
 	}
-	GInstance = new RHIVulkanPlatformSupport();
+	GInstance = new RHID3D12PlatformSupport();
 	return GInstance;
 }

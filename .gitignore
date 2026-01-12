@@ -2,6 +2,7 @@ Libs/*
 **/[Bb]uild[s]/
 **/[Bb]uild/
 shaderbytecode/
+hlsl_generated/
 .vs
 imgui.ini
 html/

@@ -62,5 +62,5 @@ PRIVATE ./Private
 
 add_dependencies(RHI CoreMath CoreLog)
 
-target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog  DirectX-Headers d3d12 dxgi d3dcompiler dxguid)
+target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog  DirectX-Headers d3d12 dxgi d3dcompiler dxguid spirv-cross-hlsl)
 target_link_libraries(RHI d3d12.lib)

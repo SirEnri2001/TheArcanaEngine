@@ -1,19 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 
-# these shader files are relative paths to ./shader folder
-# set(SHADER_SOURCES
-# ./glsl/BlinnPhong.frag
-# ./glsl/BlinnPhong.vert
-# ./glsl/PathTracer.frag
-# ./glsl/PathTracer.vert
-# ./glsl/ScreenPost.frag
-# ./glsl/ScreenPost.vert
-# )
-file(GLOB_RECURSE SHADER_SOURCES RELATIVE ${CMAKE_SOURCE_DIR}/shaders "*/glsl/*.frag" "*/glsl/*.vert" "/glsl/*.comp")
-file(GLOB_RECURSE SHADER_SOURCES_ABS "*/shaders/glsl/*.frag" "*/shaders/glsl/*.vert" "*/shaders/glsl/*.comp")
-# message(WARNING ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
+# set paths
 set(SHADER_BYTECODE_DIRECTORY ${CMAKE_SOURCE_DIR}/shaderbytecode)
-# ensure all folders
+set(SHADER_HLSL_GENERATED_DIR ${CMAKE_SOURCE_DIR}/hlsl_generated)
+set(SPIRV_CROSS_BIN ${CMAKE_BINARY_DIR}/bin/Debug/spirv-cross.exe)
+
+
+file(GLOB_RECURSE SHADER_SOURCES RELATIVE ${CMAKE_SOURCE_DIR}/shaders "*/glsl/*.frag" "*/glsl/*.vert" "*/glsl/*.comp")
+file(GLOB_RECURSE SHADER_SOURCES_ABS "*/shaders/glsl/*.frag" "*/shaders/glsl/*.vert" "*/shaders/glsl/*.comp")
+
+# ---- custom target: glslCompile ----
 make_directory(${SHADER_BYTECODE_DIRECTORY}/glsl/)
 add_custom_target(glslCompile 
 DEPENDS ${SHADER_SOURCES}
@@ -21,6 +17,7 @@ WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
 )
 
 foreach(SHADER_FILE ${SHADER_SOURCES})
+    message(WARNING ${SHADER_FILE})
     add_custom_command(TARGET glslCompile  POST_BUILD
     COMMAND 
         glslc ${SHADER_FILE} -o ${SHADER_BYTECODE_DIRECTORY}/${SHADER_FILE}.spv
@@ -28,6 +25,21 @@ foreach(SHADER_FILE ${SHADER_SOURCES})
     )
 endforeach()
 
+# ---- custom target: hlslGenerate ----
+make_directory(${SHADER_HLSL_GENERATED_DIR})
+make_directory(${SHADER_HLSL_GENERATED_DIR}/glsl)
+add_custom_target(hlslGenerate 
+DEPENDS ${SHADER_SOURCES}
+WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+)
+
+foreach(SHADER_FILE ${SHADER_SOURCES})
+    add_custom_command(TARGET hlslGenerate POST_BUILD
+    COMMAND 
+        ${SPIRV_CROSS_BIN} ${SHADER_BYTECODE_DIRECTORY}/${SHADER_FILE}.spv --output ${SHADER_HLSL_GENERATED_DIR}/${SHADER_FILE}.hlsl --hlsl --shader-model 40
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+    )
+endforeach()
 
 # -------------------------------------------------- HLSL ---------------------------------------------------------------------------
 set(HLSL_SHADER_VERT_SOURCES
@@ -76,3 +88,4 @@ foreach(SHADER_FILE ${HLSL_SHADER_FRAG_SOURCES})
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders
     ) 
 endforeach()
+

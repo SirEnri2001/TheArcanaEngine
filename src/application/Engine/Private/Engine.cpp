@@ -81,7 +81,8 @@ void readFile_U32I(const std::string& filename, std::vector<uint32_t>& buffer_u3
     }
 }
 
-std::vector<uint32_t> read_spirv_file(const char* path)
+template<class T>
+std::vector<T> read_spirv_file(const char* path)
 {
     FILE* file = fopen(path, "rb");
     if (!file)
@@ -91,11 +92,11 @@ std::vector<uint32_t> read_spirv_file(const char* path)
     }
 
     fseek(file, 0, SEEK_END);
-    long len = ftell(file) / sizeof(uint32_t);
+    long len = ftell(file) / sizeof(T);
     rewind(file);
 
-    std::vector<uint32_t> spirv(len);
-    if (fread(spirv.data(), sizeof(uint32_t), len, file) != size_t(len))
+    std::vector<T> spirv(len);
+    if (fread(spirv.data(), sizeof(T), len, file) != size_t(len))
         spirv.clear();
 
     fclose(file);
@@ -257,13 +258,15 @@ public:
     virtual void ReloadPipeline(RenderViewport& Viewport, IRHIRenderPass& RenderPass) {}
 };
 
+typedef char ShaderFileType;
+
 class ComputePipeline
 {
 public:
     std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
     std::unique_ptr<IRHIPipelineObject> PipelineObject;
 
-    std::vector<char> ComputeShaderSPIRV;
+    std::vector<ShaderFileType> ComputeShaderSPIRV;
 
     ComputePipeline() {
         ComputeShaderSPIRV = readFile("shaderbytecode/glsl/Test.comp");
@@ -402,14 +405,14 @@ public:
     }
 };
 */
-#if 1
+
 class PathTracerPipeline : public PassPipeline {
 public:
     std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
     std::unique_ptr<IRHIPipelineObject> PipelineObject;
 
-    std::vector<char> VertexShaderSPIRV;
-    std::vector<char> FragmentShaderSPIRV;
+    std::vector<ShaderFileType> VertexShaderSPIRV;
+    std::vector<ShaderFileType> FragmentShaderSPIRV;
 
     PathTracerPipeline() {
         VertexShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.vert");
@@ -442,8 +445,8 @@ public:
     std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
     std::unique_ptr<IRHIPipelineObject> PipelineObject;
 
-    std::vector<char> VertexShaderSPIRV;
-    std::vector<char> FragmentShaderSPIRV;
+    std::vector<ShaderFileType> VertexShaderSPIRV;
+    std::vector<ShaderFileType> FragmentShaderSPIRV;
     PTPostPipeline() {
         VertexShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.vert");
         FragmentShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.frag");
@@ -529,7 +532,7 @@ public:
         RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
         RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE, 1);
         std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
-        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
+        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
         PTRenderPass->Initialize(Context, ColorRTFormats);
         PresentPass->Initialize(Context, ColorRTFormats1);
 
@@ -625,7 +628,7 @@ public:
         swap  = !swap;
     }
 };
-#endif
+
 //void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, RenderViewport& Viewport)
 //{
 //    IRHICommandBuffer CmdBuffer;
@@ -701,9 +704,9 @@ void CompileAllShaders(bool CompileTest) {
     }
 }
 
-#if 0
+#if 1
 int main() {
-    GRHIImplementationSelection = RHIImplement_Vulkan;
+    GRHIImplementationSelection = RHIImplement_D3D12;
     do {
         CompileAllShaders();
         if (ShaderCompileHasError) {
@@ -773,9 +776,10 @@ int main()
     //readFile("shaderbytecode/glsl/PathTracer.frag");
     // Read SPIR-V from disk or similar.
     
-    std::vector<uint32_t> spirv_binary = read_spirv_file("shaderbytecode/glsl/PathTracer.vert");
+    std::vector<char> spirv_binary = readFile("shaderbytecode/glsl/PathTracer.vert");
+    //std::vector<char> spirv_binary = read_spirv_file<char>("shaderbytecode/glsl/PathTracer.vert");
 
-    spirv_cross::CompilerGLSL glsl(spirv_binary);
+    spirv_cross::CompilerGLSL glsl(reinterpret_cast<const uint32_t*>(spirv_binary.data()), spirv_binary.size()/4);
 
     // The SPIR-V is now parsed, and we can perform reflection on it.
     spirv_cross::ShaderResources resources = glsl.get_shader_resources();

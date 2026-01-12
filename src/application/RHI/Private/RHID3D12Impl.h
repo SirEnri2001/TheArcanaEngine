@@ -52,3 +52,8 @@ inline void ThrowIfFailed(HRESULT hr)
 }
 
 #define CHECK_SYSTEM_ERROR(syscall) do{syscall;if(auto ErrorCode = GetLastError()){Error("SystemErrorCode ", ErrorCode, " at ", #syscall);}}while(0)
+
+std::vector<uint32_t> read_spirv_file(const char* path);
+std::string SPIRVToHLSL(const uint32_t* SPIRV_DATA, uint32_t size);
+
+std::string SPIRVToGLSL(const uint32_t* SPIRV_DATA, uint32_t size);
