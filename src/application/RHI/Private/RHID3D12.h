@@ -130,7 +130,6 @@ public:
     
     virtual void ProcessFrameInput() override;
     virtual bool IsWindowAlive() override;
-    virtual std::unique_ptr<IRHIBufferResource    > CreateRHIBufferResource     () override;
     virtual std::unique_ptr<IRHICommandBuffer     > CreateRHICommandBuffer      () override;
     virtual std::unique_ptr<IRHIFrameBuffer       > CreateRHIFrameBuffer        () override;
     virtual std::unique_ptr<IRHIImageResource     > CreateRHIImageResource      () override;
@@ -139,7 +138,7 @@ public:
     virtual std::unique_ptr<IRHIPipelineObject    > CreateRHIPipelineObject     () override;
     virtual std::unique_ptr<IRHIRenderPass        > CreateRHIRenderPass         () override;
     virtual std::unique_ptr<IRHISwapchain         > CreateRHISwapchain          () override;
-    virtual std::unique_ptr<IRHIUniform           > CreateRHIUniform            () override;
+    virtual std::unique_ptr<IRHIBuffer           > CreateRHIBuffer            () override;
     void WaitForPreviousFrame();
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 };
@@ -170,28 +169,28 @@ public:
 };
 
 // RHID3D12BufferResource
-class RHID3D12BufferResource : public IRHIBufferResource
+class RHID3D12BufferResource
 {
 public:
     ComPtr<ID3D12Resource> m_buffer;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
     D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
     RHID3D12BufferResource() = default;
-    virtual ~RHID3D12BufferResource() override = default;
+    virtual ~RHID3D12BufferResource() = default;
 
-    virtual void Initialize(IRHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) override;
-    virtual void CopyToBuffer(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* data, uint32_t TotalBytes) override;
-    virtual void Cleanup(IRHIContext* Context) override;
+    virtual void Initialize(IRHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type);
+    virtual void CopyToBuffer(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* data, uint32_t TotalBytes);
+    virtual void Cleanup(IRHIContext* Context);
 };
 
 // RHID3D12Uniform
-class RHID3D12Uniform : public IRHIUniform
+class RHID3D12Uniform : public IRHIBuffer
 {
 public:
     RHID3D12Uniform() = default;
     virtual ~RHID3D12Uniform() override = default;
 
-    virtual void Initialize(IRHIContext* Context, uint32_t UniformStructSize) override;
+    virtual void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) override;
     virtual void CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes) override;
     virtual void Cleanup(IRHIContext* Context) override;
 
@@ -239,13 +238,13 @@ public:
 
     virtual void Cleanup(IRHIContext* Context) override;
     
-    virtual void SetUniform(IRHIUniform* Uniform, uint32_t Binding) override;
+    virtual void SetUniform(IRHIBuffer* Uniform, uint32_t Binding) override;
+    virtual void SetStorageBuffer(IRHIBuffer* StorageBuffer, uint32_t Binding) override;
     virtual void SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding) override;
-    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIUniform* Uniform) override;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIBuffer* Uniform) override;
     virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIImageResource* ImageResource) override;
-    virtual void BindVertexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
-    virtual void BindIndexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset) override;
-
+    virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) override {}
+    virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) override {}
     virtual void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
     virtual void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
     bool bShouldInitHeap = false;
@@ -270,6 +269,7 @@ public:
     virtual void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) override;
     virtual void RemoveAllBufferBindings() override;
     virtual void SetUniformBinding(uint32_t Binding) override;
+    virtual void SetStorageBufferBinding(uint32_t Binding) override;
     virtual void SetImageSamplerBinding(uint32_t Binding) override;
     virtual void RemoveAllGlobalBindings() override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;

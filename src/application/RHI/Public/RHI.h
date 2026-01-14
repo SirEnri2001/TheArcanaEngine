@@ -21,7 +21,6 @@
 #include <memory>
 #include <vector>
 
-class IRHIBufferResource;
 class IRHICommandBuffer;
 class IRHIContext;
 class IRHIFrameBuffer;
@@ -32,7 +31,7 @@ class IRHIPipelineObject;
 class IRHIPlatformSupport;
 class IRHIRenderPass;
 class IRHISwapchain;
-class IRHIUniform;
+class IRHIBuffer;
 
 /** Pixel format used in all RHI implementations.
  * Every RHI implementation should always write its own convert function.
@@ -83,6 +82,12 @@ enum class RHIResourceState : uint32_t {
 
     // Present
     PRESENTABLE = 1 << 7,
+
+    // Buffers
+    BUFFER_UNIFORM = 1 << 8,
+    BUFFER_SHADER_STORAGE = 1 << 9,
+    BUFFER_VERTEX = 1 << 10,
+    BUFFER_INDEX = 1 << 11,
 };
 
 inline RHIResourceState operator&(RHIResourceState Mask1, RHIResourceState Mask2)
@@ -131,14 +136,12 @@ struct ImageExtent3D
     uint32_t Depth;
 };
 
-enum RHIImplementationSelection
+enum class RHIBackend: uint32_t
 {
-	RHIImplement_Vulkan,
-    RHIImplement_D3D12
+	Vulkan,
+    D3D12,
 };
 
-
-extern RHI_API RHIImplementationSelection GRHIImplementationSelection; /**< Specify which implementation we are currently using in the application */
 
 /**
  * IRHIPlatformSupport provides Graphics API environment context. 
@@ -150,9 +153,9 @@ extern RHI_API RHIImplementationSelection GRHIImplementationSelection; /**< Spec
  */
 class RHI_API IRHIPlatformSupport
 {
-    static IRHIPlatformSupport* GInstance;
+    static std::vector<std::unique_ptr<IRHIPlatformSupport>> GInstances;
 public:
-    IRHIPlatformSupport() {}
+    IRHIPlatformSupport();
     virtual ~IRHIPlatformSupport() {}
 	/**
 	 * Should be called first in application.
@@ -163,7 +166,7 @@ public:
 	 */
 	virtual void Cleanup() = 0;
     virtual std::unique_ptr<IRHIContext> CreateRHIContext() = 0;
-    static IRHIPlatformSupport* Get();
+    static IRHIPlatformSupport* Get(RHIBackend InBackend);
 };
 
 /** IRHIContext serves as a general RHI resource allocator.
@@ -179,7 +182,6 @@ public:
     virtual void WaitDeviceIdle() = 0;
     virtual void ProcessFrameInput() = 0;
     virtual bool IsWindowAlive() = 0;
-    virtual std::unique_ptr<IRHIBufferResource    > CreateRHIBufferResource     () = 0;
     virtual std::unique_ptr<IRHICommandBuffer     > CreateRHICommandBuffer      () = 0;
     virtual std::unique_ptr<IRHIFrameBuffer       > CreateRHIFrameBuffer        () = 0;
     virtual std::unique_ptr<IRHIImageResource     > CreateRHIImageResource      () = 0;
@@ -188,7 +190,7 @@ public:
     virtual std::unique_ptr<IRHIPipelineObject    > CreateRHIPipelineObject     () = 0;
     virtual std::unique_ptr<IRHIRenderPass        > CreateRHIRenderPass         () = 0;
     virtual std::unique_ptr<IRHISwapchain         > CreateRHISwapchain          () = 0;
-    virtual std::unique_ptr<IRHIUniform           > CreateRHIUniform            () = 0;
+    virtual std::unique_ptr<IRHIBuffer           > CreateRHIBuffer            () = 0;
 };
 
 /**
@@ -216,34 +218,14 @@ public:
 };
 
 /**
- * IRHIBufferResource stores vertex and index buffers.
+ * IRHIBuffer stores uniform buffers.
  */
-class RHI_API IRHIBufferResource
+class RHI_API IRHIBuffer
 {
 public:
-    IRHIBufferResource() {}
-    virtual ~IRHIBufferResource() {}
-    virtual void Initialize(IRHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) = 0;
-    /**
-     * Copy data to buffer
-     * @param CommandBuffer Command buffer to record copy commands
-     * @param Context 
-     * @param data 
-     * @param TotalBytes 
-     */
-    virtual void CopyToBuffer(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* data, uint32_t TotalBytes) = 0;
-    virtual void Cleanup(IRHIContext* Context) = 0;
-};
-
-/**
- * IRHIUniform stores uniform buffers.
- */
-class RHI_API IRHIUniform
-{
-public:
-    IRHIUniform() {}
-    virtual ~IRHIUniform() {}
-    virtual void Initialize(IRHIContext* Context, uint32_t UniformStructSize) = 0;
+    IRHIBuffer() {}
+    virtual ~IRHIBuffer() {}
+    virtual void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) = 0;
     virtual void CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
 };
@@ -297,6 +279,7 @@ public:
     virtual void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) = 0;
     virtual void RemoveAllBufferBindings() = 0;
     virtual void SetUniformBinding(uint32_t Binding) = 0;
+    virtual void SetStorageBufferBinding(uint32_t Binding) = 0;
     virtual void SetImageSamplerBinding(uint32_t Binding) = 0;
     virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) = 0;
     virtual void RemoveAllGlobalBindings() = 0;
@@ -316,11 +299,12 @@ public:
     IRHIPipelineObject() {}
     virtual ~IRHIPipelineObject() {}
     virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIImageResource* ImageResource) = 0;
-    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIUniform* Uniform) = 0;
-    virtual void SetUniform(IRHIUniform* Uniform, uint32_t Binding) = 0;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIBuffer* Uniform) = 0;
+    virtual void SetUniform(IRHIBuffer* Uniform, uint32_t Binding) = 0;
+    virtual void SetStorageBuffer(IRHIBuffer* StorageBuffer, uint32_t Binding) = 0;
     virtual void SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding) = 0;
-    virtual void BindVertexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) = 0;
-    virtual void BindIndexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset) = 0;
+    virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) = 0;
+    virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
 
     virtual void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;

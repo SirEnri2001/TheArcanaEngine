@@ -86,7 +86,6 @@ std::unique_ptr<IRHIContext> RHID3D12PlatformSupport::CreateRHIContext()
     return std::make_unique<RHID3D12Context>();
 }
 
-std::unique_ptr<IRHIBufferResource    > RHID3D12Context::CreateRHIBufferResource     () { return std::make_unique<RHID3D12BufferResource    >(); }
 std::unique_ptr<IRHICommandBuffer     > RHID3D12Context::CreateRHICommandBuffer      () { return std::make_unique<RHID3D12CommandBuffer     >(); }
 std::unique_ptr<IRHIFrameBuffer       > RHID3D12Context::CreateRHIFrameBuffer        () { return std::make_unique<RHID3D12FrameBuffer       >(); }
 std::unique_ptr<IRHIImageResource     > RHID3D12Context::CreateRHIImageResource      () { return std::make_unique<RHID3D12ImageResource     >(); }
@@ -95,7 +94,7 @@ std::unique_ptr<IRHIPipelineFactory   > RHID3D12Context::CreateRHIPipelineFactor
 std::unique_ptr<IRHIPipelineObject    > RHID3D12Context::CreateRHIPipelineObject     () { return std::make_unique<RHID3D12PipelineObject    >(); }
 std::unique_ptr<IRHIRenderPass        > RHID3D12Context::CreateRHIRenderPass         () { return std::make_unique<RHID3D12RenderPass        >(); }
 std::unique_ptr<IRHISwapchain         > RHID3D12Context::CreateRHISwapchain          () { return std::make_unique<RHID3D12Swapchain         >(); }
-std::unique_ptr<IRHIUniform           > RHID3D12Context::CreateRHIUniform            () { return std::make_unique<RHID3D12Uniform           >(); }
+std::unique_ptr<IRHIBuffer           > RHID3D12Context::CreateRHIBuffer            () { return std::make_unique<RHID3D12Uniform           >(); }
 
 // RHID3D12Context implementation
 void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
@@ -496,23 +495,23 @@ void RHID3D12BufferResource::Cleanup(IRHIContext* Context)
 }
 
 // RHID3D12Uniform implementation
-void RHID3D12Uniform::Initialize(IRHIContext* Context, uint32_t UniformStructSize)
+void RHID3D12Uniform::Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context);        // Describe and create a constant buffer view (CBV) descriptor heap.
     // Flags indicate that this descriptor heap can be bound to the pipeline 
     // and that descriptors contained in it can be referenced by a root table.
-    UniformStructSize = (UniformStructSize - 1)/256 * 256 + 256;
+    BufferSize = (BufferSize - 1)/256 * 256 + 256;
     ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(UniformStructSize),
+        &CD3DX12_RESOURCE_DESC::Buffer(BufferSize),
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&m_constantBuffer)));
 
     // Describe and create a constant buffer view.
     cbvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
-    cbvDesc.SizeInBytes = UniformStructSize;
+    cbvDesc.SizeInBytes = BufferSize;
 
     D3D12Context->SRVHeapAllocator.Alloc(&CpuDescriptorHandle, &GpuDescriptorHandle);
     D3D12Context->m_device->CreateConstantBufferView(&cbvDesc, CpuDescriptorHandle);
@@ -583,6 +582,11 @@ void RHID3D12PipelineFactory::SetUniformBinding(uint32_t Binding)
     rootParameters.InitAsConstantBufferView(Binding);
     //rootParameters.InitAsDescriptorTable(Ranges.size(), Ranges.data(), D3D12_SHADER_VISIBILITY_PIXEL);
     RootParameters[Binding] = rootParameters;
+}
+
+void RHID3D12PipelineFactory::SetStorageBufferBinding(uint32_t Binding)
+{
+	
 }
 
 void RHID3D12PipelineFactory::SetImageSamplerBinding(uint32_t Binding)
@@ -791,7 +795,7 @@ void RHID3D12PipelineObject::Cleanup(IRHIContext* Context)
     // TODO: Implement D3D12 pipeline cleanup
 }
 
-void RHID3D12PipelineObject::SetUniform(IRHIUniform* Uniform, uint32_t Binding)
+void RHID3D12PipelineObject::SetUniform(IRHIBuffer* Uniform, uint32_t Binding)
 {
     auto* D3D12Uniform = static_cast<RHID3D12Uniform*>(Uniform);
     if(Binding>=GpuDescriptorHandles.size())
@@ -804,6 +808,11 @@ void RHID3D12PipelineObject::SetUniform(IRHIUniform* Uniform, uint32_t Binding)
         cbvDescriptions.resize(Binding + 1);
     }
     cbvDescriptions[Binding] = D3D12Uniform->cbvDesc;
+}
+
+void RHID3D12PipelineObject::SetStorageBuffer(IRHIBuffer* StorageBuffer, uint32_t Binding)
+{
+
 }
 
 void RHID3D12PipelineObject::SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding)
@@ -830,7 +839,7 @@ void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, Descripto
     ImageToTransition.push_back(D3D12ImageResource);
 }
 
-void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIUniform* Uniform)
+void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIBuffer* Uniform)
 {
     auto* D3D12Uniform = static_cast<RHID3D12Uniform*>(Uniform);
     if (BindingIndex >= GpuDescriptorHandles.size())
@@ -845,22 +854,6 @@ void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, Descripto
     cbvDescriptions[BindingIndex] = D3D12Uniform->cbvDesc;
 }
 
-
-void RHID3D12PipelineObject::BindVertexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex)
-{
-    auto* D3D12Buffer = static_cast<RHID3D12BufferResource*>(BufferResource);
-    if (BoundBufferViews.size()<=BindingIndex)
-    {
-        BoundBufferViews.resize(BindingIndex + 1);
-    }
-    BoundBufferViews[BindingIndex] = D3D12Buffer->m_vertexBufferView;
-}
-
-void RHID3D12PipelineObject::BindIndexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset)
-{
-    auto* D3D12BufferResource = static_cast<RHID3D12BufferResource*>(BufferResource);
-    BoundIndexBufferView = D3D12BufferResource->m_indexBufferView;
-}
 
 void RHID3D12PipelineObject::Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount)
 {

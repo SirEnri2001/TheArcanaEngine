@@ -19,7 +19,6 @@ struct GLFWwindow;
 struct ImDrawData;
 
 
-class RHIVulkanBufferResource;
 class RHIVulkanCommandBuffer;
 class RHIVulkanContext;
 class RHIVulkanFrameBuffer;
@@ -30,7 +29,7 @@ class RHIVulkanPipelineObject;
 class RHIVulkanPlatformSupport;
 class RHIVulkanRenderPass;
 class RHIVulkanSwapchain;
-class RHIVulkanUniform;
+class RHIVulkanBuffer;
 
 struct VkImageStateDesc
 {
@@ -41,102 +40,16 @@ struct VkImageStateDesc
 
 class RHIVulkanPlatformSupport : public IRHIPlatformSupport
 {
-	static RHIVulkanPlatformSupport* GInstance;
-
 public:
-
 	RHIVulkanPlatformSupport();
 
 	void Initialize() override;
 	void Cleanup() override;
 	std::unique_ptr<IRHIContext> CreateRHIContext() override;
 
-	static VkFormat GetVkFormat(RHIFormat InFormat)
-	{
-		switch (InFormat)
-		{
-		case R8G8B8A8_SRGB:
-			return VK_FORMAT_R8G8B8A8_SRGB;
-		case B8G8R8A8_SRGB:
-			return VK_FORMAT_B8G8R8A8_SRGB;
-		case R32G32B32_SFLOAT:
-			return VK_FORMAT_R32G32B32_SFLOAT;
-		case R32G32_SFLOAT:
-			return VK_FORMAT_R32G32_SFLOAT;
-		case R32G32B32A32_SFLOAT:
-			return VK_FORMAT_R32G32B32A32_SFLOAT;
-		case D32_SFLOAT:
-			return VK_FORMAT_D32_SFLOAT;
-		}
-		return VK_FORMAT_UNDEFINED;
-	}
-
-	static VkDescriptorType GetDescriptorType(DescriptorType Type)
-	{
-		switch (Type)
-		{
-		case UNIFORM:
-			return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		case SAMPLER2D:
-			return VK_DESCRIPTOR_TYPE_SAMPLER;
-		case IMAGE2D:
-			return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		}
-		return VK_DESCRIPTOR_TYPE_SAMPLER;
-	}
-
-	static VkImageStateDesc GetStateDesc(RHIResourceState InState)
-	{
-		VkImageStateDesc StateDesc{};
-		// Principle: wide stage bits, narrow access bits - by ChatGPT
-		switch (InState)
-		{
-		case RHIResourceState::UNDEFINED:
-			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			StateDesc.Access = 0;
-			StateDesc.PipelineStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-			break;
-		case RHIResourceState::SHADER_READ:
-			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			StateDesc.Access = VK_ACCESS_SHADER_READ_BIT;
-			StateDesc.PipelineStage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-			break;
-		case RHIResourceState::SHADER_WRITE:
-			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_GENERAL;
-			StateDesc.Access = VK_ACCESS_SHADER_WRITE_BIT;
-			StateDesc.PipelineStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-			break;
-		case RHIResourceState::SHADER_READWRITE:
-			break;
-		case RHIResourceState::COLOR_ATTACHMENT:
-			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			StateDesc.Access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			StateDesc.PipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			break;
-		case RHIResourceState::DEPTH_ATTACHMENT:
-			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-			StateDesc.Access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-			StateDesc.PipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			break;
-		case RHIResourceState::COPY_SRC:
-			break;
-		case RHIResourceState::COPY_DST:
-			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-			StateDesc.Access = VK_ACCESS_TRANSFER_WRITE_BIT;
-			StateDesc.PipelineStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-			break;
-		case RHIResourceState::PRESENTABLE:
-			StateDesc.ImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-			StateDesc.Access = VK_ACCESS_MEMORY_READ_BIT;
-			StateDesc.PipelineStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-			break;
-		default:
-			break;
-		}
-		return StateDesc;
-	}
-
-	static RHIVulkanPlatformSupport* Get();
+	static VkFormat GetVkFormat(RHIFormat InFormat);
+	static VkDescriptorType GetDescriptorType(DescriptorType Type);
+	static VkImageStateDesc GetStateDesc(RHIResourceState InState);
 };
 
 class RHIVulkanContext : public IRHIContext
@@ -178,8 +91,7 @@ public:
 	void WaitDeviceIdle() override;
 	void ProcessFrameInput() override;
 	bool IsWindowAlive() override;
-	virtual std::unique_ptr<IRHIBufferResource    > CreateRHIBufferResource     () override;
-    virtual std::unique_ptr<IRHICommandBuffer     > CreateRHICommandBuffer      () override;
+	virtual std::unique_ptr<IRHICommandBuffer     > CreateRHICommandBuffer      () override;
 	virtual std::unique_ptr<IRHIFrameBuffer       > CreateRHIFrameBuffer        () override;
 	virtual std::unique_ptr<IRHIImageResource     > CreateRHIImageResource      () override;
     virtual std::unique_ptr<IRHIImGUI             > CreateRHIImGUI              () override;
@@ -187,7 +99,7 @@ public:
     virtual std::unique_ptr<IRHIPipelineObject    > CreateRHIPipelineObject     () override;
 	virtual std::unique_ptr<IRHIRenderPass        > CreateRHIRenderPass         () override;
     virtual std::unique_ptr<IRHISwapchain         > CreateRHISwapchain          () override;
-    virtual std::unique_ptr<IRHIUniform           > CreateRHIUniform            () override;
+    virtual std::unique_ptr<IRHIBuffer           > CreateRHIBuffer            () override;
 	static void OnWindowResize(GLFWwindow* window, int width, int height);
 
 	VkFormatProperties GetFormatProperties(VkFormat Format)
@@ -317,24 +229,7 @@ public:
 	virtual void Transition(IRHICommandBuffer* CommandBuffer, RHIResourceState InState) override;
 };
 
-class RHIVulkanBufferResource : public IRHIBufferResource
-{
-public:
-	VkBuffer Buffer;
-	VkDeviceMemory DeviceMemory;
-	BufferType Type;
-
-	RHIVulkanBufferResource() = default;
-	~RHIVulkanBufferResource() override = default;
-
-	void Initialize(IRHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type) override;
-	void CopyToBuffer(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* data, uint32_t TotalBytes) override;
-	void Cleanup(IRHIContext* Context) override;
-
-	static VkBufferUsageFlags GetVkBufferUsageFlags(BufferType Type);
-};
-
-class RHIVulkanUniform : public IRHIUniform
+class RHIVulkanBuffer : public IRHIBuffer
 {
 public:
 	VkBuffer Buffer;
@@ -343,10 +238,10 @@ public:
 	VkDescriptorBufferInfo DescriptorBufferInfo;
 	uint32_t Size;
 
-	RHIVulkanUniform() = default;
-	~RHIVulkanUniform() override = default;
+	RHIVulkanBuffer() = default;
+	~RHIVulkanBuffer() override = default;
 
-	void Initialize(IRHIContext* Context, uint32_t UniformStructSize) override;
+	void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) override;
 	void CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes) override;
 	void Cleanup(IRHIContext* Context) override;
 };
@@ -394,6 +289,7 @@ public:
 	void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) override;
     void RemoveAllBufferBindings() override;
 	void SetUniformBinding(uint32_t Binding) override;
+	void SetStorageBufferBinding(uint32_t Binding) override;
 	void SetImageSamplerBinding(uint32_t Binding) override;
 	void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) override;
 	void RemoveAllGlobalBindings() override;
@@ -410,7 +306,7 @@ class RHIVulkanPipelineObject : public IRHIPipelineObject
 public:
 	struct BindingInfo
 	{
-		RHIVulkanBufferResource* BufferResource;
+		VkBuffer Buffer;
 		VkDeviceSize Offset;
 		uint32_t BindingIndex;
 	};
@@ -425,16 +321,17 @@ public:
 	RHIVulkanPipelineObject() = default;
 	~RHIVulkanPipelineObject() override = default;
 
-	void SetUniform(IRHIUniform* Uniform, uint32_t Binding) override;
+	void SetUniform(IRHIBuffer* Uniform, uint32_t Binding) override;
+	void SetStorageBuffer(IRHIBuffer* StorageBuffer, uint32_t Binding) override;
 	void SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding) override;
 	void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIImageResource* ImageResource) override;
-	void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIUniform* Uniform) override;
-	void BindVertexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset, uint32_t BindingIndex) override;
-	void BindIndexBuffer(IRHIBufferResource* BufferResource, uint32_t Offset) override;
+	void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIBuffer* Uniform) override;
+	virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) override;
+	virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) override;
 	void Cleanup(IRHIContext* Context) override;
 
-	virtual void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
-	virtual void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
+	void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
+	void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
 };
 
 class RHIVulkanImGUI : public IRHIImGUI

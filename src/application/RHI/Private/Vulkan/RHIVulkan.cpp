@@ -17,14 +17,6 @@
 
 RHIVulkanPlatformSupport::RHIVulkanPlatformSupport() {}
 
-RHIVulkanPlatformSupport* RHIVulkanPlatformSupport::GInstance = nullptr;
-
-RHIVulkanPlatformSupport* RHIVulkanPlatformSupport::Get()
-{
-	return static_cast<RHIVulkanPlatformSupport*>(IRHIPlatformSupport::Get());
-}
-
-
 void RHIVulkanPlatformSupport::Initialize()
 {
 
@@ -32,6 +24,95 @@ void RHIVulkanPlatformSupport::Initialize()
 
 void RHIVulkanPlatformSupport::Cleanup()
 {
+}
+
+VkFormat RHIVulkanPlatformSupport::GetVkFormat(RHIFormat InFormat)
+{
+	switch (InFormat)
+	{
+	case R8G8B8A8_SRGB:
+		return VK_FORMAT_R8G8B8A8_SRGB;
+	case B8G8R8A8_SRGB:
+		return VK_FORMAT_B8G8R8A8_SRGB;
+	case R32G32B32_SFLOAT:
+		return VK_FORMAT_R32G32B32_SFLOAT;
+	case R32G32_SFLOAT:
+		return VK_FORMAT_R32G32_SFLOAT;
+	case R32G32B32A32_SFLOAT:
+		return VK_FORMAT_R32G32B32A32_SFLOAT;
+	case D32_SFLOAT:
+		return VK_FORMAT_D32_SFLOAT;
+	case R8G8B8A8_UNORM:
+		return VK_FORMAT_R8G8B8A8_UNORM;
+	default:
+		std::runtime_error("UNIMPLEMENTED");
+	}
+	return VK_FORMAT_UNDEFINED;
+}
+
+VkDescriptorType RHIVulkanPlatformSupport::GetDescriptorType(DescriptorType Type)
+{
+	switch (Type)
+	{
+	case UNIFORM:
+		return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	case SAMPLER2D:
+		return VK_DESCRIPTOR_TYPE_SAMPLER;
+	case IMAGE2D:
+		return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	}
+	return VK_DESCRIPTOR_TYPE_SAMPLER;
+}
+
+VkImageStateDesc RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState InState)
+{
+	VkImageStateDesc StateDesc{};
+	// Principle: wide stage bits, narrow access bits - by ChatGPT
+	switch (InState)
+	{
+	case RHIResourceState::UNDEFINED:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		StateDesc.Access = 0;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		break;
+	case RHIResourceState::SHADER_READ:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		StateDesc.Access = VK_ACCESS_SHADER_READ_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+		break;
+	case RHIResourceState::SHADER_WRITE:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		StateDesc.Access = VK_ACCESS_SHADER_WRITE_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+		break;
+	case RHIResourceState::SHADER_READWRITE:
+		break;
+	case RHIResourceState::COLOR_ATTACHMENT:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		StateDesc.Access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		break;
+	case RHIResourceState::DEPTH_ATTACHMENT:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		StateDesc.Access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		break;
+	case RHIResourceState::COPY_SRC:
+		break;
+	case RHIResourceState::COPY_DST:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		StateDesc.Access = VK_ACCESS_TRANSFER_WRITE_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		break;
+	case RHIResourceState::PRESENTABLE:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		StateDesc.Access = VK_ACCESS_MEMORY_READ_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+		break;
+	default:
+		break;
+	}
+	return StateDesc;
 }
 
 RHIVulkanContext::RHIVulkanContext() {}
@@ -137,7 +218,6 @@ std::unique_ptr<IRHIContext> RHIVulkanPlatformSupport::CreateRHIContext()
 	return std::make_unique<RHIVulkanContext>();
 }
 
-std::unique_ptr<IRHIBufferResource    > RHIVulkanContext::CreateRHIBufferResource     () { return std::make_unique<RHIVulkanBufferResource    >(); }
 std::unique_ptr<IRHICommandBuffer     > RHIVulkanContext::CreateRHICommandBuffer      () { return std::make_unique<RHIVulkanCommandBuffer     >(); }
 std::unique_ptr<IRHIFrameBuffer       > RHIVulkanContext::CreateRHIFrameBuffer        () { return std::make_unique<RHIVulkanFrameBuffer       >(); }
 std::unique_ptr<IRHIImageResource     > RHIVulkanContext::CreateRHIImageResource      () { return std::make_unique<RHIVulkanImageResource     >(); }
@@ -146,7 +226,7 @@ std::unique_ptr<IRHIPipelineFactory   > RHIVulkanContext::CreateRHIPipelineFacto
 std::unique_ptr<IRHIPipelineObject    > RHIVulkanContext::CreateRHIPipelineObject     () { return std::make_unique<RHIVulkanPipelineObject    >(); }
 std::unique_ptr<IRHIRenderPass        > RHIVulkanContext::CreateRHIRenderPass         () { return std::make_unique<RHIVulkanRenderPass        >(); }
 std::unique_ptr<IRHISwapchain         > RHIVulkanContext::CreateRHISwapchain          () { return std::make_unique<RHIVulkanSwapchain         >(); }
-std::unique_ptr<IRHIUniform           > RHIVulkanContext::CreateRHIUniform            () { return std::make_unique<RHIVulkanUniform           >(); }
+std::unique_ptr<IRHIBuffer           > RHIVulkanContext::CreateRHIBuffer            () { return std::make_unique<RHIVulkanBuffer           >(); }
 
 
 RHIVulkanSwapchain::RHIVulkanSwapchain()

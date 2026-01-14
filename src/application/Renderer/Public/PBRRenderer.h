@@ -79,9 +79,9 @@ class RendererContext;
 //
 //    std::map<PBR::MaterialPropertyData*, std::vector<PBR::PBRMeshRenderProxy*>> MaterialMap;
 //
-//    IRHIUniform TransformationRelatedUniform;
-//    IRHIUniform MaterialPropertyRelatedUniform;
-//    IRHIUniform LightingRelatedUniform;
+//    IRHIBuffer TransformationRelatedUniform;
+//    IRHIBuffer MaterialPropertyRelatedUniform;
+//    IRHIBuffer LightingRelatedUniform;
 //
 //    IRHIRenderPass PresentPass;
 //

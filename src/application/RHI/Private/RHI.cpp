@@ -6,18 +6,33 @@
 #include "Vulkan/RHIVulkan.h"
 #include "RHID3D12.h"
 
-RHIImplementationSelection GRHIImplementationSelection = RHIImplement_Vulkan;
-
 // IRHIPlatformSupport implementation
 
-IRHIPlatformSupport* IRHIPlatformSupport::GInstance = nullptr;
+std::vector<std::unique_ptr<IRHIPlatformSupport>> IRHIPlatformSupport::GInstances;
 
-IRHIPlatformSupport* IRHIPlatformSupport::Get()
+
+IRHIPlatformSupport::IRHIPlatformSupport()
 {
-	if (GInstance)
+}
+
+IRHIPlatformSupport* IRHIPlatformSupport::Get(RHIBackend InBackend)
+{
+	uint32_t Index = static_cast<uint32_t>(InBackend);
+	GInstances.resize(8);
+	if (GInstances[Index])
 	{
-		return GInstance;
+		return GInstances[Index].get();
 	}
-	GInstance = new RHID3D12PlatformSupport();
-	return GInstance;
+	switch (InBackend)
+	{
+	case RHIBackend::Vulkan:
+		GInstances[Index] = std::make_unique<RHIVulkanPlatformSupport>();
+		break;
+	case RHIBackend::D3D12:
+		GInstances[Index] = std::make_unique<RHID3D12PlatformSupport>();
+		break;
+	default:
+		break;
+	}
+	return GInstances[Index].get();
 }

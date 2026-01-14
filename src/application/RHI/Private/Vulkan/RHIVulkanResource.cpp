@@ -142,86 +142,55 @@ void RHIVulkanImageResource::Transition(IRHICommandBuffer* CommandBuffer, RHIRes
 }
 
 
-VkBufferUsageFlags RHIVulkanBufferResource::GetVkBufferUsageFlags(BufferType Type)
+void RHIVulkanBuffer::Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState)
 {
-	switch (Type)
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	if (
+		!HasFlag(InState, RHIResourceState::BUFFER_SHADER_STORAGE) 
+		&& !HasFlag(InState, RHIResourceState::BUFFER_UNIFORM)
+		&& !HasFlag(InState, RHIResourceState::BUFFER_VERTEX)
+		&& !HasFlag(InState, RHIResourceState::BUFFER_INDEX))
 	{
-	case VERTEX:
-		return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	case INDEX:
-		return VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-	case GENERAL:
-	default:
-		return 0;
+		throw std::runtime_error("Wrong buffer initial state!");
 	}
-}
-
-
-void RHIVulkanBufferResource::Initialize(IRHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType InType)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
-	Type = InType;
-	CreateBuffer(Buffer, VulkanContext->Device, Stride * ElementCounts, GetVkBufferUsageFlags(Type) | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	VkBufferUsageFlags BufferUsage = 0u;
+	if (HasFlag(InState, RHIResourceState::BUFFER_SHADER_STORAGE))
+	{
+		BufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	}
+	if (HasFlag(InState, RHIResourceState::BUFFER_UNIFORM))
+	{
+		BufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	}
+	if (HasFlag(InState, RHIResourceState::BUFFER_VERTEX))
+	{
+		BufferUsage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	}
+	if (HasFlag(InState, RHIResourceState::BUFFER_INDEX))
+	{
+		BufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	}
+	CreateBuffer(Buffer, VulkanContext->Device, BufferSize, BufferUsage);
 	VkMemoryRequirements MemRequirements;
 	vkGetBufferMemoryRequirements(VulkanContext->Device, Buffer, &MemRequirements);
-	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, MemRequirements.size, VulkanContext->GetMemoryType(MemRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, MemRequirements.size, 
+		VulkanContext->GetMemoryType(MemRequirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 	vkBindBufferMemory(VulkanContext->Device, Buffer, DeviceMemory, 0);
-}
-
-void RHIVulkanBufferResource::CopyToBuffer(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* data, uint32_t TotalBytes)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
-	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer);
-	VkCommandBuffer VkCmdBuf = VulkanCommandBuffer->CommandBuffer;
-	
-	VkBuffer stagingBuffer;
-	VkDeviceMemory stagingBufferMemory;
-	CreateBuffer(stagingBuffer, VulkanContext->Device, TotalBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-	VkMemoryRequirements MemRequirement;
-	vkGetBufferMemoryRequirements(VulkanContext->Device, stagingBuffer, &MemRequirement);
-	CreateDeviceMemory(stagingBufferMemory, VulkanContext->Device, MemRequirement.size, VulkanContext->GetMemoryType(MemRequirement, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
-	vkBindBufferMemory(VulkanContext->Device, stagingBuffer, stagingBufferMemory, 0);
-	void* pMappedBuffer;
-	vkMapMemory(VulkanContext->Device, stagingBufferMemory, 0, TotalBytes, 0, &pMappedBuffer);
-	memcpy(pMappedBuffer, data, TotalBytes);
-	vkUnmapMemory(VulkanContext->Device, stagingBufferMemory);
-	BeginCommandBufferOneTimeSubmit(VkCmdBuf);
-	CopyBuffer(stagingBuffer, Buffer, TotalBytes, VkCmdBuf);
-	EndCommandBufferOneTimeSubmit(VkCmdBuf, VulkanContext->GraphicsQueue);
-	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);
-	vkFreeMemory(VulkanContext->Device, stagingBufferMemory, nullptr);
-}
-
-void RHIVulkanBufferResource::Cleanup(IRHIContext* Context)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
-	vkDestroyBuffer(VulkanContext->Device, Buffer, nullptr);
-	vkFreeMemory(VulkanContext->Device, DeviceMemory, nullptr);
-}
-
-void RHIVulkanUniform::Initialize(IRHIContext* Context, uint32_t UniformStructSize)
-{
-	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
-	CreateBuffer(Buffer, VulkanContext->Device, UniformStructSize,	VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-	VkMemoryRequirements MemRequirements;
-	vkGetBufferMemoryRequirements(VulkanContext->Device, Buffer, &MemRequirements);
-	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, MemRequirements.size, VulkanContext->GetMemoryType(MemRequirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
-	vkBindBufferMemory(VulkanContext->Device, Buffer, DeviceMemory, 0);
-	vkMapMemory(VulkanContext->Device, DeviceMemory, 0, UniformStructSize, 0, &MappedMemory);
+	vkMapMemory(VulkanContext->Device, DeviceMemory, 0, BufferSize, 0, &MappedMemory);
 	DescriptorBufferInfo = {};
 	DescriptorBufferInfo.buffer = Buffer;
 	DescriptorBufferInfo.offset = 0;
-	DescriptorBufferInfo.range = UniformStructSize;
-	Size = UniformStructSize;
+	DescriptorBufferInfo.range = BufferSize;
+	Size = BufferSize;
 }
 
-void RHIVulkanUniform::CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes)
+void RHIVulkanBuffer::CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	memcpy(MappedMemory, data, TotalBytes);
 }
 
-void RHIVulkanUniform::Cleanup(IRHIContext* Context)
+void RHIVulkanBuffer::Cleanup(IRHIContext* Context)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkUnmapMemory(VulkanContext->Device, DeviceMemory);
