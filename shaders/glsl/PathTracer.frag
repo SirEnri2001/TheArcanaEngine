@@ -18,6 +18,7 @@ layout(binding = 1) uniform CameraUniform {
     vec3 up;
     ivec2 screenres;
     float time;
+    int frameId;
 } cameraubo;
 
 layout(binding = 2) uniform sampler2D screenBuffer;
@@ -156,6 +157,10 @@ void main() {
         accumulatedIlluminate += emission * totalBaseColor * dot(surfaceNormal, rayWorldSpaceDir) * dot(-rayWorldSpaceDir, worldNormal) / t / t;
     }
     outColor = vec4(accumulatedIlluminate, 1.0);
-    outColor = (outColor + 11*texture(screenBuffer, screenxy.xy))/12.;
+    if(cameraubo.frameId>1){
+        outColor = mix(texture(screenBuffer, screenxy.xy), outColor, 1.0 / float(cameraubo.frameId));
+        outColor.w = 1.0;
+    }
+    //outColor = (outColor + 11*texture(screenBuffer, screenxy.xy))/12.;
 #endif
 }

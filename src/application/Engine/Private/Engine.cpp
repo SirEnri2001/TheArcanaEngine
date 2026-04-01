@@ -106,6 +106,7 @@ std::vector<T> read_spirv_file(const char* path)
 float4 ViewPos = { 2.,2.,2.,1. };
 float4 ViewForward;
 float4 ViewUp;
+bool isClick = false;
 void DrawUI(ImGuiSharedGlobals* ImGlobals)
 {
     ImGui::SetCurrentContext(ImGlobals->Context);
@@ -194,6 +195,7 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
     }
     if (!io.WantCaptureMouse && (io.MouseDown[0] || io.MouseDown[1])) // User operate with actual scene
     {
+        isClick = true;
         float DeltaX = io.MousePos.x - io.MousePosPrev.x;
         float DeltaY = io.MousePos.y - io.MousePosPrev.y;
 
@@ -233,6 +235,9 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         ViewForward = viewMat * ViewForward;
         ViewUp = float4(0., 0., 1., 0.);
         ViewForward = float4(glm::normalize(glm::cross(float3(ViewUp), glm::cross(float3(ViewForward), float3(ViewUp)))), 0.0);
+    }else
+    {
+        isClick = false;
     }
 }
 
@@ -264,6 +269,7 @@ public:
         PipelineFactory->SetComputeShaders(ComputeShaderSPIRV);
         PipelineFactory->SetDescriptorBinding(0, DescriptorType::IMAGE2D);
         PipelineFactory->SetStorageBufferBinding(1);
+        PipelineFactory->SetStorageBufferBinding(2);
         PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
     }
 
@@ -444,6 +450,7 @@ public:
         PipelineObject = Context->CreateRHIPipelineObject();
         PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
         PipelineFactory->SetImageSamplerBinding(0);
+        PipelineFactory->SetUniformBinding(1);
         PipelineFactory->AddBufferBinding(0, sizeof(float3));
         PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
         PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
@@ -474,6 +481,7 @@ public:
     std::unique_ptr<IRHIBuffer> CameraUniform;
     std::unique_ptr<IRHIBuffer> SceneUniform;
     std::unique_ptr<IRHIBuffer> StorageBuffer;
+    std::unique_ptr<IRHIBuffer> PrimitiveBuffer;
     std::unique_ptr<IRHISwapchain> Swapchain;
     std::unique_ptr<IRHIFrameBuffer> FBuffer1;
     std::unique_ptr<IRHIFrameBuffer> FBuffer2;
@@ -493,6 +501,7 @@ public:
         alignas(16) float3 up;
         alignas(8) glm::uvec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
         alignas(8) float time;
+        alignas(4) int frameId;
     } cuo;
 
     PathTraceRenderer() = default;
@@ -516,6 +525,7 @@ public:
         FBuffer2 = Context->CreateRHIFrameBuffer();
         ImGUI = Context->CreateRHIImGUI();
         StorageBuffer = Context->CreateRHIBuffer();
+        PrimitiveBuffer = Context->CreateRHIBuffer();
 
         // create renderer
         Swapchain->Initialize(Context);
@@ -523,7 +533,7 @@ public:
         RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
         RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
         RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
-        RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE, 1);
+        RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
 
     	std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
         std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
@@ -544,24 +554,17 @@ public:
         RHIFullScreenQuadBuffer->CopyToBuffer(Context, FullScreenVertices, sizeof(float3) * 8);
         RHIFullScreenQuadIndexBuffer->CopyToBuffer(Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
-        StorageBuffer->Initialize(Context, 16*16, RHIResourceState::BUFFER_SHADER_STORAGE);
-
-        std::vector<uint32_t> data;
-        data.resize(16 * 16);
-        for (int i = 0; i < 16 * 16; i++)
-        {
-            data[i] = i;
-        }
-        StorageBuffer->CopyToBuffer(Context, data.data(), sizeof(uint32_t) * 16 * 16);
-
+        StorageBuffer->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_SHADER_STORAGE);
         ImGUI->Initialize(Context, Swapchain.get(), PresentPass.get());
         std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
         std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
         FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
         FBuffer2->Initialize(Context, PTRenderPass.get(), ColorRT2, RHIScreenBufferDepth.get());
+
+        cuo.frameId = 1;
     }
 
-    void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp, float time) {
+    void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp, float time, bool isClick) {
         // sensor size 32mm
         // focal length 45mm
         // fov = 2 * atan(sensor_size/2/focal_length)
@@ -569,13 +572,19 @@ public:
         cuo.up = ViewUp;
         cuo.forward = ViewForward;
         cuo.time = time;
+        if (isClick)
+        {
+            cuo.frameId = 1;
+        }
     }
 
     virtual void Render(float4 ViewPos) {
         ImGUI->UpdateUI(pFuncImDraw);
         cuo.screenres.r = Swapchain->GetFrameSize().Width;
         cuo.screenres.g = Swapchain->GetFrameSize().Height;
+        cuo.frameId++;
         CameraUniform->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
+        StorageBuffer->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
         IRHIFrameBuffer* FrameBuffer = nullptr;
         std::unique_ptr<IRHICommandBuffer> CommandBuffer;
         CommandBuffer = Context->CreateRHICommandBuffer();
@@ -592,31 +601,34 @@ public:
         RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_WRITE);
         TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
         TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
-    	TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), 16, 16, 1);
-        if (swap) {
-            RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
-            RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
-            PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer2.get());
-        }
-        else {
-            RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
-            RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
-            PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer1.get());
-        }
-        if (!RenderingPaused && !ShaderCompileHasError) {
-            Pipeline.PipelineObject->SetUniform(SceneUniform.get(), 0);
-            Pipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
-            Pipeline.PipelineObject->SetImageSampler(swap ? RHIScreenBuffer1.get() : RHIScreenBuffer2.get(), 2);
-            Pipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
-            Pipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
-            IndexBufferSize = 6;
-            Pipeline.PipelineObject->Draw(CommandBuffer.get(), IndexBufferSize, 0, 1);
-        }
-        PTRenderPass->EndRenderPass(CommandBuffer.get());
+        TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
+    	TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), 64, 64, 1);
+        //if (swap) {
+        //    RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
+        //    RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
+        //    PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer2.get());
+        //}
+        //else {
+        //    RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
+        //    RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
+        //    PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer1.get());
+        //}
+        //if (!RenderingPaused && !ShaderCompileHasError) {
+        //    Pipeline.PipelineObject->SetUniform(SceneUniform.get(), 0);
+        //    Pipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
+        //    Pipeline.PipelineObject->SetImageSampler(swap ? RHIScreenBuffer1.get() : RHIScreenBuffer2.get(), 2);
+        //    Pipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
+        //    Pipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
+        //    IndexBufferSize = 6;
+        //    Pipeline.PipelineObject->Draw(CommandBuffer.get(), IndexBufferSize, 0, 1);
+        //}
+        //PTRenderPass->EndRenderPass(CommandBuffer.get());
+        RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
         PresentPass->BeginRenderPass(CommandBuffer.get(), FrameBuffer);
         // Comment this line if you don't want ImGUI
         if (!RenderingPaused && !ShaderCompileHasError) {
-            PostPipeline.PipelineObject->SetImageSampler(swap ? RHIScreenBuffer1.get() : RHIScreenBuffer2.get(), 0);
+            PostPipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
+            PostPipeline.PipelineObject->SetImageSampler(RHIStoreImage.get(), 0);
             PostPipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
             PostPipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
             IndexBufferSize = 6;
@@ -753,6 +765,9 @@ int main() {
 
     PTRenderer.SceneUniform->CopyToBuffer(PTRenderer.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
 
+    PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, sizeof(ModelUniformObject) * 8, RHIResourceState::BUFFER_SHADER_STORAGE);
+    PTRenderer.PrimitiveBuffer->CopyToBuffer(PTRenderer.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
+
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     while (PTRenderer.Context->IsWindowAlive())
@@ -760,7 +775,7 @@ int main() {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        PTRenderer.UpdateUniformBuffer(ViewPos, ViewForward, ViewUp, time);
+        PTRenderer.UpdateUniformBuffer(ViewPos, ViewForward, ViewUp, time, isClick);
         PTRenderer.Render(ViewPos);
     }
     return 0;
