@@ -103,9 +103,10 @@ std::vector<T> read_spirv_file(const char* path)
     return spirv;
 }
 
-float4 ViewPos = { 2.,2.,2.,1. };
-float4 ViewForward;
-float4 ViewUp;
+//float4 ViewPos = { 2.,2.,2.,1. };
+//float4 ViewForward;
+//float4 ViewUp;
+float4x4 CameraTransformLocalToWorld;
 bool isClick = false;
 void DrawUI(ImGuiSharedGlobals* ImGlobals)
 {
@@ -199,42 +200,47 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         float DeltaX = io.MousePos.x - io.MousePosPrev.x;
         float DeltaY = io.MousePos.y - io.MousePosPrev.y;
 
-        DeltaX *= 0.25;
-        DeltaY *= 0.25;
-        auto viewMat = glm::mat4(1.f);
-        viewMat = glm::rotate(glm::mat4(1.f), DeltaX * 0.01f, float3(ViewUp)) * viewMat;
-        viewMat = glm::rotate(glm::mat4(1.f), DeltaY * 0.01f, glm::cross(float3(ViewForward), float3(ViewUp))) * viewMat;
+        DeltaX *= 0.001;
+        DeltaY *= 0.001;
 
         float3 PlayerMove = { 0.f, 0.f, 0.f };
         if (ImGui::IsKeyDown(ImGuiKey_W))
         {
-            PlayerMove += float3(ViewForward);
+            PlayerMove += float3(1.f, 0.f, 0.f);
         }
         if (ImGui::IsKeyDown(ImGuiKey_S))
         {
-            PlayerMove -= float3(ViewForward);
+            PlayerMove -= float3(1.f, 0.f, 0.f);
         }
         if (ImGui::IsKeyDown(ImGuiKey_A))
         {
-            PlayerMove -= glm::cross(float3(ViewForward), float3(ViewUp));
+            PlayerMove += float3(0.f, 1.f, 0.f);
         }
         if (ImGui::IsKeyDown(ImGuiKey_D))
         {
-            PlayerMove += glm::cross(float3(ViewForward), float3(ViewUp));
+            PlayerMove -= float3(0.f, 1.f, 0.f);
         }
-        if (ImGui::IsKeyDown(ImGuiKey_E))
+        if (ImGui::IsKeyDown(ImGuiKey_E) || ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
         {
-            PlayerMove -= float3(ViewUp);
+            PlayerMove -= float3(0.f, 0.f, 1.f);
         }
-        if (ImGui::IsKeyDown(ImGuiKey_Q))
+        if (ImGui::IsKeyDown(ImGuiKey_Q) || ImGui::IsKeyDown(ImGuiKey_Space))
         {
-            PlayerMove += float3(ViewUp);
+            PlayerMove += float3(0.f, 0.f, 1.f);
         }
-        viewMat = glm::translate(glm::mat4(1.0), PlayerMove * 0.001f) * viewMat;
-        ViewPos = viewMat * ViewPos;
-        ViewForward = viewMat * ViewForward;
-        ViewUp = float4(0., 0., 1., 0.);
-        ViewForward = float4(glm::normalize(glm::cross(float3(ViewUp), glm::cross(float3(ViewForward), float3(ViewUp)))), 0.0);
+        float4x4 ViewTransform = float4x4(1.0f);
+        float4x4 PitchRotate = glm::rotate(float4x4(1.0f), DeltaY, float3(0.f, 1.f, 0.f));
+        float4x4 YawRotate = glm::rotate(float4x4(1.0f), DeltaX, float3(0.f, 0.f, 1.f));
+        float4x4 Translate = glm::translate(float4x4(1.0f), PlayerMove*0.001f);
+        CameraTransformLocalToWorld = CameraTransformLocalToWorld * Translate * PitchRotate * YawRotate;
+        //ViewPos += float4(PlayerMove*0.01f, 0.0f);
+        //ViewForward.z += DeltaY;
+        //ViewForward.x += -DeltaX;
+        //ViewForward = glm::normalize(ViewForward);
+        //ViewUp = float4(0., 0., 1., 0.);
+        //float3 ViewLeft = glm::normalize(glm::cross(float3(ViewUp), float3(ViewForward)));
+        //ViewUp = float4(glm::normalize(glm::cross(float3(ViewForward), float3(ViewLeft))), 0.0f);
+        //ViewForward = float4(glm::normalize(glm::cross(float3(ViewUp), glm::cross(float3(ViewForward), float3(ViewUp)))), 0.0);
     }else
     {
         isClick = false;
@@ -274,6 +280,10 @@ public:
     }
 
     virtual void ReloadPipeline(IRHIContext* Context)  {
+        ComputeShaderSPIRV = readFile("shaderbytecode/glsl/Test.comp.spv");
+        PipelineFactory->SetComputeShaders(ComputeShaderSPIRV);
+        PipelineObject->Cleanup(Context);
+        PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
     }
 };
 
@@ -425,8 +435,8 @@ public:
     }
 
     virtual void ReloadPipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.vert");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.frag");
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.vert.spv");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.frag.spv");
         PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
         PipelineObject->Cleanup(Context);
         PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
@@ -457,8 +467,8 @@ public:
     }
 
     virtual void ReloadPipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.vert");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.frag");
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.vert.spv");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.frag.spv");
         PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
         PipelineObject->Cleanup(Context);
         PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
@@ -496,9 +506,7 @@ public:
     void (*pFuncImDraw)(ImGuiSharedGlobals*);
 
     struct CameraUniformObject {
-        alignas(16) float3 eye;
-        alignas(16) float3 forward;
-        alignas(16) float3 up;
+        alignas(16) float4x4 camToWorld;
         alignas(8) glm::uvec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
         alignas(8) float time;
         alignas(4) int frameId;
@@ -564,13 +572,11 @@ public:
         cuo.frameId = 1;
     }
 
-    void UpdateUniformBuffer(float3 ViewPos, float3 ViewForward, float3 ViewUp, float time, bool isClick) {
+    void UpdateUniformBuffer(float4x4 camToWorld, float time, bool isClick) {
         // sensor size 32mm
         // focal length 45mm
         // fov = 2 * atan(sensor_size/2/focal_length)
-        cuo.eye = ViewPos;
-        cuo.up = ViewUp;
-        cuo.forward = ViewForward;
+        cuo.camToWorld = camToWorld;
         cuo.time = time;
         if (isClick)
         {
@@ -595,6 +601,7 @@ public:
             CompileAllShaders(TestShaders);
             Pipeline.ReloadPipeline(Context, *PTRenderPass);
             PostPipeline.ReloadPipeline(Context, *PresentPass);
+            TestCompPipeline.ReloadPipeline(Context);
             Recompile = false;
         }
 
@@ -664,6 +671,7 @@ public:
 struct ModelUniformObject {
     alignas(16) float4x4 model;
     alignas(16) float4x4 modelInv;
+    alignas(16) float4x4 modelInvTranspose;
     alignas(16) float3 color;
     alignas(16) float3 emission;
 };
@@ -674,6 +682,7 @@ void SetModelUniform(IRHIContext* Context, IRHIBuffer& Uniform, float4x4 ModelMa
     uniformobject.model = ModelMat;
     uniformobject.modelInv = glm::inverse(ModelMat);
     uniformobject.color = Color;
+    uniformobject.modelInvTranspose = glm::transpose(uniformobject.modelInv);
     Uniform.CopyToBuffer(Context, &uniformobject, sizeof(ModelUniformObject));
 }
 
@@ -681,6 +690,7 @@ void SetSceneUniform(IRHIContext* Context, std::vector<ModelUniformObject>& Obje
     ModelUniformObject uniformobject;
     uniformobject.model = ModelMat;
     uniformobject.modelInv = glm::inverse(ModelMat);
+    uniformobject.modelInvTranspose = glm::transpose(uniformobject.modelInv);
     uniformobject.color = Color;
     uniformobject.emission = emission;
     Objects.push_back(uniformobject);
@@ -709,7 +719,7 @@ void CompileAllShaders(bool CompileTest) {
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag.spv", "");
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_VERTSHADER, "./shaderbytecode/glsl/ScreenPost.vert.spv", "");
         IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_FRAGSHADER, "./shaderbytecode/glsl/ScreenPost.frag.spv", "");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(TEST_COMPSHADER, "./shaderbytecode/glsl/Test.comp.spv", "-DCOMPILETEST");
+        IsSucceeded = IsSucceeded && Compiler.DirectCompile(TEST_COMPSHADER, "./shaderbytecode/glsl/Test.comp.spv", "");
     }
     if (!IsSucceeded) {
         ShaderCompileHasError = true;
@@ -731,10 +741,10 @@ int main() {
     PathTraceRenderer PTRenderer;
     PTRenderer.pFuncImDraw = DrawUI;
     PTRenderer.CreateRenderer(1000, 1000);
-
-    ViewPos = float4(-0.27f, -0.8f, 0.27f, 1.f);
-    ViewUp = float4(0., 0., 1., 0.);
-    ViewForward = float4(0., 1., 0., 0.);
+    CameraTransformLocalToWorld = float4x4(1.f);
+    CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
+    CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
+    CameraTransformLocalToWorld[3] = float4(-0.27f, -0.8f, 0.27f, 1.f);
 
     PTRenderer.SceneUniform->Initialize(PTRenderer.Context, sizeof(ModelUniformObject) * 8, RHIResourceState::BUFFER_UNIFORM);
 
@@ -761,7 +771,7 @@ int main() {
     SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
 
     // Light
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
+    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.)*200.f);
 
     PTRenderer.SceneUniform->CopyToBuffer(PTRenderer.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
 
@@ -775,8 +785,8 @@ int main() {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        PTRenderer.UpdateUniformBuffer(ViewPos, ViewForward, ViewUp, time, isClick);
-        PTRenderer.Render(ViewPos);
+        PTRenderer.UpdateUniformBuffer(CameraTransformLocalToWorld, time, isClick);
+        PTRenderer.Render(float4(1.f));
     }
     return 0;
 }

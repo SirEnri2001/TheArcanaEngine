@@ -1,10 +1,8 @@
 #version 450
 
-layout (binding = 0, rgba8) uniform writeonly image2D outImage;
+layout (binding = 0, rgba8) uniform image2D outImage;
 layout(std140, binding = 1) readonly buffer UniformBuffer{
-    vec3 eye;
-    vec3 forward;
-    vec3 up;
+    mat4 camToWorld;
     ivec2 screenres;
     float time;
     int frameId;
@@ -13,6 +11,7 @@ layout(std140, binding = 1) readonly buffer UniformBuffer{
 struct ModelUniform {
     mat4 model;
     mat4 modelInv;
+    mat4 modelInvTranspose;
     vec3 color;
     vec3 emission;
 };
@@ -24,13 +23,19 @@ layout(std140, binding = 2) readonly buffer PrimitiveBuffer{
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 
-void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColor, out vec3 worldNormal, out vec3 emission){
+void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColor, out vec3 worldNormal, out vec3 emission, out vec4 worldPoint){
     t = 999999999.;
     baseColor = vec3(0.);
     worldNormal = vec3(0.);
     emission = vec3(0.);
     for(int i = 0;i < 8;i ++){
         ModelUniform ubo = primitives.data[i];
+        
+        mat3 modelInvTranspose = mat3(
+            ubo.modelInvTranspose[0].xyz, 
+            ubo.modelInvTranspose[1].xyz, 
+            ubo.modelInvTranspose[2].xyz
+        );
         vec3 invertRayPos = vec3(ubo.modelInv * vec4(rayPos, 1.));
         vec3 invertRayDir = vec3(ubo.modelInv * vec4(rayDir, 0.));
         float tzplus  = ( 1. - invertRayPos.z) / invertRayDir.z;
@@ -44,8 +49,9 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
             if(abs(Intersect.x)<1. && abs(Intersect.y)<1.){
                 t = tzplus;
                 baseColor = ubo.color;
-                worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., 0., 1., 0.));
+                worldNormal = vec3(modelInvTranspose * vec3(0., 0., 1.));
                 emission = ubo.emission;
+                worldPoint = ubo.model * vec4(Intersect,1.0);
             }
         }
         if(tzminus> 0. && tzminus < t){
@@ -53,8 +59,9 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
             if(abs(Intersect.x)<1. && abs(Intersect.y)<1.){
                 t = tzminus;
                 baseColor = ubo.color;
-                worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., 0., -1., 0.));
+                worldNormal = vec3(modelInvTranspose * vec3(0., 0., -1.));
                 emission = ubo.emission;
+                worldPoint = ubo.model * vec4(Intersect,1.0);
             }
         }
         if(typlus> 0. && typlus < t){
@@ -62,8 +69,9 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
             if(abs(Intersect.x)<1. && abs(Intersect.z)<1.){
                 t = typlus;
                 baseColor = ubo.color;
-                worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., 1., 0., 0.));
+                worldNormal = vec3(modelInvTranspose * vec3(0., 1., 0.));
                 emission = ubo.emission;
+                worldPoint = ubo.model * vec4(Intersect,1.0);
             }
         }
         if(tyminus> 0. && tyminus < t){
@@ -71,8 +79,9 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
             if(abs(Intersect.x)<1. && abs(Intersect.z)<1.){
                 t = tyminus;
                 baseColor = ubo.color;
-                worldNormal = vec3(transpose(ubo.modelInv) * vec4(0., -1., 0., 0.));
+                worldNormal = vec3(modelInvTranspose * vec3(0., -1., 0.));
                 emission = ubo.emission;
+                worldPoint = ubo.model * vec4(Intersect,1.0);
             }
         }
         if(txplus> 0. && txplus < t){
@@ -80,8 +89,9 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
             if(abs(Intersect.z)<1. && abs(Intersect.y)<1.){
                 t = txplus;
                 baseColor = ubo.color;
-                worldNormal = vec3(transpose(ubo.modelInv) * vec4(1., 0., 0., 0.));
+                worldNormal = vec3(modelInvTranspose * vec3(1., 0., 0.));
                 emission = ubo.emission;
+                worldPoint = ubo.model * vec4(Intersect,1.0);
             }
         }
         if(txminus> 0. && txminus < t){
@@ -89,11 +99,13 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
             if(abs(Intersect.z)<1. && abs(Intersect.y)<1.){
                 t = txminus;
                 baseColor = ubo.color;
-                worldNormal = vec3(transpose(ubo.modelInv) * vec4(-1., 0., 0., 0.));
+                worldNormal = vec3(modelInvTranspose * vec3(-1., 0., 0.));
                 emission = ubo.emission;
+                worldPoint = ubo.model * vec4(Intersect,1.0);
             }
         }
     }
+    worldNormal = normalize(worldNormal);
 }
 
 vec3 hash( vec3 p )
@@ -114,14 +126,19 @@ void main()
 {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     vec2 pixel_f = vec2(pixel);
+    // perturb the sampling point
+    vec3 perturb;
+    GetRandomDir(uniforms.time / 100., pixel_f.xy * 0.1, perturb);
+    pixel_f += perturb.xy*0.5;
     ivec2 size = imageSize(outImage);
-    vec4 outColor = vec4(1., 0., 1., 1.);
+    vec4 outColor = vec4(0., 0., 0., 1.);
     if(pixel.x>size.x || pixel.y > size.y){
         return;
     }
     // sensor size 32mm
     // focal length 45mm
     // fov = 2 * atan(sensor_size/2/focal_length)
+    vec4 inColor = imageLoad(outImage, pixel);
     float halffov = atan(0.032/2./0.045);
     // assume our camera near plane width is 2 as in ndc.
     float cameraDistance = 1. / tan(halffov);
@@ -130,48 +147,49 @@ void main()
     screenxy.y *= -1;
     vec3 rayUnnorm = vec3(ndc.x, ndc.y, cameraDistance);
     vec3 rayCamSpaceDir = normalize(rayUnnorm);
-    mat3 camToWorld1;
-    camToWorld1[0] = cross(uniforms.forward, uniforms.up);
-    camToWorld1[1] = uniforms.up;
-    camToWorld1[2] = uniforms.forward;
-    vec3 rayWorldSpaceDir = (camToWorld1 * rayCamSpaceDir);
-    vec3 rayWorldOrigin = uniforms.eye;
+    rayCamSpaceDir.xyz = rayCamSpaceDir.zxy;
+    rayCamSpaceDir.y *= -1.;
+    mat4 camToWorld = uniforms.camToWorld;
+    vec3 w_o = vec3(camToWorld * vec4(rayCamSpaceDir, 0.));
+    vec4 eye_pos = camToWorld * vec4(0., 0., 0., 1.);
+    vec3 rayWorldOrigin = vec3(eye_pos);
     vec3 baseColor;
-    vec3 worldNormal;
-    vec3 surfaceNormal;
-    vec3 emission;
+    vec3 worldNormal = vec3(0., 0., 0.);
+    vec3 emission = vec3(0., 0., 0.);
     vec3 accumulatedIlluminate = vec3(0.);
-    float t;
+    float t = 99999.;
     int validRays = 0;
     bool inBox = true;
-    vec3 totalBaseColor = vec3(1.0);
-    rayWorldSpaceDir = normalize(camToWorld1 * rayCamSpaceDir);
-    rayWorldOrigin = uniforms.eye;
-    RayIntersect(uniforms.eye, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
-    surfaceNormal = worldNormal;
-    if(t>10000){
-        outColor = vec4(rayWorldSpaceDir, 1.);
-        imageStore(outImage, pixel, outColor);
-        return;
-        inBox = false;
-        outColor = vec4(0.,0.,0., 1.);
-        imageStore(outImage, pixel, outColor);
-        return;
+    vec3 throughput = vec3(1.0);
+    vec4 worldPoint = vec4(0.0, 0.0, 0.0, 1.0);
+    for (int i = 0; i < 6; i++){
+        RayIntersect(rayWorldOrigin, w_o, t, baseColor, worldNormal, emission, worldPoint);
+        if(t>10000){
+            outColor = vec4(0., 0., 0., 1.);
+            break;
+        }
+        if (emission.x > 0.0001){
+            outColor = vec4(throughput*emission, 1.0);
+            break;
+        }
+        rayWorldOrigin = rayWorldOrigin + (t-0.001) * w_o;
+        vec3 w_i;
+        GetRandomDir(uniforms.time / 100. + i, ndc.xy * 0.1, w_i);
+        if (dot(w_i, worldNormal)< 0.){
+            w_i *= -1.;
+        }
+        throughput *= baseColor * abs(dot(w_i, worldNormal));
+        w_o = w_i;
     }
-    totalBaseColor *= baseColor;
-    rayWorldOrigin = rayWorldOrigin + (t - 0.00001) * rayWorldSpaceDir;
-    GetRandomDir(uniforms.time / 100., ndc.xy, rayWorldSpaceDir);
-    if (dot(rayWorldSpaceDir, worldNormal)< 0.){
-        rayWorldSpaceDir *= -1.;
+    //outColor = vec4(1. / t, 0., 0., 1.);
+    //outColor = vec4(worldNormal * 0.5 + 0.5, 1.0);
+
+    float gamma = 2.2;
+    //outColor = outColor / (1. + outColor);
+    outColor.rgb = pow(outColor.rgb, vec3(1.0/gamma));
+    if(uniforms.frameId>1 && inColor.x==inColor.x){
+        outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
+        outColor.w = 1.0;
     }
-    RayIntersect(rayWorldOrigin, rayWorldSpaceDir, t, baseColor, worldNormal, emission);
-    if(t<10000){
-        accumulatedIlluminate += emission * totalBaseColor * dot(surfaceNormal, rayWorldSpaceDir) * dot(-rayWorldSpaceDir, worldNormal) / t / t;
-    }
-    outColor = vec4(accumulatedIlluminate, 1.0);
-    // if(uniforms.frameId>1){
-    //     outColor = mix(texture(screenBuffer, screenxy.xy), outColor, 1.0 / float(uniforms.frameId));
-    //     outColor.w = 1.0;
-    // }
     imageStore(outImage, pixel, outColor);
 }

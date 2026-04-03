@@ -1,9 +1,11 @@
 #version 450
 
 layout(location = 0) out vec4 outColor;
+
 struct ModelUniform {
     mat4 model;
     mat4 modelInv;
+    mat4 modelInvTranspose;
     vec3 color;
     vec3 emission;
 };
