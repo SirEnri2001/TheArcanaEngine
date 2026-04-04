@@ -242,6 +242,9 @@ public:
 	~RHIVulkanBuffer() override = default;
 
 	void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) override;
+    virtual void Initialize(IRHIContext* Context, uint32_t ElementSize, uint32_t NumElements, RHIResourceState InState) override {
+		return Initialize(Context, ElementSize * NumElements, InState);
+	}
 	void CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes) override;
 	void Cleanup(IRHIContext* Context) override;
 };
@@ -329,6 +332,7 @@ public:
 	virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) override;
 	virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) override;
 	void Cleanup(IRHIContext* Context) override;
+	virtual void CopyDescriptors(IRHIContext* Context) override {}
 
 	void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
 	void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;

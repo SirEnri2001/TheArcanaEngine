@@ -6,7 +6,7 @@ set(SHADER_HLSL_GENERATED_DIR ${CMAKE_SOURCE_DIR}/hlsl_generated)
 set(SPIRV_CROSS_BIN ${CMAKE_BINARY_DIR}/bin/Debug/spirv-cross.exe)
 
 
-file(GLOB_RECURSE SHADER_SOURCES RELATIVE ${CMAKE_SOURCE_DIR}/shaders "*/glsl/*.frag" "*/glsl/*.vert" "*/glsl/*.comp")
+file(GLOB_RECURSE SHADER_SOURCES RELATIVE ${CMAKE_SOURCE_DIR}/shaders "/glsl/*.frag" "/glsl/*.vert" "/glsl/*.comp")
 file(GLOB_RECURSE SHADER_SOURCES_ABS "*/shaders/glsl/*.frag" "*/shaders/glsl/*.vert" "*/shaders/glsl/*.comp")
 
 # ---- custom target: glslCompile ----

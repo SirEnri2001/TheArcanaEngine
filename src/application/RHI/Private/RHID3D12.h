@@ -20,7 +20,7 @@ struct DescriptorHeapAllocator
     UINT                        HeapHandleIncrement;
     std::vector<int>               FreeIndices;
 
-    void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap);
+    void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap, bool hasGpuHandle);
     void Destroy();
     void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle);
     void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle);
@@ -105,10 +105,12 @@ public:
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValue;
     DescriptorHeapAllocator SRVHeapAllocator;
+    DescriptorHeapAllocator StaticHeapAllocator;
     DescriptorHeapAllocator RTVHeapAllocator;
     DescriptorHeapAllocator DSVHeapAllocator;
 
     ComPtr<ID3D12DescriptorHeap> m_srvheap;
+    ComPtr<ID3D12DescriptorHeap> m_staticheap;
     ComPtr<ID3D12DescriptorHeap> m_rtvheap;
     ComPtr<ID3D12DescriptorHeap> m_dsvheap;
 
@@ -152,6 +154,7 @@ public:
     D3D12_RESOURCE_DESC textureDesc = {};
     ComPtr<ID3D12Resource> m_texture;
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc;
 
     virtual void Initialize(IRHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1) override;
     virtual void Initialize(IRHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1)  override;
@@ -160,47 +163,81 @@ public:
     virtual void Resize(IRHIContext* Context, uint32_t Height, uint32_t Width) override;
     virtual void Transition(IRHICommandBuffer* CommandBuffer, RHIResourceState InState) override;
 
-    CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandleSRV;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandleSRV;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandleUAV;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandleUAV;
     CD3DX12_GPU_DESCRIPTOR_HANDLE RTDSVGpuDescriptorHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE RTDSVCpuDescriptorHandle;
 
     D3D12_RESOURCE_STATES ResourceStates;
 };
 
-// RHID3D12BufferResource
-class RHID3D12BufferResource
+//// RHID3D12Uniform
+//class RHID3D12Uniform : public IRHIBuffer
+//{
+//public:
+//    RHID3D12Uniform() = default;
+//    virtual ~RHID3D12Uniform() override = default;
+//
+//    virtual void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) override;
+//    virtual void CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes) override;
+//    virtual void Cleanup(IRHIContext* Context) override;
+//
+//    void CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap);
+//    //ComPtr<ID3D12DescriptorHeap> m_cbvHeap;
+//    ComPtr<ID3D12Resource> m_constantBuffer;
+//    UINT8* m_pCbvDataBegin;
+//    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+//    CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
+//    CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
+//};
+
+
+class RHID3D12Buffer : public IRHIBuffer
 {
 public:
-    ComPtr<ID3D12Resource> m_buffer;
-    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-    D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
-    RHID3D12BufferResource() = default;
-    virtual ~RHID3D12BufferResource() = default;
+    enum class EDescriptorType
+    {
+        NONE = 0,
+        CBV = 1,
+        SRV = 2,
+        UAV = 4,
+    };
+    struct DescriptorInfo
+    {
+	    EDescriptorType Type;
+        union DescStruct
+        {
+            D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+        } Desc;
+        CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
+        CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
+    };
+    RHID3D12Buffer() = default;
+    virtual ~RHID3D12Buffer() override = default;
 
-    virtual void Initialize(IRHIContext* Context, uint32_t Stride, uint32_t ElementCounts, BufferType Type);
-    virtual void CopyToBuffer(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* data, uint32_t TotalBytes);
-    virtual void Cleanup(IRHIContext* Context);
-};
-
-// RHID3D12Uniform
-class RHID3D12Uniform : public IRHIBuffer
-{
-public:
-    RHID3D12Uniform() = default;
-    virtual ~RHID3D12Uniform() override = default;
-
-    virtual void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) override;
+    virtual void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) override
+    {
+        return Initialize(Context, BufferSize, 1, InState);
+    }
+    void Initialize(IRHIContext* Context, uint32_t ElementSize, uint32_t NumElements, RHIResourceState InState) override;
     virtual void CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes) override;
     virtual void Cleanup(IRHIContext* Context) override;
 
-    void CreateConstantBufferView(RHID3D12Context* Context, ID3D12DescriptorHeap* Heap);
-    //ComPtr<ID3D12DescriptorHeap> m_cbvHeap;
-    ComPtr<ID3D12Resource> m_constantBuffer;
-    UINT8* m_pCbvDataBegin;
-    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-    CD3DX12_GPU_DESCRIPTOR_HANDLE GpuDescriptorHandle;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE CpuDescriptorHandle;
+    void CreateConstantBufferView(RHID3D12Context* Context);
+    void CreateUnorderedAccessView(RHID3D12Context* Context);
+    void CreateShaderResourceView(RHID3D12Context* Context);
+    ComPtr<ID3D12Resource> m_Buffer;
+    UINT8* m_pDataBegin;
+    std::unique_ptr<DescriptorInfo> pCBVInfo;
+    std::unique_ptr<DescriptorInfo> pSRVInfo;
+    std::unique_ptr<DescriptorInfo> pUAVInfo;
+    uint32_t BufferSize;
+    uint32_t ElementSize;
+    uint32_t NumElements;
 };
 
 // RHID3D12RenderPass
@@ -227,12 +264,21 @@ public:
     ComPtr<ID3D12PipelineState> m_pipelineState;
     std::vector<D3D12_CONSTANT_BUFFER_VIEW_DESC> cbvDescriptions;
     std::vector<D3D12_SHADER_RESOURCE_VIEW_DESC> srvDescriptions;
-    std::vector<CD3DX12_GPU_DESCRIPTOR_HANDLE> GpuDescriptorHandles;
+    std::vector<D3D12_UNORDERED_ACCESS_VIEW_DESC> uavDescriptions;
+    //std::vector<CD3DX12_GPU_DESCRIPTOR_HANDLE> GpuDescriptorHandles;
     std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
     std::vector<RHID3D12ImageResource*> ImageToTransition;
     std::vector<D3D12_VERTEX_BUFFER_VIEW> BoundBufferViews;
     D3D12_INDEX_BUFFER_VIEW BoundIndexBufferView;
-    ID3D12DescriptorHeap* pHeaps;
+    DXGI_FORMAT VertexFormat;
+    ID3D12DescriptorHeap* Heap;
+    uint32_t HeapCount = 0;
+    uint32_t SRVCounts = 0;
+    uint32_t UAVCounts = 0;
+    uint32_t CBVCounts = 0;
+    bool ShouldCopyDescriptors = false;
+    std::vector<std::tuple<D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE>> ConsecutiveDescriptors; // use as a descriptor table, first SRV, then UAV, and CBV
+    std::vector<std::tuple<D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE>> PendingCopyDescriptors; // static descriptors that will be copied to ConsecutiveDescriptors
     RHID3D12PipelineObject() = default;
     virtual ~RHID3D12PipelineObject() override = default;
 
@@ -241,12 +287,15 @@ public:
     virtual void SetUniform(IRHIBuffer* Uniform, uint32_t Binding) override;
     virtual void SetStorageBuffer(IRHIBuffer* StorageBuffer, uint32_t Binding) override;
     virtual void SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding) override;
-    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIBuffer* Uniform) override;
+    virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIBuffer* Buffer) override;
     virtual void SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIImageResource* ImageResource) override;
-    virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) override {}
-    virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) override {}
+    virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) override;
+    virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) override;
     virtual void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
     virtual void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;
+
+    virtual void CopyDescriptors(IRHIContext* Context) override;
+
     bool bShouldInitHeap = false;
 };
 
@@ -256,13 +305,21 @@ class RHID3D12PipelineFactory : public IRHIPipelineFactory
     ComPtr<ID3DBlob> pixelShader;
     ComPtr<ID3DBlob> computeShader;
     std::vector<D3D12_INPUT_ELEMENT_DESC> inputElementDescs;
-    std::vector<CD3DX12_DESCRIPTOR_RANGE1> Ranges;
-    std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
+    //std::vector<CD3DX12_DESCRIPTOR_RANGE1> Ranges;
+    //std::vector<CD3DX12_ROOT_PARAMETER1> RootParameters;
+    CD3DX12_ROOT_PARAMETER1 RootParam;
+    std::vector<DXGI_FORMAT> VertexFormat;
     std::vector<D3D12_STATIC_SAMPLER_DESC> Samplers;
+    std::vector<D3D12_VERTEX_BUFFER_VIEW> BufferViews;
+    std::vector<CD3DX12_DESCRIPTOR_RANGE1> Ranges;
 
     uint32_t HeapCount = 0;
+    uint32_t SRVCounts = 0;
+    uint32_t UAVCounts = 0;
+    uint32_t CBVCounts = 0;
+
 public:
-    RHID3D12PipelineFactory() = default;
+    RHID3D12PipelineFactory();
     virtual ~RHID3D12PipelineFactory() override = default;
 
     virtual void AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
