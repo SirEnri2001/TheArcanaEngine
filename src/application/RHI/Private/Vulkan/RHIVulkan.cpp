@@ -60,6 +60,9 @@ VkDescriptorType RHIVulkanPlatformSupport::GetDescriptorType(DescriptorType Type
 		return VK_DESCRIPTOR_TYPE_SAMPLER;
 	case IMAGE2D:
 		return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	case STORAGE:
+	case STORAGE_READONLY:
+		return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	}
 	return VK_DESCRIPTOR_TYPE_SAMPLER;
 }

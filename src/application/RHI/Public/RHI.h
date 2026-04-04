@@ -127,6 +127,8 @@ enum DescriptorType
 	UNIFORM,
     SAMPLER2D,
     IMAGE2D,
+    STORAGE,
+    STORAGE_READONLY,
 };
 
 struct ImageExtent3D
@@ -226,6 +228,7 @@ public:
     IRHIBuffer() {}
     virtual ~IRHIBuffer() {}
     virtual void Initialize(IRHIContext* Context, uint32_t BufferSize, RHIResourceState InState) = 0;
+    virtual void Initialize(IRHIContext* Context, uint32_t ElementSize, uint32_t Elements, RHIResourceState InState) = 0;
     virtual void CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
 };
@@ -306,6 +309,7 @@ public:
     virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) = 0;
     virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
+    virtual void CopyDescriptors(IRHIContext* Context) = 0;
 
     virtual void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) = 0;
     virtual void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) = 0;

@@ -274,8 +274,10 @@ public:
         PipelineObject = Context->CreateRHIPipelineObject();
         PipelineFactory->SetComputeShaders(ComputeShaderSPIRV);
         PipelineFactory->SetDescriptorBinding(0, DescriptorType::IMAGE2D);
-        PipelineFactory->SetStorageBufferBinding(1);
-        PipelineFactory->SetStorageBufferBinding(2);
+        PipelineFactory->SetDescriptorBinding(1, DescriptorType::STORAGE_READONLY);
+        PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY);
+        //PipelineFactory->SetStorageBufferBinding(1);
+        //PipelineFactory->SetStorageBufferBinding(2);
         PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
     }
 
@@ -286,128 +288,6 @@ public:
         PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
     }
 };
-
-
-/*
-class BlinnPhongPipeline : public PassPipeline {
-public:
-    IRHIPipelineFactory PipelineFactory;
-    IRHIPipelineObject PipelineObject;
-    IRHIPipelineObject PresentPipelineObject;
-
-    std::vector<char> VertexShaderSPIRV;
-    std::vector<char> FragmentShaderSPIRV;
-
-    BlinnPhongPipeline() {
-        VertexShaderSPIRV = readFile(VERT_SHADER_PATH);
-        FragmentShaderSPIRV = readFile(FRAG_SHADER_PATH);
-    }
-
-    virtual void InitializePipeline(RenderViewport& Viewport, IRHIRenderPass& RenderPass) override {
-        PipelineFactory.SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineFactory.SetUniformBinding(0);
-        PipelineFactory.SetImageSamplerBinding(1);
-        PipelineFactory.SetUniformBinding(2);
-        PipelineFactory.AddBufferBinding(0, sizeof(Mesh::VertexType));
-        PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
-        PipelineFactory.AddBufferLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
-        PipelineFactory.AddBufferLayout(0, 2, R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
-        PipelineFactory.AddBufferLayout(0, 3, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
-        PipelineFactory.InitializePipelineObject(&PipelineObject, &Viewport.Context, &RenderPass);
-    }
-};
-class BlinnPhongRenderer {
-public:
-    uint32_t IndexBufferSize;
-    IRHIBufferResource RHIFullScreenQuadBuffer;
-    IRHIBufferResource RHIFullScreenQuadIndexBuffer;
-    IRHIGraphicsDispatcher GraphicDispatcher;
-    IRHIRenderPass PresentPass;
-    IRHIBuffer Uniform;
-    IRHISwapchain Swapchain;
-
-    BlinnPhongPipeline Pipeline;
-
-    IRHIImGUI ImGUI;
-    void (*pFuncImDraw)(ImGuiSharedGlobals*);
-
-    struct MeshDesc {
-        MeshRenderProxy* Proxy;
-        IRHIBuffer* ModelUniform;
-    };
-
-    std::vector<MeshDesc> MeshDescs;
-
-    struct UniformBufferObject {
-        alignas(16) float4x4 view;
-        alignas(16) float4x4 proj;
-        alignas(16) float4 viewPosition;
-    } ubo;
-
-    BlinnPhongRenderer() {
-        
-    }
-
-    virtual void CreateRenderer(RenderViewport& Viewport) {
-        // create renderer
-        Swapchain.Initialize(&Viewport.Context, &Viewport.WindowManager);
-        //Viewport.WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Viewport.Context);
-        std::vector<RHIFormat> RTFormrats = {RHIFormat::B8G8R8A8_SRGB};
-        PresentPass.Initialize(&Viewport.Context, RTFormrats);
-        GraphicDispatcher.Initialize(&Viewport.Context);
-
-        Pipeline.InitializePipeline(Viewport, PresentPass);
-
-        RHIFullScreenQuadBuffer.Initialize(&Viewport.Context, sizeof(float3), 4, BufferType::VERTEX);
-        RHIFullScreenQuadIndexBuffer.Initialize(&Viewport.Context, sizeof(uint32_t), 6, BufferType::INDEX);
-        float3 FullScreenVertices[4] = { float3(-1, -1, 1), float3(-1, 1, 1), float3(1, 1, 1), float3(1, -1, 1) };
-        uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
-        RHIFullScreenQuadBuffer.CopyToBuffer(&Viewport.Context, FullScreenVertices, sizeof(float3) * 4);
-        RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Viewport.Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
-        Uniform.Initialize(&Viewport.Context, sizeof(UniformBufferObject));
-        ImGUI.Initialize(&Viewport.Context, &Viewport.WindowManager, &Swapchain, &PresentPass);
-
-    }
-
-    void UpdateUniformBuffer(RenderViewport& Viewport, glm::mat4 ViewMat, float4 ViewPos) {
-        static auto startTime = std::chrono::high_resolution_clock::now();
-
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-    }
-
-    virtual void Render(RenderViewport& Viewport, glm::mat4 ViewMat, float4 ViewPos) {
-        auto& Context = Viewport.Context;
-        ImGUI.UpdateUI(pFuncImDraw);
-        GraphicDispatcher.WaitForGPUIdle(&Context);
-        IRHIFrameBuffer* FrameBuffer = nullptr;
-        Swapchain.AcquireFrame(&Context, FrameBuffer, &PresentPass);
-        GraphicDispatcher.BeginFrame(&Context, &Swapchain, &PresentPass);
-        GraphicDispatcher.BeginRenderPass(&PresentPass, FrameBuffer);
-        for (auto& MeshDesc : MeshDescs)
-        {
-            UpdateUniformBuffer(Viewport, ViewMat, ViewPos);
-            Uniform.CopyToBuffer(&Viewport.Context, &ubo, sizeof(ubo));
-            Pipeline.PipelineObject.SetUniform(&Uniform, 0);
-            Pipeline.PipelineObject.SetImageSampler(&MeshDesc.Proxy->Texture, 1);
-            Pipeline.PipelineObject.SetUniform(MeshDesc.ModelUniform, 2);
-            GraphicDispatcher.BindIndexBuffer(&MeshDesc.Proxy->RHIIndexBuffer, 0);
-            GraphicDispatcher.BindVertexBuffer(&MeshDesc.Proxy->RHIVertexBuffer, 0, 0);
-            IndexBufferSize = MeshDesc.Proxy->IndexBufferSize;
-            GraphicDispatcher.Draw(&Pipeline.PipelineObject, IndexBufferSize, 0, 1);
-        }
-        // Comment this line if you don't want ImGUI
-        ImGUI.DispatchImGUI(&GraphicDispatcher);
-        GraphicDispatcher.EndRenderPass(&PresentPass);
-        GraphicDispatcher.EndFrameAndSubmit(&Context, &Viewport.WindowManager, FrameBuffer);
-        Swapchain.PresentFrameAndRelease(&Context, &GraphicDispatcher);
-    }
-
-    virtual void DrawMesh(MeshRenderProxy& Proxy, IRHIBuffer& ModelUniform) {
-        MeshDescs.push_back(MeshDesc{&Proxy, &ModelUniform });
-    }
-};
-*/
 
 class PathTracerPipeline : public PassPipeline {
 public:
@@ -426,9 +306,9 @@ public:
         PipelineFactory = Context->CreateRHIPipelineFactory();
         PipelineObject = Context->CreateRHIPipelineObject();
         PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineFactory->SetUniformBinding(0);
-        PipelineFactory->SetUniformBinding(1);
-        PipelineFactory->SetImageSamplerBinding(2);
+        PipelineFactory->SetDescriptorBinding(0, DescriptorType::UNIFORM);
+        PipelineFactory->SetDescriptorBinding(1, DescriptorType::UNIFORM);
+        PipelineFactory->SetDescriptorBinding(2, DescriptorType::SAMPLER2D);
         PipelineFactory->AddBufferBinding(0, sizeof(float3));
         PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
         PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
@@ -459,8 +339,10 @@ public:
         PipelineFactory = Context->CreateRHIPipelineFactory();
         PipelineObject = Context->CreateRHIPipelineObject();
         PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineFactory->SetImageSamplerBinding(0);
-        PipelineFactory->SetUniformBinding(1);
+        //PipelineFactory->SetImageSamplerBinding(0);
+        PipelineFactory->SetDescriptorBinding(0, DescriptorType::SAMPLER2D);
+        PipelineFactory->SetDescriptorBinding(1, DescriptorType::UNIFORM);
+        //PipelineFactory->SetUniformBinding(1);
         PipelineFactory->AddBufferBinding(0, sizeof(float3));
         PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
         PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
@@ -515,7 +397,7 @@ public:
     PathTraceRenderer() = default;
 
     virtual void CreateRenderer(uint32_t Height, uint32_t Width) {
-        uptr_Context = IRHIPlatformSupport::Get(RHIBackend::Vulkan)->CreateRHIContext();
+        uptr_Context = IRHIPlatformSupport::Get(RHIBackend::D3D12)->CreateRHIContext();
         Context = uptr_Context.get();
         Context->Initialize(Width, Height);
         RHIFullScreenQuadBuffer = Context->CreateRHIBuffer();
@@ -544,7 +426,8 @@ public:
         RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
 
     	std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
-        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
+        //std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
+        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
         PTRenderPass->Initialize(Context, ColorRTFormats);
         PresentPass->Initialize(Context, ColorRTFormats1);
 
@@ -557,8 +440,8 @@ public:
         float3 FullScreenVertices[4] = { float3(-1., -1., 0.), float3(-1., 1., 0.), float3(1., 1., 0.), float3(1., -1., 0.) };
         uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
 
-        std::unique_ptr<IRHICommandBuffer> CmdBuffer = Context->CreateRHICommandBuffer();
-        CmdBuffer->Initialize(Context);
+        //std::unique_ptr<IRHICommandBuffer> CmdBuffer = Context->CreateRHICommandBuffer();
+        //CmdBuffer->Initialize(Context);
         RHIFullScreenQuadBuffer->CopyToBuffer(Context, FullScreenVertices, sizeof(float3) * 8);
         RHIFullScreenQuadIndexBuffer->CopyToBuffer(Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
@@ -592,10 +475,10 @@ public:
         CameraUniform->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
         StorageBuffer->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
         IRHIFrameBuffer* FrameBuffer = nullptr;
+        Swapchain->AcquireFrame(Context, FrameBuffer, PresentPass.get());
         std::unique_ptr<IRHICommandBuffer> CommandBuffer;
         CommandBuffer = Context->CreateRHICommandBuffer();
         CommandBuffer->Initialize(Context);
-        Swapchain->AcquireFrame(Context, FrameBuffer, PresentPass.get());
         CommandBuffer->BeginCommandBuffer();
         if (Recompile) {
             CompileAllShaders(TestShaders);
@@ -644,6 +527,8 @@ public:
         ImGUI->DispatchImGUI(CommandBuffer.get());
         PresentPass->EndRenderPass(CommandBuffer.get());
         CommandBuffer->EndCommandBuffer();
+        TestCompPipeline.PipelineObject->CopyDescriptors(Context);
+        PostPipeline.PipelineObject->CopyDescriptors(Context);
         Swapchain->PresentFrameAndRelease(Context, CommandBuffer.get());
         Context->WaitDeviceIdle();
         Context->ProcessFrameInput();
@@ -746,7 +631,7 @@ int main() {
     CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
     CameraTransformLocalToWorld[3] = float4(-0.27f, -0.8f, 0.27f, 1.f);
 
-    PTRenderer.SceneUniform->Initialize(PTRenderer.Context, sizeof(ModelUniformObject) * 8, RHIResourceState::BUFFER_UNIFORM);
+    PTRenderer.SceneUniform->Initialize(PTRenderer.Context, sizeof(ModelUniformObject), 8, RHIResourceState::BUFFER_UNIFORM);
 
     std::vector<ModelUniformObject> Objects;
     // Floor
@@ -792,6 +677,41 @@ int main() {
 }
 #elif 1
 
+class BlinnPhongPipeline : public PassPipeline {
+public:
+    std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
+    std::unique_ptr<IRHIPipelineObject> PipelineObject;
+
+    std::vector<ShaderFileType> VertexShaderSPIRV;
+    std::vector<ShaderFileType> FragmentShaderSPIRV;
+
+    BlinnPhongPipeline() {
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.vert.spv");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.frag.spv");
+    }
+
+    virtual void InitializePipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
+        PipelineFactory = Context->CreateRHIPipelineFactory();
+        PipelineObject = Context->CreateRHIPipelineObject();
+        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+        PipelineFactory->SetUniformBinding(0);
+        PipelineFactory->SetUniformBinding(1);
+        PipelineFactory->SetImageSamplerBinding(2);
+        PipelineFactory->AddBufferBinding(0, sizeof(float3));
+        PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
+        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
+    }
+
+    virtual void ReloadPipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
+        VertexShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.vert.spv");
+        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.frag.spv");
+        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+        PipelineObject->Cleanup(Context);
+        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
+    }
+};
+#elif 0
+
 #include "spirv_glsl.hpp"
 #include <vector>
 #include <utility>
@@ -833,71 +753,6 @@ int main()
     std::string source = glsl.compile();
     std::cout << source;
 }
-
-#else
-int BlinnPhongMain();
-int main()
-{
-    return BlinnPhongMain();
-}
-
-int BlinnPhongMain()
-{
-	Mesh StaticMesh = Mesh::LoadObj(CUBE_PATH);
-    StaticMesh.TexturePath = TEXTURE_PATH;
-    RenderViewport Viewport;
-    Viewport.InitializeViewport(1000, 1000);
-    BlinnPhongRenderer BPRenderer;
-    BPRenderer.pFuncImDraw = DrawUI;
-    BPRenderer.CreateRenderer(Viewport);
-
-    MeshRenderProxy MeshProxy;
-    InitializeMeshRenderProxy(MeshProxy, StaticMesh, Viewport);
-
-    std::array<IRHIBuffer, 8> Uniforms;
-
-    
-    auto viewMat = glm::lookAt(glm::vec3(-0.27f, -0.8f, 0.27f), glm::vec3(-0.27f, 0.0f, 0.27f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ViewPos = float4(-0.27f, -0.8f, 0.27f, 1.f);
-    ViewUp = float4(0., 0., 1., 0.);
-    ViewForward = float4(0., 1., 0., 0.);
-    
-    
-    // Floor
-    SetModelUniform(Viewport, Uniforms[0], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
-
-    // Celling
-    SetModelUniform(Viewport, Uniforms[1], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
-
-    // Leftwall
-    SetModelUniform(Viewport, Uniforms[2], glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f));
-
-    // Rightwall
-    SetModelUniform(Viewport, Uniforms[3], glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f));
-
-    // Backwall
-    SetModelUniform(Viewport, Uniforms[4], glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f));
-
-    // Shortbox
-    SetModelUniform(Viewport, Uniforms[5], glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f));
-
-    // Tallbox
-    SetModelUniform(Viewport, Uniforms[6], glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f));
-
-    // Light
-    SetModelUniform(Viewport, Uniforms[7], glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(0.4f, 0.4f, 0.4f));
-
-    for (auto& Uniform : Uniforms) {
-        BPRenderer.DrawMesh(MeshProxy, Uniform);
-    }
-
-    while (Viewport.IsWindowAlive())
-    {
-        BPRenderer.Render(Viewport, viewMat, ViewPos);
-    }
-    return 0;
-}
-#endif
 
 int PBRRendererTest()
 {
@@ -975,3 +830,4 @@ int PBRRendererTest()
     //}
     return 0;
 }
+#endif
