@@ -69,7 +69,7 @@ void CreateVkSurface(VkInstance& Instance, GLFWwindow* Window, VkSurfaceKHR& Out
 void CreateVkDevice(VkDevice& OutVkDevice, VkQueue& OutGraphicsQueue, VkQueue& OutPresentQueue,
     VkPhysicalDevice physicalDevice, uint32_t GraphicsFamilyIndex, uint32_t PresentFamilyIndex, const std::vector<const char*>& Extensions);
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats, VkFormat PreferredForamt);
 
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
 
@@ -81,7 +81,7 @@ void CreateSwapchain(
     VkSwapchainKHR& OutSwapchain,
     std::vector<VkImage>& OutSwapchainImages,
     std::vector<VkImageView>& OutSwapchainImageViews,
-    VkFormat& OutSwapchainImageFormat,
+    VkFormat& InOutSwapchainImageFormat,
     VkExtent2D& InOutSwapchainExtent,
     const VkDevice& Device,
     const VkSurfaceKHR& Surface,

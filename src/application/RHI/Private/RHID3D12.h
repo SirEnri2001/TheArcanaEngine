@@ -379,16 +379,21 @@ public:
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle;
     DXGI_SWAP_CHAIN_DESC1 SwapChainDesc;
     DXGI_FORMAT DepthFormat;
+    RHIFormat SwapchainRHIFormat;
 
     std::vector<std::unique_ptr<RHID3D12FrameBuffer>> FrameBuffers;
     RHID3D12Swapchain();
     RHID3D12Swapchain(const RHID3D12Swapchain&) = delete;
     virtual ~RHID3D12Swapchain();
-    virtual void Initialize(IRHIContext* Context) override;
+    virtual void Initialize(IRHIContext* Context, RHIFormat InSwapchainFormat) override;
     virtual void Cleanup(IRHIContext* Context) override;
     virtual void AcquireFrame(IRHIContext* Context, IRHIFrameBuffer*& OutFrameBuffer, IRHIRenderPass* InRenderPass) override;
     virtual void PresentFrameAndRelease(IRHIContext* Context, IRHICommandBuffer* CommandBuffer) override;
     ImageExtent3D GetFrameSize() override;
+    RHIFormat GetFrameFormat() override
+    {
+        return SwapchainRHIFormat;
+    }
 };
 
 class RHID3D12CommandBuffer : public IRHICommandBuffer

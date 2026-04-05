@@ -242,10 +242,12 @@ RHIVulkanSwapchain::~RHIVulkanSwapchain()
 
 }
 
-void RHIVulkanSwapchain::Initialize(IRHIContext* Context)
+void RHIVulkanSwapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFormat)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	vkDeviceWaitIdle(VulkanContext->Device);
+	SwapchainRHIFormat = InSwapchainFormat;
+	SwapchainImageFormat = RHIVulkanPlatformSupport::GetVkFormat(InSwapchainFormat);
 	CreateSwapchain(
 		Swapchain, SwapchainImages, SwapchainImageViews, SwapchainImageFormat, SwapchainExtent,
 		VulkanContext->Device, 

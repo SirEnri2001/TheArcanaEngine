@@ -418,7 +418,7 @@ public:
         PrimitiveBuffer = Context->CreateRHIBuffer();
 
         // create renderer
-        Swapchain->Initialize(Context);
+        Swapchain->Initialize(Context, R8G8B8A8_UNORM);
         ImageExtent3D ext = Swapchain->GetFrameSize();
         RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
         RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
@@ -426,7 +426,7 @@ public:
         RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
 
     	std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
-        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::B8G8R8A8_SRGB };
+        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
         //std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
         PTRenderPass->Initialize(Context, ColorRTFormats);
         PresentPass->Initialize(Context, ColorRTFormats1);

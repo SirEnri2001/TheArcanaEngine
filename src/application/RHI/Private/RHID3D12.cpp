@@ -1328,15 +1328,16 @@ RHID3D12Swapchain::~RHID3D12Swapchain()
 	
 }
 
-void RHID3D12Swapchain::Initialize(IRHIContext* Context)
+void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFormat)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
+    SwapchainRHIFormat = InSwapchainFormat;
     // Describe and create the swap chain.
     SwapChainDesc = DXGI_SWAP_CHAIN_DESC1{};
     SwapChainDesc.BufferCount = 2;
     SwapChainDesc.Width = D3D12Context->m_width;
     SwapChainDesc.Height = D3D12Context->m_height;
-    SwapChainDesc.Format = RHID3D12PlatformSupport::GetDXFormat(R8G8B8A8_UNORM);
+    SwapChainDesc.Format = RHID3D12PlatformSupport::GetDXFormat(InSwapchainFormat);
     SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     SwapChainDesc.SampleDesc.Count = 1;

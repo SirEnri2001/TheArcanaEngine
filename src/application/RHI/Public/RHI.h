@@ -38,6 +38,7 @@ class IRHIBuffer;
  */
 enum RHIFormat
 {
+    //UNKNOWN, /**< format unknown, usually used in swapchain creation */
 	R8G8B8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
     B8G8R8A8_SRGB, /**< float4 in hlsl, used in color rendertargets */
 	R8G8B8A8_UNORM, /**< float4 in hlsl, used in color rendertargets */
@@ -336,11 +337,12 @@ public:
     IRHISwapchain() {}
     IRHISwapchain(const IRHISwapchain&) = delete;
     virtual ~IRHISwapchain() {}
-    virtual void Initialize(IRHIContext* Context) = 0;
+    virtual void Initialize(IRHIContext* Context, RHIFormat InSwapchainFormat) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
     virtual void AcquireFrame(IRHIContext* Context, IRHIFrameBuffer*& OutFrameBuffer, IRHIRenderPass* InRenderPass) = 0;
     virtual void PresentFrameAndRelease(IRHIContext* Context, IRHICommandBuffer* CommandBuffer) = 0;
     virtual ImageExtent3D GetFrameSize() = 0;
+    virtual RHIFormat GetFrameFormat() = 0;
 };
 
 struct ImGuiSharedGlobals;

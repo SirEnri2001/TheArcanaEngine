@@ -192,7 +192,13 @@ void CreateVkDevice(VkDevice& OutVkDevice, VkQueue& OutGraphicsQueue, VkQueue& O
     vkGetDeviceQueue(OutVkDevice, PresentFamilyIndex, 0, &OutPresentQueue);
 }
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats, VkFormat PreferredForamt) {
+    for (const auto& availableFormat : availableFormats) {
+        if (availableFormat.format==PreferredForamt)
+        {
+            return availableFormat;
+        }
+    }
     for (const auto& availableFormat : availableFormats) {
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;
@@ -242,7 +248,7 @@ void CreateSwapchain(
     VkSwapchainKHR& OutSwapchain,
     std::vector<VkImage>& OutSwapchainImages,
     std::vector<VkImageView>& OutSwapchainImageViews,
-    VkFormat& OutSwapchainImageFormat,
+    VkFormat& InOutSwapchainImageFormat,
     VkExtent2D& InOutSwapchainExtent,
     const VkDevice& Device,
     const VkSurfaceKHR& Surface,
@@ -251,7 +257,11 @@ void CreateSwapchain(
     const std::vector<VkPresentModeKHR>& PresentModes,
     uint32_t GraphicsFamilyIndex, uint32_t PresentFamilyIndex
 ) {
-    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(SurfaceFormats);
+    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(SurfaceFormats, InOutSwapchainImageFormat);
+    if (surfaceFormat.format!=InOutSwapchainImageFormat)
+    {
+        Error("VkFormat for swapchain not supported: ", InOutSwapchainImageFormat, " Please select as swapchain format: ", surfaceFormat.format);
+    }
     VkPresentModeKHR presentMode = chooseSwapPresentMode(PresentModes);
     chooseSwapExtent(InOutSwapchainExtent, SurfaceCapabilities);
 
@@ -295,11 +305,11 @@ void CreateSwapchain(
     OutSwapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(Device, OutSwapchain, &imageCount, OutSwapchainImages.data());
 
-    OutSwapchainImageFormat = surfaceFormat.format;
+    InOutSwapchainImageFormat = surfaceFormat.format;
     OutSwapchainImageViews.clear();
     OutSwapchainImageViews.resize(imageCount);
     for (uint32_t i = 0; i < OutSwapchainImages.size(); i++) {
-        CreateImageView(OutSwapchainImageViews[i], OutSwapchainImages[i], Device, OutSwapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+        CreateImageView(OutSwapchainImageViews[i], OutSwapchainImages[i], Device, InOutSwapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
     }
 }
 

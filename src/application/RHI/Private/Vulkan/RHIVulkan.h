@@ -182,6 +182,7 @@ public:
 	std::vector<VkImage> SwapchainImages;
 	std::vector<VkImageView> SwapchainImageViews;
 	VkFormat SwapchainImageFormat;
+	RHIFormat SwapchainRHIFormat;
 	RHIVulkanImageResource* DepthImageResource;
 	VkRenderPass CachedRenderPass; // framebuffer for this specified renderpass
 	uint32_t CurrentImageIndex;
@@ -194,11 +195,15 @@ public:
 	RHIVulkanSwapchain();
 	RHIVulkanSwapchain(const RHIVulkanSwapchain&) = delete;
 	virtual ~RHIVulkanSwapchain();
-	virtual void Initialize(IRHIContext* Context) override;
+	virtual void Initialize(IRHIContext* Context, RHIFormat InSwapchainFormat) override;
 	virtual void Cleanup(IRHIContext* Context) override;
 	virtual void AcquireFrame(IRHIContext* Context, IRHIFrameBuffer*& OutFrameBuffer, IRHIRenderPass* InRenderPass) override;
 	virtual void PresentFrameAndRelease(IRHIContext* Context, IRHICommandBuffer* CommandBuffer) override;
 	virtual ImageExtent3D GetFrameSize() override;
+	virtual RHIFormat GetFrameFormat() override
+	{
+		return SwapchainRHIFormat;
+	}
 
 private:
 	void CreateFramebuffers(RHIVulkanContext* Context, VkRenderPass VkRP);
