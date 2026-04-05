@@ -26,13 +26,6 @@ static const int APP_NUM_FRAMES_IN_FLIGHT = 2;
 static const int APP_NUM_BACK_BUFFERS = 2;
 static const int APP_SRV_HEAP_SIZE = 64;
 
-struct FrameContext
-{
-    ID3D12CommandAllocator* CommandAllocator;
-    UINT64                      FenceValue;
-};
-
-
 void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap, bool hasGpuHandle)
 {
     assert(Heap == nullptr && FreeIndices.empty());
@@ -121,6 +114,9 @@ void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
 
 
     // Create the main window. 
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    RECT rect = { 0, 0, (LONG)m_width, (LONG)m_height };
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
 
     CHECK_SYSTEM_ERROR(hWnd = CreateWindow(
         "DXSampleClass",        // name of window class 
@@ -128,8 +124,8 @@ void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
         WS_OVERLAPPEDWINDOW, // top-level window 
         CW_USEDEFAULT,       // default horizontal position 
         CW_USEDEFAULT,       // default vertical position 
-        m_width,       // default width 
-        m_height,       // default height 
+        rect.right - rect.left,
+        rect.bottom - rect.top,
         (HWND)NULL,         // no owner window 
         (HMENU)NULL,        // use class menu 
         hInstance,           // handle to application instance 
@@ -191,28 +187,8 @@ void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
     ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
 
     ThrowIfFailed(m_commandAllocator->Reset());
+    DescriptorFactory.InitializeFactory(m_device.Get());
 
-    D3D12_DESCRIPTOR_HEAP_DESC HeapDesc = {};
-    HeapDesc.NumDescriptors = 32;
-    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_srvheap)));
-    HeapDesc.NumDescriptors = 32;
-    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_staticheap)));
-    HeapDesc.NumDescriptors = 32;
-    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_rtvheap)));
-    HeapDesc.NumDescriptors = 32;
-    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    ThrowIfFailed(m_device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&m_dsvheap)));
-    SRVHeapAllocator.Create(m_device.Get(), m_srvheap.Get(), true);
-    StaticHeapAllocator.Create(m_device.Get(), m_staticheap.Get(), false);
-    RTVHeapAllocator.Create(m_device.Get(), m_rtvheap.Get(), false);
-    DSVHeapAllocator.Create(m_device.Get(), m_dsvheap.Get(), false);
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -338,16 +314,17 @@ void RHID3D12ImageResource::Initialize(IRHIContext* Context, uint32_t InHeight, 
         srvDesc.Format = textureDesc.Format;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
-        D3D12Context->StaticHeapAllocator.Alloc(&CpuDescriptorHandleSRV, &GpuDescriptorHandleSRV);
-        D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, CpuDescriptorHandleSRV);
+        StaticDescriptorSRV = D3D12Context->DescriptorFactory.CreateStaticDescriptor();
+        D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, StaticDescriptorSRV.CPUHandle);
         if (HasFlag(InUsageMask, RHIResourceState::SHADER_WRITE) || HasFlag(InUsageMask, RHIResourceState::SHADER_READWRITE))
         {
 	        uavDesc.Format = textureDesc.Format;
             uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
             uavDesc.Texture2D.MipSlice = 0;
             uavDesc.Texture2D.PlaneSlice = 0;
-            D3D12Context->StaticHeapAllocator.Alloc(&CpuDescriptorHandleUAV, &GpuDescriptorHandleUAV);
-            D3D12Context->m_device->CreateUnorderedAccessView(m_texture.Get(), nullptr, &uavDesc, CpuDescriptorHandleUAV);
+
+            StaticDescriptorUAV = D3D12Context->DescriptorFactory.CreateStaticDescriptor();
+            D3D12Context->m_device->CreateUnorderedAccessView(m_texture.Get(), nullptr, &uavDesc, StaticDescriptorUAV.CPUHandle);
         }
     }
 }
@@ -400,21 +377,21 @@ void RHID3D12ImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExt
     srvDesc.Format = HasFlag(InUsageMask, RHIResourceState::DEPTH_ATTACHMENT) ? DXGI_FORMAT_R32_FLOAT : textureDesc.Format;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
-    D3D12Context->StaticHeapAllocator.Alloc(&CpuDescriptorHandleSRV, &GpuDescriptorHandleSRV);
-    D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, CpuDescriptorHandleSRV);
+    StaticDescriptorSRV = D3D12Context->DescriptorFactory.CreateStaticDescriptor();
+    D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, StaticDescriptorSRV.CPUHandle);
     if (HasFlag(InUsageMask, RHIResourceState::SHADER_WRITE) || HasFlag(InUsageMask, RHIResourceState::SHADER_READWRITE))
     {
         uavDesc.Format = textureDesc.Format;
         uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
         uavDesc.Texture2D.MipSlice = 0;
         uavDesc.Texture2D.PlaneSlice = 0;
-        D3D12Context->StaticHeapAllocator.Alloc(&CpuDescriptorHandleUAV, &GpuDescriptorHandleUAV);
-        D3D12Context->m_device->CreateUnorderedAccessView(m_texture.Get(), nullptr, &uavDesc, CpuDescriptorHandleUAV);
+        StaticDescriptorUAV = D3D12Context->DescriptorFactory.CreateStaticDescriptor();
+        D3D12Context->m_device->CreateUnorderedAccessView(m_texture.Get(), nullptr, &uavDesc, StaticDescriptorUAV.CPUHandle);
     }
     if (HasFlag(InUsageMask, RHIResourceState::COLOR_ATTACHMENT))
     {
-        D3D12Context->RTVHeapAllocator.Alloc(&RTDSVCpuDescriptorHandle, &RTDSVGpuDescriptorHandle);
-        D3D12Context->m_device->CreateRenderTargetView(m_texture.Get(), NULL, RTDSVCpuDescriptorHandle);
+        StaticDescriptorRTDSV = D3D12Context->DescriptorFactory.CreateRTVDescriptor();
+        D3D12Context->m_device->CreateRenderTargetView(m_texture.Get(), NULL, StaticDescriptorRTDSV.CPUHandle);
     }
     else if (HasFlag(InUsageMask, RHIResourceState::DEPTH_ATTACHMENT))
     {
@@ -422,8 +399,9 @@ void RHID3D12ImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExt
         ds_desc.Texture2D.MipSlice = 1;
         ds_desc.Format = DXGI_FORMAT_D32_FLOAT;
         ds_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-        D3D12Context->DSVHeapAllocator.Alloc(&RTDSVCpuDescriptorHandle, &RTDSVGpuDescriptorHandle);
-        D3D12Context->m_device->CreateDepthStencilView(m_texture.Get(), NULL, RTDSVCpuDescriptorHandle);
+
+        StaticDescriptorRTDSV = D3D12Context->DescriptorFactory.CreateDSVDescriptor();
+        D3D12Context->m_device->CreateDepthStencilView(m_texture.Get(), NULL, StaticDescriptorRTDSV.CPUHandle);\
     }
 }
 
@@ -531,8 +509,8 @@ void RHID3D12Buffer::CreateConstantBufferView(RHID3D12Context* Context)
     pCBVInfo = std::make_unique<DescriptorInfo>();
     pCBVInfo->Desc.cbvDesc.BufferLocation = m_Buffer->GetGPUVirtualAddress();
     pCBVInfo->Desc.cbvDesc.SizeInBytes = BufferSize;
-    Context->StaticHeapAllocator.Alloc(&pCBVInfo->CpuDescriptorHandle, &pCBVInfo->GpuDescriptorHandle);
-    Context->m_device->CreateConstantBufferView(&pCBVInfo->Desc.cbvDesc, pCBVInfo->CpuDescriptorHandle);
+    pCBVInfo->Handle = Context->DescriptorFactory.CreateStaticDescriptor();
+    Context->m_device->CreateConstantBufferView(&pCBVInfo->Desc.cbvDesc, pCBVInfo->Handle.CPUHandle);
 }
 
 void RHID3D12Buffer::CreateUnorderedAccessView(RHID3D12Context* Context)
@@ -545,8 +523,8 @@ void RHID3D12Buffer::CreateUnorderedAccessView(RHID3D12Context* Context)
     pUAVInfo->Desc.uavDesc.Buffer.NumElements = NumElements * ElementSize / 4;
     pUAVInfo->Desc.uavDesc.Buffer.StructureByteStride = 0;
 	pUAVInfo->Desc.uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
-    Context->StaticHeapAllocator.Alloc(&pUAVInfo->CpuDescriptorHandle, &pUAVInfo->GpuDescriptorHandle);
-    Context->m_device->CreateUnorderedAccessView(m_Buffer.Get(), nullptr, &pUAVInfo->Desc.uavDesc, pUAVInfo->CpuDescriptorHandle);
+    pUAVInfo->Handle = Context->DescriptorFactory.CreateStaticDescriptor();
+    Context->m_device->CreateUnorderedAccessView(m_Buffer.Get(), nullptr, &pUAVInfo->Desc.uavDesc, pUAVInfo->Handle.CPUHandle);
 }
 
 void RHID3D12Buffer::CreateShaderResourceView(RHID3D12Context* Context)
@@ -559,8 +537,8 @@ void RHID3D12Buffer::CreateShaderResourceView(RHID3D12Context* Context)
     pSRVInfo->Desc.srvDesc.Buffer.NumElements = NumElements*ElementSize / 4;
     pSRVInfo->Desc.srvDesc.Buffer.StructureByteStride = 0;
     pSRVInfo->Desc.srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
-    Context->StaticHeapAllocator.Alloc(&pSRVInfo->CpuDescriptorHandle, &pSRVInfo->GpuDescriptorHandle);
-    Context->m_device->CreateShaderResourceView(m_Buffer.Get(), &pSRVInfo->Desc.srvDesc, pSRVInfo->CpuDescriptorHandle);
+    pSRVInfo->Handle = Context->DescriptorFactory.CreateStaticDescriptor();
+    Context->m_device->CreateShaderResourceView(m_Buffer.Get(), &pSRVInfo->Desc.srvDesc, pSRVInfo->Handle.CPUHandle);
 }
 
 void RHID3D12Buffer::CopyToBuffer(IRHIContext* Context, void* data, uint32_t TotalBytes)
@@ -630,22 +608,7 @@ void RHID3D12PipelineFactory::RemoveAllBufferBindings()
 {
     inputElementDescs.clear();
 }
-//enum D3D12_DESCRIPTOR_RANGE_TYPE GetDescriptorType(DescriptorType Type)
-//{
-//    switch (Type)
-//    {
-//    case DescriptorType::STORAGE_READONLY:
-//        return D3D12_DESCRIPTOR_RANGE_TYPE::D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-//    case DescriptorType::IMAGE2D:
-//    case DescriptorType::STORAGE:
-//        return D3D12_DESCRIPTOR_RANGE_TYPE::D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-//    case DescriptorType::SAMPLER2D:
-//        return D3D12_DESCRIPTOR_RANGE_TYPE::D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
-//    case DescriptorType::UNIFORM:
-//        return D3D12_DESCRIPTOR_RANGE_TYPE::D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-//
-//    }
-//}
+
 void RHID3D12PipelineFactory::SetUniformBinding(uint32_t Binding)
 {
     throw std::runtime_error("Use SetDescriptorBinding");
@@ -659,23 +622,6 @@ void RHID3D12PipelineFactory::SetStorageBufferBinding(uint32_t Binding)
 void RHID3D12PipelineFactory::SetImageSamplerBinding(uint32_t Binding)
 {
     throw std::runtime_error("Use SetDescriptorBinding");
-    RootParam.DescriptorTable.NumDescriptorRanges++;
-
-    D3D12_STATIC_SAMPLER_DESC sampler{};
-    sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
-    sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    sampler.MipLODBias = 0;
-    sampler.MaxAnisotropy = 0;
-    sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-    sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-    sampler.MinLOD = 0.0f;
-    sampler.MaxLOD = D3D12_FLOAT32_MAX;
-    sampler.ShaderRegister = Binding;
-    sampler.RegisterSpace = 0;
-    sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    Samplers.push_back(sampler);
 }
 
 void RHID3D12PipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType)
@@ -785,29 +731,8 @@ void RHID3D12PipelineFactory::InitializePipelineObject(IRHIPipelineObject* OutPi
     RootParam.InitAsDescriptorTable(Ranges.size(), Ranges.data());
 
     D3D12PipelineObject->RootParameters.push_back(RootParam);
-    D3D12PipelineObject->Heap = D3D12Context->SRVHeapAllocator.Heap;
-    D3D12PipelineObject->ConsecutiveDescriptors.resize(SRVCounts + UAVCounts + CBVCounts);
-    D3D12PipelineObject->PendingCopyDescriptors.resize(SRVCounts + UAVCounts + CBVCounts);
-    D3D12PipelineObject->SRVCounts = SRVCounts;
-    D3D12PipelineObject->UAVCounts = UAVCounts;
-    D3D12PipelineObject->CBVCounts = CBVCounts;
-
-    // Allocate pipeline visible descriptors
-    for (int i = 0; i < SRVCounts; i++)
-    {
-        auto& Handles = D3D12PipelineObject->ConsecutiveDescriptors[i];
-        D3D12Context->SRVHeapAllocator.Alloc(&std::get<0>(Handles), &std::get<1>(Handles));
-    }
-    for (int i = 0; i < UAVCounts; i++)
-    {
-        auto& Handles = D3D12PipelineObject->ConsecutiveDescriptors[i + SRVCounts];
-        D3D12Context->SRVHeapAllocator.Alloc(&std::get<0>(Handles), &std::get<1>(Handles));
-    }
-    for (int i = 0; i < CBVCounts; i++)
-    {
-        auto& Handles = D3D12PipelineObject->ConsecutiveDescriptors[i + SRVCounts + UAVCounts];
-        D3D12Context->SRVHeapAllocator.Alloc(&std::get<0>(Handles), &std::get<1>(Handles));
-    }
+    D3D12PipelineObject->Heap = D3D12Context->DescriptorFactory.Heap_GPU.Get();
+    D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(SRVCounts + UAVCounts + CBVCounts);
 
 	// Create an empty root signature.
     {
@@ -869,29 +794,8 @@ void RHID3D12PipelineFactory::InitializeComputePipelineObject(IRHIPipelineObject
 
     RootParam.InitAsDescriptorTable(Ranges.size(), Ranges.data());
     D3D12PipelineObject->RootParameters.push_back(RootParam);
-    D3D12PipelineObject->Heap = D3D12Context->SRVHeapAllocator.Heap;
-    D3D12PipelineObject->ConsecutiveDescriptors.resize(SRVCounts + UAVCounts + CBVCounts);
-    D3D12PipelineObject->PendingCopyDescriptors.resize(SRVCounts + UAVCounts + CBVCounts);
-    D3D12PipelineObject->SRVCounts = SRVCounts;
-    D3D12PipelineObject->UAVCounts = UAVCounts;
-    D3D12PipelineObject->CBVCounts = CBVCounts;
-
-    // Allocate pipeline visible descriptors
-    for (int i = 0; i < SRVCounts; i++)
-    {
-        auto& Handles = D3D12PipelineObject->ConsecutiveDescriptors[i];
-        D3D12Context->SRVHeapAllocator.Alloc(&std::get<0>(Handles), &std::get<1>(Handles));
-    }
-    for (int i = 0; i < UAVCounts; i++)
-    {
-        auto& Handles = D3D12PipelineObject->ConsecutiveDescriptors[i + SRVCounts];
-        D3D12Context->SRVHeapAllocator.Alloc(&std::get<0>(Handles), &std::get<1>(Handles));
-    }
-    for (int i = 0; i < CBVCounts; i++)
-    {
-        auto& Handles = D3D12PipelineObject->ConsecutiveDescriptors[i + SRVCounts + UAVCounts];
-        D3D12Context->SRVHeapAllocator.Alloc(&std::get<0>(Handles), &std::get<1>(Handles));
-    }
+    D3D12PipelineObject->Heap = D3D12Context->DescriptorFactory.Heap_GPU.Get();
+    D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(SRVCounts + UAVCounts + CBVCounts);
 
     // Create root signature for compute pipeline
     {
@@ -943,64 +847,40 @@ void RHID3D12PipelineObject::Cleanup(IRHIContext* Context)
 void RHID3D12PipelineObject::SetUniform(IRHIBuffer* Buffer, uint32_t Binding)
 {
     auto* D3D12Buffer = static_cast<RHID3D12Buffer*>(Buffer);
-    //if(Binding>=GpuDescriptorHandles.size())
-    //{
-	   // GpuDescriptorHandles.resize(Binding+1);
-    //}
-    //GpuDescriptorHandles[Binding] = D3D12Buffer->pCBVInfo->GpuDescriptorHandle;
     if (Binding>=cbvDescriptions.size())
     {
         cbvDescriptions.resize(Binding + 1);
     }
     cbvDescriptions[Binding] = D3D12Buffer->pCBVInfo->Desc.cbvDesc;
-    // copy descriptor to pipeline's visible heap
-    PendingCopyDescriptors[Binding] = 
-        std::make_tuple<>(D3D12Buffer->pCBVInfo->CpuDescriptorHandle, D3D12Buffer->pCBVInfo->GpuDescriptorHandle);
+    DescriptorTable.SetDescriptorHandle(Binding, D3D12Buffer->pCBVInfo->Handle);
 }
 
 void RHID3D12PipelineObject::SetStorageBuffer(IRHIBuffer* StorageBuffer, uint32_t Binding)
 {
     auto* D3D12Buffer = static_cast<RHID3D12Buffer*>(StorageBuffer);
-    //if (Binding >= GpuDescriptorHandles.size())
-    //{
-    //    GpuDescriptorHandles.resize(Binding + 1);
-    //}
-    //GpuDescriptorHandles[Binding] = D3D12Buffer->pUAVInfo->GpuDescriptorHandle;
     if (Binding >= uavDescriptions.size())
     {
         uavDescriptions.resize(Binding + 1);
     }
     uavDescriptions[Binding] = D3D12Buffer->pUAVInfo->Desc.uavDesc;
-    PendingCopyDescriptors[Binding] =
-        std::make_tuple<>(D3D12Buffer->pUAVInfo->CpuDescriptorHandle, D3D12Buffer->pUAVInfo->GpuDescriptorHandle);
+    DescriptorTable.SetDescriptorHandle(Binding, D3D12Buffer->pUAVInfo->Handle);
 }
 
 void RHID3D12PipelineObject::SetImageSampler(IRHIImageResource* ImageResource, uint32_t Binding)
 {
     auto* D3D12ImageResource = static_cast<RHID3D12ImageResource*>(ImageResource);
-    //if(Binding>=GpuDescriptorHandles.size())
-    //{
-	   // GpuDescriptorHandles.resize(Binding+1);
-    //}
-    //GpuDescriptorHandles[Binding] = D3D12ImageResource->GpuDescriptorHandle;
     if (Binding>=srvDescriptions.size())
     {
         srvDescriptions.resize(Binding + 1);
     }
     srvDescriptions[Binding] = D3D12ImageResource->srvDesc;
     ImageToTransition.push_back(D3D12ImageResource);
-    PendingCopyDescriptors[Binding] =
-        std::make_tuple<>(D3D12ImageResource->CpuDescriptorHandleSRV, D3D12ImageResource->GpuDescriptorHandleSRV);
+    DescriptorTable.SetDescriptorHandle(Binding, D3D12ImageResource->StaticDescriptorSRV);
 }
 
 void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, DescriptorType BindingDescriptorType, IRHIImageResource* ImageResource)
 {
     auto* D3D12ImageResource = static_cast<RHID3D12ImageResource*>(ImageResource);
-    //if (BindingIndex >= GpuDescriptorHandles.size())
-    //{
-    //    GpuDescriptorHandles.resize(BindingIndex + 1);
-    //}
-    //GpuDescriptorHandles[BindingIndex] = D3D12ImageResource->GpuDescriptorHandle;
     switch (BindingDescriptorType)
     {
     case IMAGE2D:
@@ -1009,8 +889,7 @@ void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, Descripto
             uavDescriptions.resize(BindingIndex + 1);
         }
         uavDescriptions[BindingIndex] = D3D12ImageResource->uavDesc;
-        PendingCopyDescriptors[BindingIndex] =
-            std::make_tuple<>(D3D12ImageResource->CpuDescriptorHandleUAV, D3D12ImageResource->GpuDescriptorHandleUAV);
+        DescriptorTable.SetDescriptorHandle(BindingIndex, D3D12ImageResource->StaticDescriptorUAV);
         break;
     case SAMPLER2D:
         if (BindingIndex >= srvDescriptions.size())
@@ -1018,8 +897,7 @@ void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, Descripto
             srvDescriptions.resize(BindingIndex + 1);
         }
         srvDescriptions[BindingIndex] = D3D12ImageResource->srvDesc;
-        PendingCopyDescriptors[BindingIndex] =
-            std::make_tuple<>(D3D12ImageResource->CpuDescriptorHandleSRV, D3D12ImageResource->GpuDescriptorHandleSRV);
+        DescriptorTable.SetDescriptorHandle(BindingIndex, D3D12ImageResource->StaticDescriptorSRV);
         ImageToTransition.push_back(D3D12ImageResource);
         break;
     }
@@ -1035,18 +913,12 @@ void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, Descripto
         SetUniform(Buffer, BindingIndex);
         break;
     case DescriptorType::STORAGE_READONLY:
-        //if (BindingIndex >= GpuDescriptorHandles.size())
-        //{
-        //    GpuDescriptorHandles.resize(BindingIndex + 1);
-        //}
-        //GpuDescriptorHandles[BindingIndex] = D3D12Buffer->pSRVInfo->GpuDescriptorHandle;
         if (BindingIndex >= srvDescriptions.size())
         {
             srvDescriptions.resize(BindingIndex + 1);
         }
         srvDescriptions[BindingIndex] = D3D12Buffer->pSRVInfo->Desc.srvDesc;
-        PendingCopyDescriptors[BindingIndex] =
-            std::make_tuple<>(D3D12Buffer->pSRVInfo->CpuDescriptorHandle, D3D12Buffer->pSRVInfo->GpuDescriptorHandle);
+        DescriptorTable.SetDescriptorHandle(BindingIndex, D3D12Buffer->pSRVInfo->Handle);
         break;
     case DescriptorType::STORAGE:
         SetStorageBuffer(Buffer, BindingIndex);
@@ -1056,16 +928,6 @@ void RHID3D12PipelineObject::SetBindingResource(uint32_t BindingIndex, Descripto
         throw std::runtime_error("Cannot use this function bind sampler2d | image2d");
 
     }
-    //if (BindingIndex >= GpuDescriptorHandles.size())
-    //{
-    //    GpuDescriptorHandles.resize(BindingIndex + 1);
-    //}
-    //GpuDescriptorHandles[BindingIndex] = D3D12Uniform->GpuDescriptorHandle;
-    //if (BindingIndex >= cbvDescriptions.size())
-    //{
-    //    cbvDescriptions.resize(BindingIndex + 1);
-    //}
-    //cbvDescriptions[BindingIndex] = D3D12Uniform->cbvDesc;
 }
 
 void RHID3D12PipelineObject::BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex)
@@ -1086,12 +948,7 @@ void RHID3D12PipelineObject::BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset
 void RHID3D12PipelineObject::CopyDescriptors(IRHIContext* Context)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
-    for (int i = 0; i < SRVCounts + UAVCounts + CBVCounts; i++)
-    {
-        auto& SrcCPUDescriptor = std::get<0>(PendingCopyDescriptors[i]);
-        auto& DestCPUDescriptor = std::get<0>(ConsecutiveDescriptors[i]);
-        D3D12Context->m_device->CopyDescriptorsSimple(1, DestCPUDescriptor, SrcCPUDescriptor, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
+    DescriptorTable.UploadTable(D3D12Context->m_device.Get());
 }
 
 
@@ -1108,27 +965,12 @@ void RHID3D12PipelineObject::Draw(IRHICommandBuffer* CommandBuffer, uint32_t Ind
             ImageResource->ResourceStates = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
         }
     }
-    //ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), D3D12Pipeline->m_pipelineState.Get()));
     // Set necessary state.
     cmdList->SetPipelineState(m_pipelineState.Get());
     cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
     cmdList->SetDescriptorHeaps(1, &Heap);
-    //for (int i = 0; i < cbvDescriptions.size(); i++)
-    //{
-    //    cmdList->SetGraphicsRootConstantBufferView(i, cbvDescriptions[i].BufferLocation);
-    //}
     assert(RootParameters.size() == 1 && RootParameters[0].ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE);
-    cmdList->SetGraphicsRootDescriptorTable(0, std::get<1>(ConsecutiveDescriptors[0]));
-
-    //for (int i = 0; i < RootParameters.size(); i++)
-    //{
-    //    const auto& RootParam = RootParameters[i];
-	   // if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
-	   // {
-    //        // set samplers
-    //        cmdList->SetGraphicsRootDescriptorTable(i, GpuDescriptorHandles[i]);
-	   // }
-    //}
+    cmdList->SetGraphicsRootDescriptorTable(0, std::get<1>(DescriptorTable.ConsecutiveHandles[0]));
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmdList->IASetVertexBuffers(0, BoundBufferViews.size(), BoundBufferViews.data());
     cmdList->IASetIndexBuffer(&BoundIndexBufferView);
@@ -1145,7 +987,7 @@ void RHID3D12PipelineObject::Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t
 
     // Set root parameters (similar to graphics dispatcher)
     assert(RootParameters.size() == 1 && RootParameters[0].ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE);
-    cmdList->SetComputeRootDescriptorTable(0, std::get<1>(ConsecutiveDescriptors[0]));
+    cmdList->SetComputeRootDescriptorTable(0, std::get<1>(DescriptorTable.ConsecutiveHandles[0]));
     // Dispatch compute shader
     cmdList->Dispatch(ThreadGroupX, ThreadGroupY, ThreadGroupZ);
 }
@@ -1299,7 +1141,7 @@ RHID3D12FrameBuffer::~RHID3D12FrameBuffer() {
 void RHID3D12FrameBuffer::Initialize(IRHIContext* Context, IRHIRenderPass* RenderPass,
     std::vector<IRHIImageResource*> InColorRTs, IRHIImageResource* InDepthRT) {
     RHID3D12ImageResource* D3D12DepthRT = static_cast<RHID3D12ImageResource*>(InDepthRT);
-    DepthRTDescHandle = D3D12DepthRT->RTDSVCpuDescriptorHandle;
+    DepthRTDescHandle = D3D12DepthRT->StaticDescriptorRTDSV.CPUHandle;
     DepthRTFormat = D3D12DepthRT->textureDesc.Format;
     Height = D3D12DepthRT->textureDesc.Height;
     Width = D3D12DepthRT->textureDesc.Width;
@@ -1309,7 +1151,7 @@ void RHID3D12FrameBuffer::Initialize(IRHIContext* Context, IRHIRenderPass* Rende
     for (IRHIImageResource* InColorRT : InColorRTs)
     {
         RHID3D12ImageResource* D3D12ColorRT = static_cast<RHID3D12ImageResource*>(InColorRT);
-        ColorRTDescHandles[i] = D3D12ColorRT->RTDSVCpuDescriptorHandle;
+        ColorRTDescHandles[i] = D3D12ColorRT->StaticDescriptorRTDSV.CPUHandle;
         ColorRTFormats[i] = D3D12ColorRT->textureDesc.Format;
         i++;
     }
@@ -1365,7 +1207,7 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
     {
         ID3D12Resource* pBackBuffer = nullptr;
         ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pBackBuffer)));
-        D3D12Context->RTVHeapAllocator.Alloc(&m_rtvHandles[n], nullptr);
+        D3D12Context->DescriptorFactory.RTVAllocator.Alloc(&m_rtvHandles[n], nullptr);
         D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, m_rtvHandles[n]);
         m_renderTargets[n] = pBackBuffer;
     }
@@ -1396,7 +1238,7 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
         &DSClearValue,
         IID_PPV_ARGS(&m_dsRenderTarget)));
 
-    D3D12Context->DSVHeapAllocator.Alloc(&dsvHandle, nullptr);
+    D3D12Context->DescriptorFactory.DSVAllocator.Alloc(&dsvHandle, nullptr);
     D3D12Context->m_device->CreateDepthStencilView(m_dsRenderTarget.Get(), NULL, dsvHandle);
 
     FrameBuffers.resize(FrameCount);
@@ -1425,7 +1267,6 @@ void RHID3D12Swapchain::Cleanup(IRHIContext* Context)
     {
         rt_buffer->Release();
     }
-    //m_dsRenderTarget->Release();
 }
 
 void RHID3D12Swapchain::AcquireFrame(IRHIContext* Context, IRHIFrameBuffer*& OutFrameBuffer, IRHIRenderPass* InRenderPass)
@@ -1469,8 +1310,6 @@ void RHID3D12Swapchain::PresentFrameAndRelease(IRHIContext* Context, IRHICommand
 
     // Present the frame.
     ThrowIfFailed(m_swapChain->Present(1, 0));
-    //Error("Error: ", D3D12Context->m_device->GetDeviceRemovedReason());
-
     D3D12Context->WaitForPreviousFrame();
     ThrowIfFailed(D3D12Context->m_commandAllocator->Reset());
     ThrowIfFailed(cmdList->Reset(D3D12Context->m_commandAllocator.Get(), nullptr));
@@ -1514,4 +1353,95 @@ void RHID3D12CommandBuffer::ResetCommandBuffer()
 	
 }
 
+
+D3D12DescriptorFactory::D3D12DescriptorFactory()
+{
+
+}
+
+void D3D12DescriptorFactory::InitializeFactory(ID3D12Device* Device)
+{
+    D3D12_DESCRIPTOR_HEAP_DESC HeapDesc = {};
+    HeapDesc.NumDescriptors = 32;
+    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    ThrowIfFailed(Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&Heap_GPU)));
+    HeapDesc.NumDescriptors = 32;
+    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    ThrowIfFailed(Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&Heap_Static)));
+    HeapDesc.NumDescriptors = 32;
+    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    ThrowIfFailed(Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&Heap_RTV)));
+    HeapDesc.NumDescriptors = 32;
+    HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    ThrowIfFailed(Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&Heap_DSV)));
+
+    GPUAllocator.Create(Device, Heap_GPU.Get(), true);
+    StaticAllocator.Create(Device, Heap_Static.Get(), false);
+    RTVAllocator.Create(Device, Heap_RTV.Get(), false);
+    DSVAllocator.Create(Device, Heap_DSV.Get(), false);
+}
+
+D3D12DescriptorHandle D3D12DescriptorFactory::CreateStaticDescriptor()
+{
+    D3D12DescriptorHandle OutDescriptor;
+    StaticAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
+    OutDescriptor.Type = D3D12DescriptorHandle::EType::STATIC;
+    return OutDescriptor;
+}
+
+D3D12DescriptorHandle D3D12DescriptorFactory::CreateGPUDescriptor()
+{
+    D3D12DescriptorHandle OutDescriptor;
+    GPUAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
+    OutDescriptor.Type = D3D12DescriptorHandle::EType::GPU;
+    return OutDescriptor;
+}
+
+D3D12DescriptorHandle D3D12DescriptorFactory::CreateRTVDescriptor()
+{
+    D3D12DescriptorHandle OutDescriptor;
+    RTVAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
+    OutDescriptor.Type = D3D12DescriptorHandle::EType::RTV;
+    return OutDescriptor;
+}
+
+D3D12DescriptorHandle D3D12DescriptorFactory::CreateDSVDescriptor()
+{
+    D3D12DescriptorHandle OutDescriptor;
+    DSVAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
+    OutDescriptor.Type = D3D12DescriptorHandle::EType::DSV;
+    return OutDescriptor;
+}
+
+D3D12DescriptorTable D3D12DescriptorFactory::CreateGPUDescriptorTable(uint32_t TableSize)
+{
+    D3D12DescriptorTable OutTable;
+    OutTable.ConsecutiveHandles.resize(TableSize);
+    OutTable.HandlesToBeSet.resize(TableSize);
+    for (int i = 0; i < TableSize; i ++)
+    {
+        auto& Handle = OutTable.ConsecutiveHandles[i];
+        GPUAllocator.Alloc(&std::get<0>(Handle), &std::get<1>(Handle));
+    }
+    return OutTable;
+}
+
+void D3D12DescriptorTable::SetDescriptorHandle(uint32_t Index, D3D12DescriptorHandle& Handle)
+{
+    HandlesToBeSet[Index] = Handle;
+}
+
+void D3D12DescriptorTable::UploadTable(ID3D12Device* Device)
+{
+    for (int i = 0; i < ConsecutiveHandles.size(); i++)
+    {
+        auto& SrcCPUDescriptor = HandlesToBeSet[i].CPUHandle;
+        auto& DestCPUDescriptor = std::get<0>(ConsecutiveHandles[i]);
+        Device->CopyDescriptorsSimple(1, DestCPUDescriptor, SrcCPUDescriptor, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    }
+}
 
