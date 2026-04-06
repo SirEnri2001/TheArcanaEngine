@@ -22,6 +22,149 @@ layout(std140, binding = 2) readonly buffer PrimitiveBuffer{
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
+#define PI 3.14159265358979323846
+
+/// BEGIN HASH FUNCTIONS
+//----------------------------------------------------------------------------------------
+
+//The name "hash[Out][In]" describes the function signature:
+// * EXAMPLES:
+// * hash12: float = hash(vec2)  // 1 component out, 2 components in
+// * hash21: vec2  = hash(float)  // 2 components out, 1 component in
+// * hash22: vec2  = hash(vec2)  // 2 components out, 2 components in
+// * hash33: vec3  = hash(vec3)  // 3 components out, 3 components in
+float hash11(float p)
+{
+    p = fract(p * .1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return fract(p);
+}
+
+//----------------------------------------------------------------------------------------
+//  1 out, 2 in...
+float hash12(vec2 p)
+{
+	vec3 p3  = fract(vec3(p.xyx) * .1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+//----------------------------------------------------------------------------------------
+//  1 out, 3 in...
+float hash13(vec3 p3)
+{
+	p3  = fract(p3 * .1031);
+    p3 += dot(p3, p3.zyx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+//----------------------------------------------------------------------------------------
+// 1 out 4 in...
+float hash14(vec4 p4)
+{
+	p4 = fract(p4  * vec4(.1031, .1030, .0973, .1099));
+    p4 += dot(p4, p4.wzxy+33.33);
+    return fract((p4.x + p4.y) * (p4.z + p4.w));
+}
+
+//----------------------------------------------------------------------------------------
+//  2 out, 1 in...
+vec2 hash21(float p)
+{
+	vec3 p3 = fract(vec3(p) * vec3(.1031, .1030, .0973));
+	p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+
+}
+
+//----------------------------------------------------------------------------------------
+///  2 out, 2 in...
+vec2 hash22(vec2 p)
+{
+	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yzx+33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+
+}
+
+//----------------------------------------------------------------------------------------
+///  2 out, 3 in...
+vec2 hash23(vec3 p3)
+{
+	p3 = fract(p3 * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yzx+33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+}
+
+//----------------------------------------------------------------------------------------
+//  3 out, 1 in...
+vec3 hash31(float p)
+{
+   vec3 p3 = fract(vec3(p) * vec3(.1031, .1030, .0973));
+   p3 += dot(p3, p3.yzx+33.33);
+   return fract((p3.xxy+p3.yzz)*p3.zyx); 
+}
+
+
+//----------------------------------------------------------------------------------------
+///  3 out, 2 in...
+vec3 hash32(vec2 p)
+{
+	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yxz+33.33);
+    return fract((p3.xxy+p3.yzz)*p3.zyx);
+}
+
+//----------------------------------------------------------------------------------------
+///  3 out, 3 in...
+vec3 hash33(vec3 p3)
+{
+	p3 = fract(p3 * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yxz+33.33);
+    return fract((p3.xxy + p3.yxx)*p3.zyx);
+
+}
+
+//----------------------------------------------------------------------------------------
+// 4 out, 1 in...
+vec4 hash41(float p)
+{
+	vec4 p4 = fract(vec4(p) * vec4(.1031, .1030, .0973, .1099));
+    p4 += dot(p4, p4.wzxy+33.33);
+    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
+    
+}
+
+//----------------------------------------------------------------------------------------
+// 4 out, 2 in...
+vec4 hash42(vec2 p)
+{
+	vec4 p4 = fract(vec4(p.xyxy) * vec4(.1031, .1030, .0973, .1099));
+    p4 += dot(p4, p4.wzxy+33.33);
+    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
+
+}
+
+//----------------------------------------------------------------------------------------
+// 4 out, 3 in...
+vec4 hash43(vec3 p)
+{
+	vec4 p4 = fract(vec4(p.xyzx)  * vec4(.1031, .1030, .0973, .1099));
+    p4 += dot(p4, p4.wzxy+33.33);
+    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
+}
+
+//----------------------------------------------------------------------------------------
+// 4 out, 4 in...
+vec4 hash44(vec4 p4)
+{
+	p4 = fract(p4  * vec4(.1031, .1030, .0973, .1099));
+    p4 += dot(p4, p4.wzxy+33.33);
+    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
+}
+/// END HASH FUNCTIONS
+
+
 
 void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColor, out vec3 worldNormal, out vec3 emission, out vec4 worldPoint){
     t = 999999999.;
@@ -108,29 +251,52 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
     worldNormal = normalize(worldNormal);
 }
 
-vec3 hash( vec3 p )
-{
-	p = vec3( dot(p,vec3(127.1,311.7, 74.7)),
-			  dot(p,vec3(269.5,183.3,246.1)),
-			  dot(p,vec3(113.5,271.9,124.6)));
-
-	return fract(sin(p)*43758.5453123);
+vec2 SampleXi(in float seed, in vec2 fragCoord){
+    // // the mod might have efficiency issues
+    // uint StratifyY = time / 16 % 16;
+    // uint StratifyX = time % 16;
+    // vec2 Jitter = hash23(vec3(fragCoord, time * seed));
+    // return vec2(StratifyX + Jitter.x, StratifyY + Jitter.y) / 16.;
+    return hash23(vec3(fragCoord, seed));
 }
 
-void GetRandomDir(in float seed, in vec2 fragCoord, out vec3 outDir){
-    outDir = normalize(hash(vec3(seed, fragCoord.x * 0.1, fragCoord.y * 0.1)) - 0.5);
+
+// Reference: https://pbr-book.org/3ed-2018/Monte_Carlo_Integration/2D_Sampling_with_Multidimensional_Transformations#ConcentricSampleDisk
+vec2 ConcentricSampleDisk(vec2 Xi){
+    vec2 uOffset = 2. * Xi - vec2(1., 1.);
+    if(uOffset.x==0. && uOffset.y==0.){
+        return vec2(0.);
+    }
+    float theta, r;
+    if(abs(uOffset.x) > abs(uOffset.y)){
+        r = uOffset.x;
+        theta = PI / 4. * (uOffset.y / uOffset.x);
+    }else{
+        r = uOffset.y;
+        theta = PI / 2. - PI / 4. * (uOffset.x / uOffset.y);
+    }
+    return r * vec2(cos(theta), sin(theta));
 }
 
+// Reference: https://pbr-book.org/3ed-2018/Monte_Carlo_Integration/2D_Sampling_with_Multidimensional_Transformations
+vec3 CosineSampleHemisphere(in vec2 Xi, out float pdf){
+    pdf = 0.;
+    vec2 d = ConcentricSampleDisk(Xi);
+    float z = sqrt(max(0., 1. - d.x * d.x - d.y * d.y));
+    pdf = z / PI;
+    return vec3(d.x, d.y, z);
+}
 
 void main() 
 {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    vec2 pixel_f = vec2(pixel);
     // perturb the sampling point
-    vec3 perturb;
-    GetRandomDir(uniforms.time / 100., pixel_f.xy * 0.1, perturb);
-    pixel_f += perturb.xy*0.5;
+    // vec2 perturb = SampleXi(11223344.*float(uniforms.frameId), pixel_f, uniforms.time);
+
+    //GetRandomDir(uniforms.time / 100., pixel_f.xy * 0.1, perturb);
+    // pixel_f += perturb*0.5;
     ivec2 size = imageSize(outImage);
+    vec2 pixel_f = vec2(pixel);
     vec4 outColor = vec4(0., 0., 0., 1.);
     if(pixel.x>size.x || pixel.y > size.y){
         return;
@@ -162,31 +328,42 @@ void main()
     bool inBox = true;
     vec3 throughput = vec3(1.0);
     vec4 worldPoint = vec4(0.0, 0.0, 0.0, 1.0);
-    for (int i = 0; i < 6; i++){
+    for (int i = 0; i < 24; i++){
+        vec2 Xi = SampleXi(uniforms.frameId*31. + i, ndc.xy*500.);
         RayIntersect(rayWorldOrigin, w_o, t, baseColor, worldNormal, emission, worldPoint);
         if(t>10000){
             outColor = vec4(0., 0., 0., 1.);
             break;
         }
         if (emission.x > 0.0001){
-            outColor = vec4(throughput*emission, 1.0);
+            outColor = vec4(throughput*emission*30., 1.0);
             break;
         }
         rayWorldOrigin = rayWorldOrigin + (t-0.001) * w_o;
-        vec3 w_i;
-        GetRandomDir(uniforms.time / 100. + i, ndc.xy * 0.1, w_i);
-        if (dot(w_i, worldNormal)< 0.){
-            w_i *= -1.;
+        vec3 w_i_local;
+        float pdf;
+        w_i_local = CosineSampleHemisphere(Xi, pdf);
+        vec3 tangent_world = vec3(0., 0., 1.);
+        if(length(cross(tangent_world, worldNormal))<0.0001){
+            tangent_world = vec3(0., 1., 0.);
         }
-        throughput *= baseColor * abs(dot(w_i, worldNormal));
-        w_o = w_i;
+        vec3 bitangent_world = normalize(cross(worldNormal, tangent_world));
+        tangent_world = normalize(cross(bitangent_world, worldNormal));
+        vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * worldNormal;
+        // if(pdf < 0.001){
+        //     outColor = vec4(0., 0., 0., 1.);
+        //     break;
+        // }
+        throughput *= baseColor * abs(dot(w_i_world, worldNormal));
+        // if(throughput.x < 0.0001 && throughput.y < 0.0001 &&throughput.z < 0.0001)
+        // {
+        //     outColor = vec4(0., 0., 0., 1.);
+        //     break;
+        // }
+        w_o = w_i_world;
     }
     //outColor = vec4(1. / t, 0., 0., 1.);
     //outColor = vec4(worldNormal * 0.5 + 0.5, 1.0);
-
-    float gamma = 2.2;
-    //outColor = outColor / (1. + outColor);
-    outColor.rgb = pow(outColor.rgb, vec3(1.0/gamma));
     if(uniforms.frameId>1 && inColor.x==inColor.x){
         outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
         outColor.w = 1.0;
