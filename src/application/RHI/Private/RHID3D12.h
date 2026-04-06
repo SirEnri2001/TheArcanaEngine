@@ -45,35 +45,41 @@ public:
     }
 
     static D3D12_RESOURCE_STATES GetDXResourceStates(RHIResourceState InState) {
-        D3D12_RESOURCE_STATES ResourceState = D3D12_RESOURCE_STATE_COMMON;
-        // Principle: wide stage bits, narrow access bits - by ChatGPT
+        D3D12_RESOURCE_STATES D3D12State;
         switch (InState)
         {
         case RHIResourceState::UNDEFINED:
-            ResourceState = D3D12_RESOURCE_STATE_COMMON;
+            D3D12State = D3D12_RESOURCE_STATE_COMMON;
             break;
         case RHIResourceState::SHADER_READ:
+            D3D12State = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
             break;
         case RHIResourceState::SHADER_WRITE:
+            D3D12State = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             break;
         case RHIResourceState::SHADER_READWRITE:
+            D3D12State = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             break;
         case RHIResourceState::COLOR_ATTACHMENT:
-            ResourceState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            D3D12State = D3D12_RESOURCE_STATE_RENDER_TARGET;
             break;
         case RHIResourceState::DEPTH_ATTACHMENT:
-            ResourceState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            D3D12State = D3D12_RESOURCE_STATE_DEPTH_WRITE;
             break;
         case RHIResourceState::COPY_SRC:
+            D3D12State = D3D12_RESOURCE_STATE_COPY_SOURCE;
             break;
         case RHIResourceState::COPY_DST:
+            D3D12State = D3D12_RESOURCE_STATE_COPY_DEST;
             break;
         case RHIResourceState::PRESENTABLE:
+            D3D12State = D3D12_RESOURCE_STATE_PRESENT;
             break;
         default:
+            D3D12State = D3D12_RESOURCE_STATE_COMMON;
             break;
         }
-        return ResourceState;
+        return D3D12State;
     }
 };
 
@@ -152,7 +158,6 @@ public:
     ComPtr<ID3D12CommandQueue> m_commandQueue;
     ComPtr<ID3D12Device> m_device;
     ComPtr<IDXGIFactory4> factory;
-    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
     HANDLE m_fenceEvent;
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValue;
@@ -209,7 +214,7 @@ public:
     D3D12DescriptorHandle StaticDescriptorSRV;
     D3D12DescriptorHandle StaticDescriptorUAV;
     D3D12DescriptorHandle StaticDescriptorRTDSV;
-    D3D12_RESOURCE_STATES ResourceStates;
+    D3D12_RESOURCE_STATES ResourceState;
 };
 
 
@@ -416,6 +421,7 @@ class RHID3D12CommandBuffer : public IRHICommandBuffer
 {
 public:
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
+    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
     RHID3D12CommandBuffer() = default;
     RHID3D12CommandBuffer(const RHID3D12CommandBuffer&) = delete;
     virtual ~RHID3D12CommandBuffer() override;

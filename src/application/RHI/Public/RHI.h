@@ -48,23 +48,6 @@ enum RHIFormat
     D32_SFLOAT /**< float, depth value */
 };
 
-//enum class RHIImageUsageBits : uint32_t
-//{
-//    GENERAL = 0x0001u,  /**< General texture usage */
-//    COLOR_RT = 0x0002u, /**< Color rendertarget, created with IRHIImageResource::InitializeRenderTarget */
-//    DEPTH_RT = 0x0004u, /**< Depth rendertarget, created with IRHIImageResource::InitializeRenderTarget */
-//    COLOR_PRESENT_RT = 0x0008u, /**< Color rendertarget, created with IRHIImageResource::InitializeRenderTarget, specified for present on surface */
-//    DEPTH_PRESENT_RT = 0x0010u,  /**< Depth rendertarget, created with IRHIImageResource::InitializeRenderTarget, specified for present on surface */
-//    STORAGE = 0x0020u, /**< Storage with read and write access in compute shader */
-//    SAMPLER = 0x0040u,
-//    TRANSFER_DST = 0x0080u,
-//};
-//
-//inline RHIImageUsageBits operator&(RHIImageUsageBits Mask1, RHIImageUsageBits Mask2)
-//{
-//    return static_cast<RHIImageUsageBits>(static_cast<uint32_t>(Mask1) & static_cast<uint32_t>(Mask2));
-//}
-
 enum class RHIResourceState : uint32_t {
     UNDEFINED = 0,
 
@@ -110,11 +93,6 @@ inline bool HasFlag(RHIResourceState Mask, RHIResourceState Flag)
 {
     return static_cast<uint32_t>(Mask & Flag) != 0;
 }
-
-enum ImageFlag
-{
-	
-};
 
 enum BufferType
 {

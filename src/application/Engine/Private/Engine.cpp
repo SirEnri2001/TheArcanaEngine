@@ -382,6 +382,7 @@ public:
     PathTracerPipeline Pipeline;
     PTPostPipeline PostPipeline;
     ComputePipeline TestCompPipeline;
+    RHIFormat SwapchainFormat;
 
     bool swap = false;
 
@@ -417,8 +418,10 @@ public:
         StorageBuffer = Context->CreateRHIBuffer();
         PrimitiveBuffer = Context->CreateRHIBuffer();
 
+        SwapchainFormat = R8G8B8A8_UNORM; // R8G8B8A8_UNORM is compatible for both Vulkan and D3D12 backend
+
         // create renderer
-        Swapchain->Initialize(Context, R8G8B8A8_UNORM);
+        Swapchain->Initialize(Context, SwapchainFormat);
         ImageExtent3D ext = Swapchain->GetFrameSize();
         RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
         RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
@@ -426,10 +429,10 @@ public:
         RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
 
     	std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
-        std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
+        std::vector<RHIFormat> PresentRTFormats = { SwapchainFormat };
         //std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
         PTRenderPass->Initialize(Context, ColorRTFormats);
-        PresentPass->Initialize(Context, ColorRTFormats1);
+        PresentPass->Initialize(Context, PresentRTFormats);
 
         Pipeline.InitializePipeline(Context, *PTRenderPass);
         PostPipeline.InitializePipeline(Context, *PresentPass);
@@ -439,9 +442,6 @@ public:
         RHIFullScreenQuadIndexBuffer->Initialize(Context, sizeof(uint32_t)* 6, RHIResourceState::BUFFER_INDEX);
         float3 FullScreenVertices[4] = { float3(-1., -1., 0.), float3(-1., 1., 0.), float3(1., 1., 0.), float3(1., -1., 0.) };
         uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
-
-        //std::unique_ptr<IRHICommandBuffer> CmdBuffer = Context->CreateRHICommandBuffer();
-        //CmdBuffer->Initialize(Context);
         RHIFullScreenQuadBuffer->CopyToBuffer(Context, FullScreenVertices, sizeof(float3) * 8);
         RHIFullScreenQuadIndexBuffer->CopyToBuffer(Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
         CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
@@ -475,11 +475,11 @@ public:
         CameraUniform->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
         StorageBuffer->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
         IRHIFrameBuffer* FrameBuffer = nullptr;
-        Swapchain->AcquireFrame(Context, FrameBuffer, PresentPass.get());
         std::unique_ptr<IRHICommandBuffer> CommandBuffer;
         CommandBuffer = Context->CreateRHICommandBuffer();
         CommandBuffer->Initialize(Context);
         CommandBuffer->BeginCommandBuffer();
+        Swapchain->AcquireFrame(Context, FrameBuffer, PresentPass.get());
         if (Recompile) {
             CompileAllShaders(TestShaders);
             Pipeline.ReloadPipeline(Context, *PTRenderPass);

@@ -120,7 +120,7 @@ void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
 
     CHECK_SYSTEM_ERROR(hWnd = CreateWindow(
         "DXSampleClass",        // name of window class 
-        "Sample",            // title-bar string 
+        "TheArcanaEngine - D3D12 API",            // title-bar string 
         WS_OVERLAPPEDWINDOW, // top-level window 
         CW_USEDEFAULT,       // default horizontal position 
         CW_USEDEFAULT,       // default vertical position 
@@ -180,15 +180,9 @@ void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-
     ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
 
-    
-    ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
-
-    ThrowIfFailed(m_commandAllocator->Reset());
     DescriptorFactory.InitializeFactory(m_device.Get());
-
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -283,50 +277,7 @@ void RHID3D12Context::WaitForPreviousFrame()
 
 void RHID3D12ImageResource::Initialize(IRHIContext* Context, uint32_t InHeight, uint32_t InWidth, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel)
 {
-    auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
-    // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
-    // the command list that references it has finished executing on the GPU.
-    // We will flush the GPU at the end of this method to ensure the resource is not
-    // prematurely destroyed.    
-    // Create the texture.
-    {
-        // Describe and create a Texture2D.
-        textureDesc.MipLevels = 1;
-        textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        textureDesc.Width = InWidth;
-        textureDesc.Height = InHeight;
-        textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-        textureDesc.DepthOrArraySize = 1;
-        textureDesc.SampleDesc.Count = 1;
-        textureDesc.SampleDesc.Quality = 0;
-        textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-
-        ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            &textureDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            nullptr,
-            IID_PPV_ARGS(&m_texture)));
-        ResourceStates = D3D12_RESOURCE_STATE_COPY_DEST;
-        // Describe and create a SRV for the texture.
-        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Format = textureDesc.Format;
-        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MipLevels = 1;
-        StaticDescriptorSRV = D3D12Context->DescriptorFactory.CreateStaticDescriptor();
-        D3D12Context->m_device->CreateShaderResourceView(m_texture.Get(), &srvDesc, StaticDescriptorSRV.CPUHandle);
-        if (HasFlag(InUsageMask, RHIResourceState::SHADER_WRITE) || HasFlag(InUsageMask, RHIResourceState::SHADER_READWRITE))
-        {
-	        uavDesc.Format = textureDesc.Format;
-            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-            uavDesc.Texture2D.MipSlice = 0;
-            uavDesc.Texture2D.PlaneSlice = 0;
-
-            StaticDescriptorUAV = D3D12Context->DescriptorFactory.CreateStaticDescriptor();
-            D3D12Context->m_device->CreateUnorderedAccessView(m_texture.Get(), nullptr, &uavDesc, StaticDescriptorUAV.CPUHandle);
-        }
-    }
+    Initialize(Context, { InWidth, InHeight, 1 }, InFormat, InUsageMask, MipLevel);
 }
 
 void RHID3D12ImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel)
@@ -339,7 +290,7 @@ void RHID3D12ImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExt
     // Create the texture.
     // Describe and create a Texture2D.
     textureDesc.MipLevels = 1;
-    textureDesc.Format = RHID3D12PlatformSupport::GetDXFormat(InFormat);// InUsage == ImageUsage::IU_DEPTH_RT ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDesc.Format = RHID3D12PlatformSupport::GetDXFormat(InFormat);
     textureDesc.Width = RTExtent.Width;
     textureDesc.Height = RTExtent.Height;
     textureDesc.Flags = HasFlag(InUsageMask, RHIResourceState::DEPTH_ATTACHMENT) ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
@@ -363,12 +314,12 @@ void RHID3D12ImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExt
     DSClearValue.DepthStencil.Depth = 1.0;
     DSClearValue.DepthStencil.Stencil = 0;
 
-    ResourceStates = RHID3D12PlatformSupport::GetDXResourceStates(InUsageMask);
+    ResourceState = D3D12_RESOURCE_STATE_COMMON;
     ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &textureDesc,
-        ResourceStates,
+        ResourceState,
         HasFlag(InUsageMask, RHIResourceState::DEPTH_ATTACHMENT) ? &DSClearValue : &ColorRTClearValue,
         IID_PPV_ARGS(&m_texture)));
 
@@ -399,7 +350,6 @@ void RHID3D12ImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExt
         ds_desc.Texture2D.MipSlice = 1;
         ds_desc.Format = DXGI_FORMAT_D32_FLOAT;
         ds_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-
         StaticDescriptorRTDSV = D3D12Context->DescriptorFactory.CreateDSVDescriptor();
         D3D12Context->m_device->CreateDepthStencilView(m_texture.Get(), NULL, StaticDescriptorRTDSV.CPUHandle);\
     }
@@ -410,10 +360,10 @@ void RHID3D12ImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHI
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture.Get(), 0, 1);
     ComPtr<ID3D12Resource> textureUploadHeap;
-    
-    ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    // Create the command list.
-    ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12Context->m_commandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList)));
+
+    RHID3D12CommandBuffer CmdBuffer;
+    CmdBuffer.Initialize(Context);
+    CmdBuffer.BeginCommandBuffer();
     // Create the GPU upload buffer.
     ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -428,12 +378,11 @@ void RHID3D12ImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHI
     textureData.RowPitch = Stride * textureDesc.Width;
     textureData.SlicePitch = Stride * textureDesc.Width * textureDesc.Height;
 
-    UpdateSubresources(m_commandList.Get(), m_texture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
-    m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-        // Close the command list and execute it to begin the initial GPU setup.
-        ThrowIfFailed(m_commandList->Close());
-        ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-        D3D12Context->m_commandQueue->ExecuteCommandLists(1, ppCommandLists);
+    UpdateSubresources(CmdBuffer.m_commandList.Get(), m_texture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
+    CmdBuffer.m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+    CmdBuffer.EndCommandBuffer();
+    ID3D12CommandList* ppCommandLists[] = { CmdBuffer.m_commandList.Get() };
+    D3D12Context->m_commandQueue->ExecuteCommandLists(1, ppCommandLists);
     D3D12Context->WaitForPreviousFrame();
 }
 
@@ -449,7 +398,10 @@ void RHID3D12ImageResource::Resize(IRHIContext* Context, uint32_t Height, uint32
 
 void RHID3D12ImageResource::Transition(IRHICommandBuffer* CommandBuffer, RHIResourceState InState)
 {
-	
+    RHID3D12CommandBuffer* CmdBuffer = static_cast<RHID3D12CommandBuffer*>(CommandBuffer);
+	CmdBuffer->m_commandList->ResourceBarrier(1, 
+        &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), ResourceState, RHID3D12PlatformSupport::GetDXResourceStates(InState)));
+    ResourceState = RHID3D12PlatformSupport::GetDXResourceStates(InState);
 }
 
 void RHID3D12Buffer::Initialize(IRHIContext* Context, uint32_t ElementSize, uint32_t NumElements, RHIResourceState InState)
@@ -558,12 +510,13 @@ void RHID3D12Buffer::CopyToBuffer(IRHIContext* Context, void* data, uint32_t Tot
     memcpy(MappedPtr, data, TotalBytes);
     UploadBuffer->Unmap(0, nullptr);
 
-    ComPtr<ID3D12GraphicsCommandList> m_commandList;
+    RHID3D12CommandBuffer CmdBuffer;
+    CmdBuffer.Initialize(Context);
+    CmdBuffer.BeginCommandBuffer();
     // Create the command list.
-    ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12Context->m_commandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList)));
-    m_commandList->CopyBufferRegion(m_Buffer.Get(), 0, UploadBuffer.Get(), 0, BufferSize);
-    ThrowIfFailed(m_commandList->Close());
-    ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+    CmdBuffer.m_commandList->CopyBufferRegion(m_Buffer.Get(), 0, UploadBuffer.Get(), 0, BufferSize);
+    CmdBuffer.EndCommandBuffer();
+    ID3D12CommandList* ppCommandLists[] = { CmdBuffer.m_commandList.Get() };
     D3D12Context->m_commandQueue->ExecuteCommandLists(1, ppCommandLists);
     D3D12Context->WaitForPreviousFrame();
 }
@@ -957,12 +910,12 @@ void RHID3D12PipelineObject::Draw(IRHICommandBuffer* CommandBuffer, uint32_t Ind
     ComPtr<ID3D12GraphicsCommandList> cmdList = static_cast<RHID3D12CommandBuffer*>(CommandBuffer)->m_commandList;
     for (auto* ImageResource : ImageToTransition)
     {
-        if (ImageResource->ResourceStates != D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+        if (ImageResource->ResourceState != D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
         {
             cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
                 ImageResource->m_texture.Get(),
-                ImageResource->ResourceStates, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE));
-            ImageResource->ResourceStates = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+                ImageResource->ResourceState, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE));
+            ImageResource->ResourceState = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
         }
     }
     // Set necessary state.
@@ -1003,12 +956,12 @@ void RHID3D12RenderPass::BeginRenderPass(IRHICommandBuffer* CommandBuffer, IRHIF
 
     for(auto* ImageResource : TransitionList)
     {
-        if(ImageResource->ResourceStates != D3D12_RESOURCE_STATE_RENDER_TARGET)
+        if(ImageResource->ResourceState != D3D12_RESOURCE_STATE_RENDER_TARGET)
         {
             cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 				ImageResource->m_texture.Get(),
-				ImageResource->ResourceStates, D3D12_RESOURCE_STATE_RENDER_TARGET));
-	        ImageResource->ResourceStates = D3D12_RESOURCE_STATE_RENDER_TARGET;
+				ImageResource->ResourceState, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	        ImageResource->ResourceState = D3D12_RESOURCE_STATE_RENDER_TARGET;
         }
     }
 
@@ -1311,8 +1264,6 @@ void RHID3D12Swapchain::PresentFrameAndRelease(IRHIContext* Context, IRHICommand
     // Present the frame.
     ThrowIfFailed(m_swapChain->Present(1, 0));
     D3D12Context->WaitForPreviousFrame();
-    ThrowIfFailed(D3D12Context->m_commandAllocator->Reset());
-    ThrowIfFailed(cmdList->Reset(D3D12Context->m_commandAllocator.Get(), nullptr));
 }
 
 ImageExtent3D RHID3D12Swapchain::GetFrameSize()
@@ -1324,8 +1275,10 @@ void RHID3D12CommandBuffer::Initialize(IRHIContext* Context)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
     // Create the command list.
-    ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12Context->m_commandAllocator.Get(),
+    ThrowIfFailed(D3D12Context->m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
+    ThrowIfFailed(D3D12Context->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(),
         NULL, IID_PPV_ARGS(&m_commandList)));
+    ThrowIfFailed(m_commandList->Close());
 }
 
 void RHID3D12CommandBuffer::Cleanup(IRHIContext* Context)
@@ -1341,6 +1294,8 @@ RHID3D12CommandBuffer::~RHID3D12CommandBuffer()
 
 void RHID3D12CommandBuffer::BeginCommandBuffer()
 {
+    ThrowIfFailed(m_commandAllocator->Reset());
+    ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr));
 }
 
 void RHID3D12CommandBuffer::EndCommandBuffer()
