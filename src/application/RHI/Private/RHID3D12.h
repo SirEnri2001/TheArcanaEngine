@@ -7,8 +7,11 @@
 
 #include "RHIImGuiHelper.h"
 #define RHI_IMPLEMENT
+#include <list>
+
 #include "RHI.h"
 
+struct DescriptorHeapAllocator;
 using Microsoft::WRL::ComPtr;
 
 // RHID3D12PlatformSupport
@@ -87,8 +90,10 @@ public:
 class D3D12DescriptorHandle
 {
 public:
+    D3D12DescriptorHandle() = default;
     CD3DX12_GPU_DESCRIPTOR_HANDLE GPUHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE CPUHandle;
+    DescriptorHeapAllocator* Allocator;
 
     enum class EType
     {
@@ -97,7 +102,7 @@ public:
         RTV,
         DSV,
     } Type;
-
+    void Free();
 };
 
 struct DescriptorHeapAllocator
@@ -107,22 +112,31 @@ struct DescriptorHeapAllocator
     D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
     D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
     UINT                        HeapHandleIncrement;
-    std::vector<int>               FreeIndices;
+    struct Range {
+        uint32_t start;
+        uint32_t size;
+    };
+
+    std::list<Range> freeRanges;
+    uint32_t heapSize;
+    bool bAllocateGPU = false;
 
     void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap, bool hasGpuHandle);
     void Destroy();
-    void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle);
-    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle);
+    void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* OutCPUHandle, D3D12_GPU_DESCRIPTOR_HANDLE* OutGPUHandle, uint32_t Size = 1);
+    void Free(D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle, uint32_t Size);
 };
 
 class D3D12DescriptorTable
 {
 public:
     D3D12DescriptorTable() = default;
+    DescriptorHeapAllocator* Allocator;
     std::vector<std::tuple<D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE>> ConsecutiveHandles;
     std::vector<D3D12DescriptorHandle> HandlesToBeSet;
     void SetDescriptorHandle(uint32_t Index, D3D12DescriptorHandle& Handle);
     void UploadTable(ID3D12Device* Device);
+    void Free();
 };
 
 

@@ -28,7 +28,6 @@ static const int APP_SRV_HEAP_SIZE = 64;
 
 void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap, bool hasGpuHandle)
 {
-    assert(Heap == nullptr && FreeIndices.empty());
     Heap = heap;
     D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
     HeapType = desc.Type;
@@ -36,35 +35,70 @@ void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap*
     if (hasGpuHandle)
     {
         HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+        bAllocateGPU = true;
     }
     HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
-    FreeIndices.reserve((int)desc.NumDescriptors);
-    for (int n = desc.NumDescriptors; n > 0; n--)
-        FreeIndices.push_back(n - 1);
+    heapSize = desc.NumDescriptors;
+    freeRanges.push_back({ 0, heapSize });
 }
 
 void DescriptorHeapAllocator::Destroy()
 {
     Heap = nullptr;
-    FreeIndices.clear();
 }
 
-void DescriptorHeapAllocator::Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle)
+void DescriptorHeapAllocator::Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* OutCPUHandle, D3D12_GPU_DESCRIPTOR_HANDLE* OutGPUHandle, uint32_t Size)
 {
-    assert(FreeIndices.size() > 0);
-    int idx = FreeIndices.back();
-    FreeIndices.pop_back();
-    out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
-    if(out_gpu_desc_handle)
+    for (auto it = freeRanges.begin(); it != freeRanges.end(); ++it)
     {
-		out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+        if (it->size >= Size)
+        {
+            uint32_t outStart = it->start;
+
+            it->start += Size;
+            it->size -= Size;
+
+            if (it->size == 0)
+                freeRanges.erase(it);
+            OutCPUHandle->ptr = HeapStartCpu.ptr + outStart * HeapHandleIncrement;
+            if (OutGPUHandle && bAllocateGPU)
+            {
+                OutGPUHandle->ptr = HeapStartGpu.ptr + outStart * HeapHandleIncrement;
+            }
+            return;
+        }
     }
+    throw std::runtime_error("Heap is full");
 }
 
-void DescriptorHeapAllocator::Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle)
+void DescriptorHeapAllocator::Free(D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle, uint32_t Size)
 {
-    int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
-    FreeIndices.push_back(cpu_idx);
+    uint32_t start = (CPUHandle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement;
+    auto it = freeRanges.begin();
+    for (; it != freeRanges.end(); ++it)
+    {
+        if (start < it->start)
+            break;
+    }
+
+    auto inserted = freeRanges.insert(it, { start, Size });
+    if (inserted != freeRanges.begin())
+    {
+        auto prev = std::prev(inserted);
+        if (prev->start + prev->size == inserted->start)
+        {
+            prev->size += inserted->size;
+            freeRanges.erase(inserted);
+            inserted = prev;
+        }
+    }
+    auto next = std::next(inserted);
+    if (next != freeRanges.end() &&
+        inserted->start + inserted->size == next->start)
+    {
+        inserted->size += next->size;
+        freeRanges.erase(next);
+    }
 }
 
 // RHID3D12PlatformSupport implementation
@@ -682,8 +716,8 @@ void RHID3D12PipelineFactory::InitializePipelineObject(IRHIPipelineObject* OutPi
     auto* D3D12RenderPassResource = static_cast<RHID3D12RenderPass*>(RenderPassResource);
 
     RootParam.InitAsDescriptorTable(Ranges.size(), Ranges.data());
-
-    D3D12PipelineObject->RootParameters.push_back(RootParam);
+    D3D12PipelineObject->RootParameters.resize(1);
+    D3D12PipelineObject->RootParameters[0] = RootParam;
     D3D12PipelineObject->Heap = D3D12Context->DescriptorFactory.Heap_GPU.Get();
     D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(SRVCounts + UAVCounts + CBVCounts);
 
@@ -746,7 +780,8 @@ void RHID3D12PipelineFactory::InitializeComputePipelineObject(IRHIPipelineObject
     auto* D3D12PipelineObject = static_cast<RHID3D12PipelineObject*>(OutComputePipelineObject);
 
     RootParam.InitAsDescriptorTable(Ranges.size(), Ranges.data());
-    D3D12PipelineObject->RootParameters.push_back(RootParam);
+    D3D12PipelineObject->RootParameters.resize(1);
+    D3D12PipelineObject->RootParameters[0] = RootParam;
     D3D12PipelineObject->Heap = D3D12Context->DescriptorFactory.Heap_GPU.Get();
     D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(SRVCounts + UAVCounts + CBVCounts);
 
@@ -794,7 +829,8 @@ void RHID3D12PipelineFactory::Cleanup(IRHIContext* Context)
 // RHID3D12PipelineObject implementation
 void RHID3D12PipelineObject::Cleanup(IRHIContext* Context)
 {
-    // TODO: Implement D3D12 pipeline cleanup
+    // Free the descriptor table
+    DescriptorTable.Free();
 }
 
 void RHID3D12PipelineObject::SetUniform(IRHIBuffer* Buffer, uint32_t Binding)
@@ -1005,7 +1041,7 @@ static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = nullptr;
 void RHID3D12ImGUI::Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
-    //auto* D3D12PresentPass = static_cast<RHID3D12PresentPass*>(PresentPass);
+    auto* D3D12PresentPass = static_cast<RHID3D12RenderPass*>(PresentRenderPass);
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGlobals.Context = ImGui::CreateContext();
@@ -1026,7 +1062,7 @@ void RHID3D12ImGUI::Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, I
     init_info.Device = D3D12Context->m_device.Get();
     init_info.CommandQueue = D3D12Context->m_commandQueue.Get();
     init_info.NumFramesInFlight = APP_NUM_FRAMES_IN_FLIGHT;
-    init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    init_info.RTVFormat = D3D12PresentPass->ColorRTFormats[0];
     init_info.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
     // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
@@ -1049,7 +1085,7 @@ void RHID3D12ImGUI::Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, I
     };
     init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle)
     {
-	    return g_pd3dSrvDescHeapAlloc.Free(cpu_handle);
+	    return g_pd3dSrvDescHeapAlloc.Free(cpu_handle, 1);
     };
     ImGui_ImplDX12_Init(&init_info);
 }
@@ -1133,6 +1169,15 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
     SwapChainDesc.Width = D3D12Context->m_width;
     SwapChainDesc.Height = D3D12Context->m_height;
     SwapChainDesc.Format = RHID3D12PlatformSupport::GetDXFormat(InSwapchainFormat);
+    // cannot specify SRGB in swapchain, we define SRGB in RTV
+    if (InSwapchainFormat==RHIFormat::B8G8R8A8_SRGB)
+    {
+        SwapChainDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    }
+    if (InSwapchainFormat==RHIFormat::R8G8B8A8_SRGB)
+    {
+        SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    }
     SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     SwapChainDesc.SampleDesc.Count = 1;
@@ -1147,6 +1192,7 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
         nullptr,
         &swapChain
     ));
+    SwapChainDesc.Format = RHID3D12PlatformSupport::GetDXFormat(InSwapchainFormat);
 
     // This sample does not support fullscreen transitions.
     ThrowIfFailed(D3D12Context->factory->MakeWindowAssociation(D3D12Context->hWnd, DXGI_MWA_NO_ALT_ENTER));
@@ -1161,7 +1207,10 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
         ID3D12Resource* pBackBuffer = nullptr;
         ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pBackBuffer)));
         D3D12Context->DescriptorFactory.RTVAllocator.Alloc(&m_rtvHandles[n], nullptr);
-        D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, nullptr, m_rtvHandles[n]);
+        D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+        rtvDesc.Format = RHID3D12PlatformSupport::GetDXFormat(InSwapchainFormat);
+        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+        D3D12Context->m_device->CreateRenderTargetView(pBackBuffer, &rtvDesc, m_rtvHandles[n]);
         m_renderTargets[n] = pBackBuffer;
     }
     // Create the texture.
@@ -1204,7 +1253,7 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
         D3D12FB->ColorRTDescHandles.resize(1);
         D3D12FB->ColorRTFormats.resize(1);
         D3D12FB->ColorRTDescHandles[0] = m_rtvHandles[i];
-        D3D12FB->ColorRTFormats[0] = SwapChainDesc.Format;
+        D3D12FB->ColorRTFormats[0] = RHID3D12PlatformSupport::GetDXFormat(InSwapchainFormat);
         D3D12FB->DepthRTDescHandle = dsvHandle;
         D3D12FB->DepthRTFormat = DepthFormat;
     }
@@ -1308,6 +1357,16 @@ void RHID3D12CommandBuffer::ResetCommandBuffer()
 	
 }
 
+void D3D12DescriptorHandle::Free()
+{
+    Allocator->Free(CPUHandle, 1);
+}
+
+void D3D12DescriptorTable::Free()
+{
+    Allocator->Free(std::get<0>(ConsecutiveHandles[0]), ConsecutiveHandles.size());
+}
+
 
 D3D12DescriptorFactory::D3D12DescriptorFactory()
 {
@@ -1345,6 +1404,7 @@ D3D12DescriptorHandle D3D12DescriptorFactory::CreateStaticDescriptor()
     D3D12DescriptorHandle OutDescriptor;
     StaticAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
     OutDescriptor.Type = D3D12DescriptorHandle::EType::STATIC;
+    OutDescriptor.Allocator = &StaticAllocator;
     return OutDescriptor;
 }
 
@@ -1353,6 +1413,7 @@ D3D12DescriptorHandle D3D12DescriptorFactory::CreateGPUDescriptor()
     D3D12DescriptorHandle OutDescriptor;
     GPUAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
     OutDescriptor.Type = D3D12DescriptorHandle::EType::GPU;
+    OutDescriptor.Allocator = &GPUAllocator;
     return OutDescriptor;
 }
 
@@ -1361,6 +1422,7 @@ D3D12DescriptorHandle D3D12DescriptorFactory::CreateRTVDescriptor()
     D3D12DescriptorHandle OutDescriptor;
     RTVAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
     OutDescriptor.Type = D3D12DescriptorHandle::EType::RTV;
+    OutDescriptor.Allocator = &RTVAllocator;
     return OutDescriptor;
 }
 
@@ -1369,6 +1431,7 @@ D3D12DescriptorHandle D3D12DescriptorFactory::CreateDSVDescriptor()
     D3D12DescriptorHandle OutDescriptor;
     DSVAllocator.Alloc(&OutDescriptor.CPUHandle, &OutDescriptor.GPUHandle);
     OutDescriptor.Type = D3D12DescriptorHandle::EType::DSV;
+    OutDescriptor.Allocator = &DSVAllocator;
     return OutDescriptor;
 }
 
@@ -1382,6 +1445,7 @@ D3D12DescriptorTable D3D12DescriptorFactory::CreateGPUDescriptorTable(uint32_t T
         auto& Handle = OutTable.ConsecutiveHandles[i];
         GPUAllocator.Alloc(&std::get<0>(Handle), &std::get<1>(Handle));
     }
+    OutTable.Allocator = &GPUAllocator;
     return OutTable;
 }
 
