@@ -398,7 +398,7 @@ public:
     PathTraceRenderer() = default;
 
     virtual void CreateRenderer(uint32_t Height, uint32_t Width) {
-        uptr_Context = IRHIPlatformSupport::Get(RHIBackend::D3D12)->CreateRHIContext();
+        uptr_Context = IRHIPlatformSupport::Get(RHIBackend::Vulkan)->CreateRHIContext();
         Context = uptr_Context.get();
         Context->Initialize(Width, Height);
         RHIFullScreenQuadBuffer = Context->CreateRHIBuffer();

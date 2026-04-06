@@ -296,6 +296,7 @@ void main()
     //GetRandomDir(uniforms.time / 100., pixel_f.xy * 0.1, perturb);
     // pixel_f += perturb*0.5;
     ivec2 size = imageSize(outImage);
+    vec2 size_f = vec2(size);
     vec2 pixel_f = vec2(pixel);
     vec4 outColor = vec4(0., 0., 0., 1.);
     if(pixel.x>size.x || pixel.y > size.y){
@@ -309,6 +310,28 @@ void main()
     // assume our camera near plane width is 2 as in ndc.
     float cameraDistance = 1. / tan(halffov);
     vec3 ndc = vec3(pixel_f.x / uniforms.screenres.x * 2 - 1, 1 - pixel_f.y / uniforms.screenres.y * 2, 0.);
+
+    // // TEST SAMPLING
+    // vec2 Xi = SampleXi(31., ndc.xy*500.);
+    // vec2 d = ConcentricSampleDisk(Xi);
+    // d = d*0.5+0.5;
+    // pixel_f = d * size_f;
+    // pixel = ivec2(pixel_f);
+    
+    // if(pixel.x>=size.x || pixel.y >= size.y || pixel.x < 0 || pixel.y<0){
+    //     return;
+    // }
+    // inColor = imageLoad(outImage, pixel);
+    // outColor = vec4(1., 1., 1., 1.);
+    // // if(uniforms.frameId>1 && inColor.x==inColor.x){
+    // //     outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
+    // //     outColor.w = 1.0;
+    // // }
+    // imageStore(outImage, pixel, outColor);
+    // return;
+
+    // // END TEST
+
     vec2 screenxy = (ndc.xy + 1.0) * 0.5;
     screenxy.y *= -1;
     vec3 rayUnnorm = vec3(ndc.x, ndc.y, cameraDistance);
@@ -350,16 +373,11 @@ void main()
         vec3 bitangent_world = normalize(cross(worldNormal, tangent_world));
         tangent_world = normalize(cross(bitangent_world, worldNormal));
         vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * worldNormal;
-        // if(pdf < 0.001){
-        //     outColor = vec4(0., 0., 0., 1.);
-        //     break;
-        // }
+        if (pdf < 0.00001){
+            outColor = vec4(0., 0., 0., 1.);
+            break;
+        }
         throughput *= baseColor * abs(dot(w_i_world, worldNormal));
-        // if(throughput.x < 0.0001 && throughput.y < 0.0001 &&throughput.z < 0.0001)
-        // {
-        //     outColor = vec4(0., 0., 0., 1.);
-        //     break;
-        // }
         w_o = w_i_world;
     }
     //outColor = vec4(1. / t, 0., 0., 1.);
