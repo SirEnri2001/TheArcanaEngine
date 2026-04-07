@@ -383,6 +383,7 @@ public:
     PTPostPipeline PostPipeline;
     ComputePipeline TestCompPipeline;
     RHIFormat SwapchainFormat;
+    ImageExtent3D FrameSize;
 
     bool swap = false;
 
@@ -422,17 +423,27 @@ public:
 
         // create renderer
         Swapchain->Initialize(Context, SwapchainFormat);
-        ImageExtent3D ext = Swapchain->GetFrameSize();
-        RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
-        RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
-        RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
-        RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
 
-    	std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
+        std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
         std::vector<RHIFormat> PresentRTFormats = { SwapchainFormat };
         //std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
         PTRenderPass->Initialize(Context, ColorRTFormats);
         PresentPass->Initialize(Context, PresentRTFormats);
+
+        {
+	        // Frame Resources
+            ImageExtent3D ext = Swapchain->GetFrameSize();
+            FrameSize = ext;
+            RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
+            RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
+            RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
+            RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
+            std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
+            std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
+            FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
+            FBuffer2->Initialize(Context, PTRenderPass.get(), ColorRT2, RHIScreenBufferDepth.get());
+        }
+
 
         Pipeline.InitializePipeline(Context, *PTRenderPass);
         PostPipeline.InitializePipeline(Context, *PresentPass);
@@ -447,10 +458,6 @@ public:
         CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
         StorageBuffer->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_SHADER_STORAGE);
         ImGUI->Initialize(Context, Swapchain.get(), PresentPass.get());
-        std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
-        std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
-        FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
-        FBuffer2->Initialize(Context, PTRenderPass.get(), ColorRT2, RHIScreenBufferDepth.get());
 
         cuo.frameId = 1;
     }
@@ -480,6 +487,33 @@ public:
         CommandBuffer->Initialize(Context);
         CommandBuffer->BeginCommandBuffer();
         Swapchain->AcquireFrame(Context, FrameBuffer, PresentPass.get());
+        if (FrameBuffer==nullptr)
+        {
+            return;
+        }
+
+        if (FrameSize != Swapchain->GetFrameSize())
+        {
+            // recreate frame resources
+            RHIScreenBuffer1->Cleanup(Context);
+            RHIScreenBuffer2->Cleanup(Context);
+            RHIScreenBufferDepth->Cleanup(Context);
+            RHIStoreImage->Cleanup(Context);
+            FBuffer1->Cleanup(Context);
+            FBuffer2->Cleanup(Context);
+
+            ImageExtent3D ext = Swapchain->GetFrameSize();
+            FrameSize = ext;
+            RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
+            RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
+            RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
+            RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
+            std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
+            std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
+            FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
+            FBuffer2->Initialize(Context, PTRenderPass.get(), ColorRT2, RHIScreenBufferDepth.get());
+        }
+
         if (Recompile) {
             CompileAllShaders(TestShaders);
             Pipeline.ReloadPipeline(Context, *PTRenderPass);
@@ -492,7 +526,7 @@ public:
         TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
         TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
         TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
-    	TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), 64, 64, 1);
+    	TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
         //if (swap) {
         //    RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
         //    RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
@@ -531,8 +565,12 @@ public:
         PostPipeline.PipelineObject->CopyDescriptors(Context);
         Swapchain->PresentFrameAndRelease(Context, CommandBuffer.get());
         Context->WaitDeviceIdle();
-        Context->ProcessFrameInput();
         swap  = !swap;
+    }
+
+    void ProcessInput()
+    {
+        Context->ProcessFrameInput();
     }
 };
 
@@ -626,6 +664,7 @@ int main() {
     PathTraceRenderer PTRenderer;
     PTRenderer.pFuncImDraw = DrawUI;
     PTRenderer.CreateRenderer(1000, 1000);
+
     CameraTransformLocalToWorld = float4x4(1.f);
     CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
     CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
@@ -672,6 +711,7 @@ int main() {
 
         PTRenderer.UpdateUniformBuffer(CameraTransformLocalToWorld, time, isClick);
         PTRenderer.Render(float4(1.f));
+        PTRenderer.ProcessInput();
     }
     return 0;
 }

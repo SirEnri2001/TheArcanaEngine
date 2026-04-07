@@ -287,6 +287,26 @@ vec3 CosineSampleHemisphere(in vec2 Xi, out float pdf){
     return vec3(d.x, d.y, z);
 }
 
+// // TEST SAMPLING
+// vec2 Xi = SampleXi(31., ndc.xy*500.);
+// vec2 d = ConcentricSampleDisk(Xi);
+// d = d*0.5+0.5;
+// pixel_f = d * size_f;
+// pixel = ivec2(pixel_f);
+
+// if(pixel.x>=size.x || pixel.y >= size.y || pixel.x < 0 || pixel.y<0){
+//     return;
+// }
+// inColor = imageLoad(outImage, pixel);
+// outColor = vec4(1., 1., 1., 1.);
+// // if(uniforms.frameId>1 && inColor.x==inColor.x){
+// //     outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
+// //     outColor.w = 1.0;
+// // }
+// imageStore(outImage, pixel, outColor);
+// return;
+
+
 void main() 
 {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -309,32 +329,10 @@ void main()
     float halffov = atan(0.032/2./0.045);
     // assume our camera near plane width is 2 as in ndc.
     float cameraDistance = 1. / tan(halffov);
+    float nearPlaneHeight = 2. * size_f.x / size_f.y;
+
     vec3 ndc = vec3(pixel_f.x / uniforms.screenres.x * 2 - 1, 1 - pixel_f.y / uniforms.screenres.y * 2, 0.);
-
-    // // TEST SAMPLING
-    // vec2 Xi = SampleXi(31., ndc.xy*500.);
-    // vec2 d = ConcentricSampleDisk(Xi);
-    // d = d*0.5+0.5;
-    // pixel_f = d * size_f;
-    // pixel = ivec2(pixel_f);
-    
-    // if(pixel.x>=size.x || pixel.y >= size.y || pixel.x < 0 || pixel.y<0){
-    //     return;
-    // }
-    // inColor = imageLoad(outImage, pixel);
-    // outColor = vec4(1., 1., 1., 1.);
-    // // if(uniforms.frameId>1 && inColor.x==inColor.x){
-    // //     outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
-    // //     outColor.w = 1.0;
-    // // }
-    // imageStore(outImage, pixel, outColor);
-    // return;
-
-    // // END TEST
-
-    vec2 screenxy = (ndc.xy + 1.0) * 0.5;
-    screenxy.y *= -1;
-    vec3 rayUnnorm = vec3(ndc.x, ndc.y, cameraDistance);
+    vec3 rayUnnorm = vec3(ndc.x, ndc.y / (size_f.x / size_f.y), cameraDistance);
     vec3 rayCamSpaceDir = normalize(rayUnnorm);
     rayCamSpaceDir.xyz = rayCamSpaceDir.zxy;
     rayCamSpaceDir.y *= -1.;

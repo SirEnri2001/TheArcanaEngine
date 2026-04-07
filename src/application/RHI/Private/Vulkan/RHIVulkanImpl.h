@@ -77,7 +77,7 @@ void chooseSwapExtent(VkExtent2D& InOutExtent, const VkSurfaceCapabilitiesKHR& c
 
 void CreateImageView(VkImageView& OutImageView, VkImage image, VkDevice Device, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
 
-void CreateSwapchain(
+bool CreateSwapchain(
     VkSwapchainKHR& OutSwapchain,
     std::vector<VkImage>& OutSwapchainImages,
     std::vector<VkImageView>& OutSwapchainImageViews,

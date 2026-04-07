@@ -244,7 +244,7 @@ void CreateImageView(VkImageView& OutImageView, VkImage image, VkDevice Device, 
     }
 }
 
-void CreateSwapchain(
+bool CreateSwapchain(
     VkSwapchainKHR& OutSwapchain,
     std::vector<VkImage>& OutSwapchainImages,
     std::vector<VkImageView>& OutSwapchainImageViews,
@@ -273,7 +273,7 @@ void CreateSwapchain(
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     createInfo.surface = Surface;
-
+    //createInfo.oldSwapchain = OutSwapchain;
     createInfo.minImageCount = imageCount;
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
@@ -296,11 +296,14 @@ void CreateSwapchain(
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
-
-    if (vkCreateSwapchainKHR(Device, &createInfo, nullptr, &OutSwapchain) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create swap chain!");
+    VkResult Result;
+    VkSwapchainKHR NewSwapchain;
+    if ((Result = vkCreateSwapchainKHR(Device, &createInfo, nullptr, &NewSwapchain)) != VK_SUCCESS) {
+        throw std::runtime_error("Cannot create swapchain");
+        return false;
     }
-
+    //vkDestroySwapchainKHR(Device, OutSwapchain, nullptr);
+    OutSwapchain = NewSwapchain;
     vkGetSwapchainImagesKHR(Device, OutSwapchain, &imageCount, nullptr);
     OutSwapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(Device, OutSwapchain, &imageCount, OutSwapchainImages.data());
@@ -311,6 +314,7 @@ void CreateSwapchain(
     for (uint32_t i = 0; i < OutSwapchainImages.size(); i++) {
         CreateImageView(OutSwapchainImageViews[i], OutSwapchainImages[i], Device, InOutSwapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
     }
+    return true;
 }
 
 VkSampleCountFlagBits getMaxUsableSampleCount(const VkPhysicalDevice& physicalDevice) {

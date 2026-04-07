@@ -58,7 +58,8 @@ public:
 	VkDevice Device = VK_NULL_HANDLE;
 	VkQueue GraphicsQueue;
 	VkQueue PresentQueue;
-	VkCommandPool CommandPool;
+	VkCommandPool FrameCommandPool;
+	VkCommandPool TransientCommandPool;
 
 	VkInstance Instance;
 	std::vector<const char*> InstanceExtensions;
@@ -101,6 +102,7 @@ public:
     virtual std::unique_ptr<IRHISwapchain         > CreateRHISwapchain          () override;
     virtual std::unique_ptr<IRHIBuffer           > CreateRHIBuffer            () override;
 	static void OnWindowResize(GLFWwindow* window, int width, int height);
+	bool QuerySurfaceProperties();
 
 	VkFormatProperties GetFormatProperties(VkFormat Format)
 	{
@@ -183,7 +185,7 @@ public:
 	std::vector<VkImageView> SwapchainImageViews;
 	VkFormat SwapchainImageFormat;
 	RHIFormat SwapchainRHIFormat;
-	RHIVulkanImageResource* DepthImageResource;
+	std::unique_ptr<RHIVulkanImageResource> DepthImageResource;
 	VkRenderPass CachedRenderPass; // framebuffer for this specified renderpass
 	uint32_t CurrentImageIndex;
 
@@ -191,6 +193,8 @@ public:
 	VkSemaphore RenderFinishSemaphore;
 	VkSemaphore TransitionFinishSemaphore;
 	VkFence InFlightFence;
+
+	bool SwapchainAvailable = false;
 
 	RHIVulkanSwapchain();
 	RHIVulkanSwapchain(const RHIVulkanSwapchain&) = delete;
@@ -204,9 +208,11 @@ public:
 	{
 		return SwapchainRHIFormat;
 	}
+	void Recreate(RHIVulkanContext* Context);
 
 private:
 	void CreateFramebuffers(RHIVulkanContext* Context, VkRenderPass VkRP);
+	void DestroyFramebuffers(RHIVulkanContext* Context);
 };
 
 class RHIVulkanImageResource : public IRHIImageResource

@@ -115,6 +115,14 @@ struct ImageExtent3D
     uint32_t Width;
     uint32_t Height;
     uint32_t Depth;
+    bool operator==(const ImageExtent3D& e1)
+    {
+        return this->Width == e1.Width && this->Height == e1.Height && this->Depth == e1.Depth;
+    }
+    bool operator!=(const ImageExtent3D& e1)
+    {
+        return !(*this == e1);
+    }
 };
 
 enum class RHIBackend: uint32_t
