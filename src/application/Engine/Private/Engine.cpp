@@ -108,6 +108,9 @@ std::vector<T> read_spirv_file(const char* path)
 //float4 ViewUp;
 float4x4 CameraTransformLocalToWorld;
 bool isClick = false;
+bool bClear = false;
+int maxFrames = -1;
+int currentFrame = 0;
 void DrawUI(ImGuiSharedGlobals* ImGlobals)
 {
     ImGui::SetCurrentContext(ImGlobals->Context);
@@ -131,11 +134,13 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 
         if (ImGui::Button("Recompile Shaders")) {
+            bClear = true;
             Recompile = true;
             TestShaders = false;
         }
         
         if (ImGui::Button("Recompile Test Shaders")) {
+            bClear = true;
             Recompile = true;
             TestShaders = true;
         }
@@ -144,6 +149,15 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
             RenderingPaused = true;
             ImGui::OpenPopup("Pause Rendering");
         }
+
+        if (ImGui::Button("Clear")) {
+            bClear = true;
+        }
+
+        if (ImGui::SliderInt("MaxFrames",&maxFrames, -1, 5000, "%d")) {
+        }
+
+        ImGui::Text("Frame: %d", currentFrame);
 
         if (ShaderCompileHasError) {
             ImGui::OpenPopup("Shader Compiler Error");
@@ -470,7 +484,11 @@ public:
         cuo.time = time;
         if (isClick)
         {
-            cuo.frameId = 1;
+            cuo.frameId = 0;
+        }
+        if (bClear) {
+            cuo.frameId = 0;
+            bClear = false;
         }
     }
 
@@ -478,7 +496,7 @@ public:
         ImGUI->UpdateUI(pFuncImDraw);
         cuo.screenres.r = Swapchain->GetFrameSize().Width;
         cuo.screenres.g = Swapchain->GetFrameSize().Height;
-        cuo.frameId++;
+        currentFrame = cuo.frameId;
         CameraUniform->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
         StorageBuffer->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
         IRHIFrameBuffer* FrameBuffer = nullptr;
@@ -521,32 +539,14 @@ public:
             TestCompPipeline.ReloadPipeline(Context);
             Recompile = false;
         }
-
-        RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_WRITE);
-        TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
-        TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
-        TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
-    	TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
-        //if (swap) {
-        //    RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
-        //    RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
-        //    PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer2.get());
-        //}
-        //else {
-        //    RHIScreenBuffer1->Transition(CommandBuffer.get(), RHIResourceState::COLOR_ATTACHMENT);
-        //    RHIScreenBuffer2->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
-        //    PTRenderPass->BeginRenderPass(CommandBuffer.get(), FBuffer1.get());
-        //}
-        //if (!RenderingPaused && !ShaderCompileHasError) {
-        //    Pipeline.PipelineObject->SetUniform(SceneUniform.get(), 0);
-        //    Pipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
-        //    Pipeline.PipelineObject->SetImageSampler(swap ? RHIScreenBuffer1.get() : RHIScreenBuffer2.get(), 2);
-        //    Pipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
-        //    Pipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
-        //    IndexBufferSize = 6;
-        //    Pipeline.PipelineObject->Draw(CommandBuffer.get(), IndexBufferSize, 0, 1);
-        //}
-        //PTRenderPass->EndRenderPass(CommandBuffer.get());
+        if (cuo.frameId < maxFrames|| maxFrames<0) {
+            RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_WRITE);
+            TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
+            TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
+            TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
+            TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
+            cuo.frameId++;
+        }
         RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
         PresentPass->BeginRenderPass(CommandBuffer.get(), FrameBuffer);
         // Comment this line if you don't want ImGUI

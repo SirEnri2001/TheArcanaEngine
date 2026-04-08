@@ -250,14 +250,73 @@ void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColo
     }
     worldNormal = normalize(worldNormal);
 }
+vec2 StratifiedSample2D(uint sampleIndex, uint sqrtN, vec2 pixel, float seed)
+{
+    uint x = sampleIndex % sqrtN;
+    uint y = sampleIndex / sqrtN;
+    vec2 jitter = hash22(vec2(pixel) + float(sampleIndex) + seed);
 
-vec2 SampleXi(in float seed, in vec2 fragCoord){
+    return (vec2(x, y) + jitter) / float(sqrtN);
+}
+
+uint Permute(uint i, uint l, uint p)
+{
+    uint w = l - 1;
+    w |= w >> 1;
+    w |= w >> 2;
+    w |= w >> 4;
+    w |= w >> 8;
+    w |= w >> 16;
+    i ^= p;
+    i *= 0xe170893d;
+    i ^= p >> 16;
+    i ^= (i & w) >> 4;
+    i ^= p >> 8;
+    i *= 0x0929eb3f;
+    i ^= p >> 23;
+    i ^= (i & w) >> 1;
+    i *= 1 | p >> 27;
+    i *= 0x6935fa69;
+    i ^= (i & w) >> 11;
+    i *= 0x74dcb303;
+    i ^= (i & w) >> 2;
+    i *= 0x9e501cc3;
+    i ^= (i & w) >> 2;
+    i *= 0xc860a3df;
+    i &= w;
+    i ^= i >> 5;
+    return i % l;
+}
+uint Permute2(uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352dU;
+    x ^= x >> 15;
+    x *= 0x846ca68bU;
+    x ^= x >> 16;
+    return x;
+}
+vec2 SampleXi_Stratify(in float seed, in uint tid){
+    uint sqrtN = 16;
+    uint frames = uniforms.frameId;
+    uint sampleIndex = Permute(frames + Permute2(tid), (sqrtN * sqrtN), 123456789);
+    //uint sampleIndex = lowbias32(frames) % (sqrtN * sqrtN);
+    uint sx = sampleIndex % sqrtN;
+    uint sy = sampleIndex / sqrtN;
+    // uint sx = gl_GlobalInvocationID.x;
+    // uint sy = gl_GlobalInvocationID.y;
     // // the mod might have efficiency issues
-    // uint StratifyY = time / 16 % 16;
-    // uint StratifyX = time % 16;
-    // vec2 Jitter = hash23(vec3(fragCoord, time * seed));
-    // return vec2(StratifyX + Jitter.x, StratifyY + Jitter.y) / 16.;
-    return hash23(vec3(fragCoord, seed));
+    ivec2 size = imageSize(outImage);
+    vec2 fragCoord = vec2(tid % size.x, tid / size.x);
+    vec2 jitter = hash23(vec3(frames, seed+fragCoord));
+    return fract((vec2(sx, sy)+jitter) / float(sqrtN));// hash23(vec3(fragCoord, seed));
+}
+
+vec2 SampleXi(in float seed, in uint tid){
+    return SampleXi_Stratify(seed, tid);
+    // ivec2 size = imageSize(outImage);
+    // vec2 size_f = vec2(size);
+    // return hash23(vec3(vec2(float(tid / size.x) / size_f.y, float(tid % size.x) / size_f.x)*500., float(uniforms.frameId)*10.) + seed);
 }
 
 
@@ -287,37 +346,42 @@ vec3 CosineSampleHemisphere(in vec2 Xi, out float pdf){
     return vec3(d.x, d.y, z);
 }
 
-// // TEST SAMPLING
-// vec2 Xi = SampleXi(31., ndc.xy*500.);
-// vec2 d = ConcentricSampleDisk(Xi);
-// d = d*0.5+0.5;
-// pixel_f = d * size_f;
-// pixel = ivec2(pixel_f);
 
-// if(pixel.x>=size.x || pixel.y >= size.y || pixel.x < 0 || pixel.y<0){
-//     return;
-// }
-// inColor = imageLoad(outImage, pixel);
-// outColor = vec4(1., 1., 1., 1.);
-// // if(uniforms.frameId>1 && inColor.x==inColor.x){
-// //     outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
-// //     outColor.w = 1.0;
-// // }
-// imageStore(outImage, pixel, outColor);
-// return;
-
+void TestSampling(){
+    // TEST SAMPLING
+    
+    ivec2 size = imageSize(outImage);
+    uint tid = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * size.x;
+    if(tid>100 || gl_GlobalInvocationID.y > 0){
+        return;
+    }
+    vec2 Xi = SampleXi(514., tid);
+    vec2 d = ConcentricSampleDisk(Xi);
+    d = d*0.5+0.5;
+    vec2 size_f = vec2(512,512);
+    vec2 pixel_f = d * size_f;
+    ivec2 pixel = ivec2(pixel_f);
+    //vec4 inColor = imageLoad(outImage, pixel);
+    vec4 outColor = vec4(0., 0., 0., 1.);
+    outColor = vec4(1., 1., 1., 1.);
+    // outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
+    // outColor.w = 1.0;
+    imageStore(outImage, pixel, outColor);
+    return;
+}
 
 void main() 
 {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     // perturb the sampling point
-    // vec2 perturb = SampleXi(11223344.*float(uniforms.frameId), pixel_f, uniforms.time);
 
     //GetRandomDir(uniforms.time / 100., pixel_f.xy * 0.1, perturb);
-    // pixel_f += perturb*0.5;
     ivec2 size = imageSize(outImage);
+    uint tid = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * size.x;
     vec2 size_f = vec2(size);
     vec2 pixel_f = vec2(pixel);
+    vec2 perturb = SampleXi(11223344, tid+uniforms.frameId);
+    pixel_f += perturb*0.5;
     vec4 outColor = vec4(0., 0., 0., 1.);
     if(pixel.x>size.x || pixel.y > size.y){
         return;
@@ -326,10 +390,17 @@ void main()
     // focal length 45mm
     // fov = 2 * atan(sensor_size/2/focal_length)
     vec4 inColor = imageLoad(outImage, pixel);
+    if(uniforms.frameId==0){
+        imageStore(outImage, pixel, vec4(0., 0., 0., 1.));
+        inColor = vec4(0. ,0., 0., 1.);
+    }
     float halffov = atan(0.032/2./0.045);
     // assume our camera near plane width is 2 as in ndc.
     float cameraDistance = 1. / tan(halffov);
     float nearPlaneHeight = 2. * size_f.x / size_f.y;
+
+    // TestSampling();
+    // return;
 
     vec3 ndc = vec3(pixel_f.x / uniforms.screenres.x * 2 - 1, 1 - pixel_f.y / uniforms.screenres.y * 2, 0.);
     vec3 rayUnnorm = vec3(ndc.x, ndc.y / (size_f.x / size_f.y), cameraDistance);
@@ -350,7 +421,7 @@ void main()
     vec3 throughput = vec3(1.0);
     vec4 worldPoint = vec4(0.0, 0.0, 0.0, 1.0);
     for (int i = 0; i < 24; i++){
-        vec2 Xi = SampleXi(uniforms.frameId*31. + i, ndc.xy*500.);
+        vec2 Xi = SampleXi(514., tid*(i+1));
         RayIntersect(rayWorldOrigin, w_o, t, baseColor, worldNormal, emission, worldPoint);
         if(t>10000){
             outColor = vec4(0., 0., 0., 1.);
@@ -380,7 +451,7 @@ void main()
     }
     //outColor = vec4(1. / t, 0., 0., 1.);
     //outColor = vec4(worldNormal * 0.5 + 0.5, 1.0);
-    if(uniforms.frameId>1 && inColor.x==inColor.x){
+    if(uniforms.frameId>0 && inColor.x==inColor.x){
         outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
         outColor.w = 1.0;
     }
