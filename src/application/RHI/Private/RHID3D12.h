@@ -360,13 +360,10 @@ public:
     virtual void AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
     virtual void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) override;
     virtual void RemoveAllBufferBindings() override;
-    virtual void SetUniformBinding(uint32_t Binding) override;
-    virtual void SetStorageBufferBinding(uint32_t Binding) override;
-    virtual void SetImageSamplerBinding(uint32_t Binding) override;
     virtual void RemoveAllGlobalBindings() override;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
     virtual void SetComputeShaders(const std::vector<char>& ComputeShader) override;
-    virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) override;
+    virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType, EPipelineStages BindingStage) override;
     virtual void InitializePipelineObject(IRHIPipelineObject* OutPipelineObject, IRHIContext* Context, IRHIRenderPass* RenderPassResource) override;
     virtual void InitializeComputePipelineObject(IRHIPipelineObject* OutComputePipelineObject, IRHIContext* Context) override;
     virtual void Cleanup(IRHIContext* Context) override;

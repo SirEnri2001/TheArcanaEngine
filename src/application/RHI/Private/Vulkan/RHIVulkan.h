@@ -282,7 +282,6 @@ class RHIVulkanPipelineFactory : public IRHIPipelineFactory
 	std::vector<char> VertShaderBytecode;
 	std::vector<char> FragShaderBytecode;
 	std::vector<char> ComputeShaderBytecode;
-	bool bCompute = false;
 public:
 	std::vector<VkVertexInputBindingDescription> BindingDescriptions;
 	std::vector<VkVertexInputAttributeDescription> AttributeDescriptions;
@@ -302,10 +301,7 @@ public:
 	void AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset) override;
 	void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) override;
     void RemoveAllBufferBindings() override;
-	void SetUniformBinding(uint32_t Binding) override;
-	void SetStorageBufferBinding(uint32_t Binding) override;
-	void SetImageSamplerBinding(uint32_t Binding) override;
-	void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) override;
+	void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType, EPipelineStages BindingStage) override;
 	void RemoveAllGlobalBindings() override;
 	void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) override;
 	void SetComputeShaders(const std::vector<char>& ComputeShader) override;

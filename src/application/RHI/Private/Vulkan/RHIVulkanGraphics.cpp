@@ -7,59 +7,24 @@
 #include "RHIVulkanImpl.h"
 #include "GLFW/glfw3.h"
 
-void RHIVulkanPipelineFactory::SetUniformBinding(uint32_t Binding)
-{
-	VkDescriptorSetLayoutBinding uboLayoutBinding;
-    uboLayoutBinding.binding = Binding;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
-	if(DescSetLayoutBindings.size()<=Binding)
-	{
-		DescSetLayoutBindings.resize(Binding + 1);
+VkShaderStageFlagBits GetVkPipelineStage(IRHIPipelineFactory::EPipelineStages Stages) {
+	if (Stages == IRHIPipelineFactory::EPipelineStages::VS_FS) {
+		return VK_SHADER_STAGE_ALL_GRAPHICS;
 	}
-	DescSetLayoutBindings[Binding] = uboLayoutBinding;
+	if (Stages == IRHIPipelineFactory::EPipelineStages::CS) {
+		return VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	return VK_SHADER_STAGE_ALL_GRAPHICS;
 }
 
-void RHIVulkanPipelineFactory::SetStorageBufferBinding(uint32_t Binding)
-{
-	VkDescriptorSetLayoutBinding ssboLayoutBinding;
-	ssboLayoutBinding.binding = Binding;
-	ssboLayoutBinding.descriptorCount = 1;
-	ssboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	ssboLayoutBinding.pImmutableSamplers = nullptr;
-	ssboLayoutBinding.stageFlags = bCompute ? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_ALL_GRAPHICS;
-	if (DescSetLayoutBindings.size() <= Binding)
-	{
-		DescSetLayoutBindings.resize(Binding + 1);
-	}
-	DescSetLayoutBindings[Binding] = ssboLayoutBinding;
-}
-
-void RHIVulkanPipelineFactory::SetImageSamplerBinding(uint32_t Binding)
-{
-    VkDescriptorSetLayoutBinding samplerLayoutBinding;
-    samplerLayoutBinding.binding = Binding;
-    samplerLayoutBinding.descriptorCount = 1;
-    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerLayoutBinding.pImmutableSamplers = nullptr;
-    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	if(DescSetLayoutBindings.size()<=Binding)
-	{
-		DescSetLayoutBindings.resize(Binding + 1);
-	}
-	DescSetLayoutBindings[Binding] = samplerLayoutBinding;
-}
-
-void RHIVulkanPipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType)
+void RHIVulkanPipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType, EPipelineStages BindingStage)
 {
 	VkDescriptorSetLayoutBinding LayoutBinding;
 	LayoutBinding.binding = BindingIndex;
 	LayoutBinding.descriptorCount = 1;
 	LayoutBinding.descriptorType = RHIVulkanPlatformSupport::GetDescriptorType(BindingDescriptorType);
 	LayoutBinding.pImmutableSamplers = nullptr;
-	LayoutBinding.stageFlags = bCompute? VK_SHADER_STAGE_COMPUTE_BIT : VK_SHADER_STAGE_ALL_GRAPHICS;
+	LayoutBinding.stageFlags = GetVkPipelineStage(BindingStage);
 	if (DescSetLayoutBindings.size() <= BindingIndex)
 	{
 		DescSetLayoutBindings.resize(BindingIndex + 1);
@@ -82,7 +47,6 @@ void RHIVulkanPipelineFactory::SetShaders(const std::vector<char>& VertShader, c
 void RHIVulkanPipelineFactory::SetComputeShaders(const std::vector<char>& ComputeShader)
 {
 	ComputeShaderBytecode = ComputeShader;
-	bCompute = true;
 }
 
 void RHIVulkanPipelineFactory::InitializePipelineObject(IRHIPipelineObject* OutPipelineObject, IRHIContext* Context, IRHIRenderPass* RenderPassResource)

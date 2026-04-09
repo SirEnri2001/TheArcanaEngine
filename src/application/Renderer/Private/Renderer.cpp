@@ -1,6 +1,78 @@
-//#define RENDERER_IMPLEMENT
-//#include "Renderer.h"
-//
+#define RENDERER_IMPLEMENT
+#include "Renderer.h"
+
+#define SHADERCOMPILER_INCLUDE
+#include "ShaderCompiler.h"
+
+void IPipeline::InitializeAsGraphics(IRHIContext* Context, IRHIRenderPass& RenderPass,
+	const std::string& InVS, const std::string& InFS) {
+	Type = EPipelineType::VS_FS;
+	VS_Filename = InVS;
+	FS_Filename = InFS;
+	PipelineFactory = Context->CreateRHIPipelineFactory();
+	PipelineObject = Context->CreateRHIPipelineObject();
+}
+
+void IPipeline::InitializeAsCompute(IRHIContext* Context, const std::string& InCS) {
+	Type = EPipelineType::CS;
+	CS_Filename = InCS;
+	PipelineFactory = Context->CreateRHIPipelineFactory();
+	PipelineObject = Context->CreateRHIPipelineObject();
+}
+
+bool IPipeline::Compile(IRHIContext* Context, std::optional<IRHIRenderPass*> RenderPass) {
+	if (Type == EPipelineType::VS_FS && !RenderPass.has_value()) {
+		throw std::runtime_error("Compile a graphics pipeline must provide renderpass");
+	}
+
+	GLSLCompiler Compiler;
+	bool IsSucceeded = true;
+	if (Type == EPipelineType::VS_FS) {
+		IsSucceeded = IsSucceeded && Compiler.DirectCompile(
+			std::string("./shaders/" + VS_Filename).c_str(),
+			std::string("./shaderbytecode/" + VS_Filename + ".spv").c_str(), ""
+		);
+		IsSucceeded = IsSucceeded && Compiler.DirectCompile(
+			std::string("./shaders/" + FS_Filename).c_str(),
+			std::string("./shaderbytecode/" + FS_Filename + ".spv").c_str(), ""
+		);
+	}
+	if (Type == EPipelineType::CS) {
+		IsSucceeded = IsSucceeded && Compiler.DirectCompile(
+			std::string("./shaders/" + CS_Filename).c_str(),
+			std::string("./shaderbytecode/" + CS_Filename + ".spv").c_str(), ""
+		);
+	}
+	if (IsSucceeded) {
+		if (PipelineObject != nullptr) {
+			PipelineObject->Cleanup(Context);
+		}
+
+		if (Type == EPipelineType::VS_FS) {
+			VertexShaderSPIRV = readFile("./shaderbytecode/" + VS_Filename + ".spv");
+			FragmentShaderSPIRV = readFile("./shaderbytecode/" + FS_Filename + ".spv");
+			PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+			PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, RenderPass.value());
+		}
+		else if (Type == EPipelineType::CS) {
+			ComputeShaderSPIRV = readFile("./shaderbytecode/" + CS_Filename + ".spv");
+			PipelineFactory->SetComputeShaders(ComputeShaderSPIRV);
+			PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
+		}
+	}
+	return IsSucceeded;
+}
+
+void IPipeline::Destroy(IRHIContext* Context) {
+	if (PipelineObject) {
+		PipelineObject->Cleanup(Context);
+	}
+	if (PipelineFactory) {
+		PipelineFactory->Cleanup(Context);
+	}
+}
+
+
 //#define STB_IMAGE_IMPLEMENTATION
 //#include <stb_image.h>
 //

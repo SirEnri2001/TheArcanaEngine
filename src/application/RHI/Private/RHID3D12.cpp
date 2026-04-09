@@ -596,22 +596,7 @@ void RHID3D12PipelineFactory::RemoveAllBufferBindings()
     inputElementDescs.clear();
 }
 
-void RHID3D12PipelineFactory::SetUniformBinding(uint32_t Binding)
-{
-    throw std::runtime_error("Use SetDescriptorBinding");
-}
-
-void RHID3D12PipelineFactory::SetStorageBufferBinding(uint32_t Binding)
-{
-    throw std::runtime_error("Use SetDescriptorBinding");
-}
-
-void RHID3D12PipelineFactory::SetImageSamplerBinding(uint32_t Binding)
-{
-    throw std::runtime_error("Use SetDescriptorBinding");
-}
-
-void RHID3D12PipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType)
+void RHID3D12PipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType, EPipelineStages BindingStage)
 {
     RootParam.DescriptorTable.NumDescriptorRanges++;
     if (Ranges.size() <= BindingIndex)
@@ -830,7 +815,10 @@ void RHID3D12PipelineFactory::Cleanup(IRHIContext* Context)
 void RHID3D12PipelineObject::Cleanup(IRHIContext* Context)
 {
     // Free the descriptor table
-    DescriptorTable.Free();
+    if (DescriptorTable.ConsecutiveHandles.size() > 0) {
+        DescriptorTable.Free();
+        DescriptorTable.ConsecutiveHandles.clear();
+    }
 }
 
 void RHID3D12PipelineObject::SetUniform(IRHIBuffer* Buffer, uint32_t Binding)

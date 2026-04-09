@@ -251,6 +251,11 @@ public:
 class RHI_API IRHIPipelineFactory
 {
 public:
+    enum class EPipelineStages {
+        UNKNOWN,
+        VS_FS,
+        CS
+    };
     IRHIPipelineFactory() {}
     virtual ~IRHIPipelineFactory() {}
     /**
@@ -268,10 +273,7 @@ public:
      */
     virtual void AddBufferBinding(uint32_t BindingIndex, uint32_t Stride) = 0;
     virtual void RemoveAllBufferBindings() = 0;
-    virtual void SetUniformBinding(uint32_t Binding) = 0;
-    virtual void SetStorageBufferBinding(uint32_t Binding) = 0;
-    virtual void SetImageSamplerBinding(uint32_t Binding) = 0;
-    virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType) = 0;
+    virtual void SetDescriptorBinding(uint32_t BindingIndex, DescriptorType BindingDescriptorType, EPipelineStages BindingStage) = 0;
     virtual void RemoveAllGlobalBindings() = 0;
     virtual void SetShaders(const std::vector<char>& VertShader, const std::vector<char>& FragShader) = 0;
     virtual void SetComputeShaders(const std::vector<char>& ComputeShader) = 0;

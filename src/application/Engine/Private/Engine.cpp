@@ -4,6 +4,7 @@
 #define SHADERCOMPILER_INCLUDE
 #define PBR_RENDERER_INCLUDE
 #define RHI_INCLUDE
+#define PATHTRACERENDERER_INCLUDE
 
 #include <chrono>
 #include <fstream>
@@ -17,7 +18,9 @@
 //#include "Renderer.h"
 #include "RHI.h"
 #include "RHIImGuiHelper.h"
-#include "ShaderCompiler.h"
+#include "PathTraceRenderer.h"
+#include "Renderer.h"
+#include "Engine.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -30,32 +33,7 @@ const std::string VERT_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.vert";
 const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
 const std::string CUBE_PATH = "models/cube/cube.obj";
 
-bool Recompile = false;
-bool TestShaders = false;
-bool RenderingPaused = false;
-bool ShaderCompileHasError = false;
-
-
-void CompileAllShaders(bool CompileTest = false);
-
-std::vector<char> readFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open()) {
-        throw std::runtime_error("failed to open file!");
-    }
-
-    size_t fileSize = (size_t)file.tellg();
-    std::vector<char> buffer(fileSize);
-
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-
-    file.close();
-
-    return buffer;
-}
-
+RenderControl Engine::GControl;
 
 void readFile_U32I(const std::string& filename, std::vector<uint32_t>& buffer_u32) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -103,15 +81,7 @@ std::vector<T> read_spirv_file(const char* path)
     return spirv;
 }
 
-//float4 ViewPos = { 2.,2.,2.,1. };
-//float4 ViewForward;
-//float4 ViewUp;
-float4x4 CameraTransformLocalToWorld;
-bool isClick = false;
-bool bClear = false;
-int maxFrames = -1;
-int currentFrame = 0;
-void DrawUI(ImGuiSharedGlobals* ImGlobals)
+void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
 {
     ImGui::SetCurrentContext(ImGlobals->Context);
     ImGui::SetAllocatorFunctions(ImGlobals->MemAllocFunc, ImGlobals->MemFreeFunc, ImGlobals->UserData);
@@ -134,32 +104,32 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 
         if (ImGui::Button("Recompile Shaders")) {
-            bClear = true;
-            Recompile = true;
-            TestShaders = false;
+            Engine::GControl.bClear = true;
+            Engine::GControl.Recompile = true;
+            Engine::GControl.TestShaders = false;
         }
         
         if (ImGui::Button("Recompile Test Shaders")) {
-            bClear = true;
-            Recompile = true;
-            TestShaders = true;
+            Engine::GControl.bClear = true;
+            Engine::GControl.Recompile = true;
+            Engine::GControl.TestShaders = true;
         }
 
         if (ImGui::Button("Pause")) {
-            RenderingPaused = true;
+            Engine::GControl.RenderingPaused = true;
             ImGui::OpenPopup("Pause Rendering");
         }
 
         if (ImGui::Button("Clear")) {
-            bClear = true;
+            Engine::GControl.bClear = true;
         }
 
-        if (ImGui::SliderInt("MaxFrames",&maxFrames, -1, 5000, "%d")) {
+        if (ImGui::SliderInt("MaxFrames",&Engine::GControl.maxFrames, -1, 5000, "%d")) {
         }
 
-        ImGui::Text("Frame: %d", currentFrame);
+        ImGui::Text("Frame: %d", Engine::GControl.currentFrame);
 
-        if (ShaderCompileHasError) {
+        if (Engine::GControl.ShaderCompileHasError) {
             ImGui::OpenPopup("Shader Compiler Error");
         }
 
@@ -174,7 +144,7 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 
             if (ImGui::Button("Continue", ImVec2(120, 0)))
             {
-                RenderingPaused = false;
+                Engine::GControl.RenderingPaused = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SetItemDefaultFocus();
@@ -188,7 +158,7 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
 
             if (ImGui::Button("Retry", ImVec2(120, 0))) 
             { 
-                CompileAllShaders(TestShaders);
+                //CompileAllShaders(&Engine::GControl);
                 ImGui::CloseCurrentPopup(); 
             }
             ImGui::SetItemDefaultFocus();
@@ -210,7 +180,7 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
     }
     if (!io.WantCaptureMouse && (io.MouseDown[0] || io.MouseDown[1])) // User operate with actual scene
     {
-        isClick = true;
+        Engine::GControl.isClick = true;
         float DeltaX = io.MousePos.x - io.MousePosPrev.x;
         float DeltaY = io.MousePos.y - io.MousePosPrev.y;
 
@@ -246,350 +216,12 @@ void DrawUI(ImGuiSharedGlobals* ImGlobals)
         float4x4 PitchRotate = glm::rotate(float4x4(1.0f), DeltaY, float3(0.f, 1.f, 0.f));
         float4x4 YawRotate = glm::rotate(float4x4(1.0f), DeltaX, float3(0.f, 0.f, 1.f));
         float4x4 Translate = glm::translate(float4x4(1.0f), PlayerMove*0.001f);
-        CameraTransformLocalToWorld = CameraTransformLocalToWorld * Translate * PitchRotate * YawRotate;
-        //ViewPos += float4(PlayerMove*0.01f, 0.0f);
-        //ViewForward.z += DeltaY;
-        //ViewForward.x += -DeltaX;
-        //ViewForward = glm::normalize(ViewForward);
-        //ViewUp = float4(0., 0., 1., 0.);
-        //float3 ViewLeft = glm::normalize(glm::cross(float3(ViewUp), float3(ViewForward)));
-        //ViewUp = float4(glm::normalize(glm::cross(float3(ViewForward), float3(ViewLeft))), 0.0f);
-        //ViewForward = float4(glm::normalize(glm::cross(float3(ViewUp), glm::cross(float3(ViewForward), float3(ViewUp)))), 0.0);
+        Engine::GControl.CameraTransformLocalToWorld = Engine::GControl.CameraTransformLocalToWorld * Translate * PitchRotate * YawRotate;
     }else
     {
-        isClick = false;
+        Engine::GControl.isClick = false;
     }
 }
-
-int PBRRendererTest();
-
-class PassPipeline {
-public:
-    virtual void InitializePipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) = 0;
-    virtual void ReloadPipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) {}
-};
-
-typedef char ShaderFileType;
-
-class ComputePipeline
-{
-public:
-    std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
-    std::unique_ptr<IRHIPipelineObject> PipelineObject;
-
-    std::vector<ShaderFileType> ComputeShaderSPIRV;
-
-    ComputePipeline() {
-        ComputeShaderSPIRV = readFile("shaderbytecode/glsl/Test.comp.spv");
-    }
-
-    virtual void InitializePipeline(IRHIContext* Context) {
-        PipelineFactory = Context->CreateRHIPipelineFactory();
-        PipelineObject = Context->CreateRHIPipelineObject();
-        PipelineFactory->SetComputeShaders(ComputeShaderSPIRV);
-        PipelineFactory->SetDescriptorBinding(0, DescriptorType::IMAGE2D);
-        PipelineFactory->SetDescriptorBinding(1, DescriptorType::STORAGE_READONLY);
-        PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY);
-        //PipelineFactory->SetStorageBufferBinding(1);
-        //PipelineFactory->SetStorageBufferBinding(2);
-        PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
-    }
-
-    virtual void ReloadPipeline(IRHIContext* Context)  {
-        ComputeShaderSPIRV = readFile("shaderbytecode/glsl/Test.comp.spv");
-        PipelineFactory->SetComputeShaders(ComputeShaderSPIRV);
-        PipelineObject->Cleanup(Context);
-        PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
-    }
-};
-
-class PathTracerPipeline : public PassPipeline {
-public:
-    std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
-    std::unique_ptr<IRHIPipelineObject> PipelineObject;
-
-    std::vector<ShaderFileType> VertexShaderSPIRV;
-    std::vector<ShaderFileType> FragmentShaderSPIRV;
-
-    PathTracerPipeline() {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.vert.spv");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.frag.spv");
-    }
-
-    virtual void InitializePipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        PipelineFactory = Context->CreateRHIPipelineFactory();
-        PipelineObject = Context->CreateRHIPipelineObject();
-        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineFactory->SetDescriptorBinding(0, DescriptorType::UNIFORM);
-        PipelineFactory->SetDescriptorBinding(1, DescriptorType::UNIFORM);
-        PipelineFactory->SetDescriptorBinding(2, DescriptorType::SAMPLER2D);
-        PipelineFactory->AddBufferBinding(0, sizeof(float3));
-        PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
-        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
-    }
-
-    virtual void ReloadPipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.vert.spv");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/PathTracer.frag.spv");
-        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineObject->Cleanup(Context);
-        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
-    }
-};
-
-class PTPostPipeline : public PassPipeline {
-public:
-    std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
-    std::unique_ptr<IRHIPipelineObject> PipelineObject;
-
-    std::vector<ShaderFileType> VertexShaderSPIRV;
-    std::vector<ShaderFileType> FragmentShaderSPIRV;
-    PTPostPipeline() {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.vert.spv");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.frag.spv");
-    }
-
-    virtual void InitializePipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        PipelineFactory = Context->CreateRHIPipelineFactory();
-        PipelineObject = Context->CreateRHIPipelineObject();
-        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        //PipelineFactory->SetImageSamplerBinding(0);
-        PipelineFactory->SetDescriptorBinding(0, DescriptorType::SAMPLER2D);
-        PipelineFactory->SetDescriptorBinding(1, DescriptorType::UNIFORM);
-        //PipelineFactory->SetUniformBinding(1);
-        PipelineFactory->AddBufferBinding(0, sizeof(float3));
-        PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
-        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
-    }
-
-    virtual void ReloadPipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.vert.spv");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/ScreenPost.frag.spv");
-        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineObject->Cleanup(Context);
-        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
-    }
-};
-
-class PathTraceRenderer {
-public:
-    uint32_t IndexBufferSize;
-    std::unique_ptr<IRHIContext> uptr_Context;
-    IRHIContext* Context;
-    std::unique_ptr<IRHIBuffer> RHIFullScreenQuadBuffer;
-    std::unique_ptr<IRHIBuffer> RHIFullScreenQuadIndexBuffer;
-    std::unique_ptr<IRHIImageResource> RHIScreenBuffer1;
-    std::unique_ptr<IRHIImageResource> RHIScreenBuffer2;
-    std::unique_ptr<IRHIImageResource> RHIScreenBufferDepth;
-    std::unique_ptr<IRHIImageResource> RHIStoreImage;
-    std::unique_ptr<IRHIRenderPass> PresentPass;
-    std::unique_ptr<IRHIRenderPass> PTRenderPass;
-    std::unique_ptr<IRHIBuffer> CameraUniform;
-    std::unique_ptr<IRHIBuffer> SceneUniform;
-    std::unique_ptr<IRHIBuffer> StorageBuffer;
-    std::unique_ptr<IRHIBuffer> PrimitiveBuffer;
-    std::unique_ptr<IRHISwapchain> Swapchain;
-    std::unique_ptr<IRHIFrameBuffer> FBuffer1;
-    std::unique_ptr<IRHIFrameBuffer> FBuffer2;
-    std::unique_ptr<IRHIImGUI> ImGUI;
-
-    PathTracerPipeline Pipeline;
-    PTPostPipeline PostPipeline;
-    ComputePipeline TestCompPipeline;
-    RHIFormat SwapchainFormat;
-    ImageExtent3D FrameSize;
-
-    bool swap = false;
-
-    void (*pFuncImDraw)(ImGuiSharedGlobals*);
-
-    struct CameraUniformObject {
-        alignas(16) float4x4 camToWorld;
-        alignas(8) glm::uvec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
-        alignas(8) float time;
-        alignas(4) int frameId;
-    } cuo;
-
-    PathTraceRenderer() = default;
-
-    virtual void CreateRenderer(uint32_t Height, uint32_t Width) {
-        uptr_Context = IRHIPlatformSupport::Get(RHIBackend::Vulkan)->CreateRHIContext();
-        Context = uptr_Context.get();
-        Context->Initialize(Width, Height);
-        RHIFullScreenQuadBuffer = Context->CreateRHIBuffer();
-        RHIFullScreenQuadIndexBuffer = Context->CreateRHIBuffer();
-        RHIScreenBuffer1 = Context->CreateRHIImageResource();
-        RHIScreenBuffer2 = Context->CreateRHIImageResource();
-        RHIScreenBufferDepth = Context->CreateRHIImageResource();
-        RHIStoreImage = Context->CreateRHIImageResource();
-        PresentPass = Context->CreateRHIRenderPass();
-        PTRenderPass = Context->CreateRHIRenderPass();
-        CameraUniform = Context->CreateRHIBuffer();
-        SceneUniform = Context->CreateRHIBuffer();
-        Swapchain = Context->CreateRHISwapchain();
-        FBuffer1 = Context->CreateRHIFrameBuffer();
-        FBuffer2 = Context->CreateRHIFrameBuffer();
-        ImGUI = Context->CreateRHIImGUI();
-        StorageBuffer = Context->CreateRHIBuffer();
-        PrimitiveBuffer = Context->CreateRHIBuffer();
-
-        SwapchainFormat = B8G8R8A8_SRGB; //R8G8B8A8_UNORM; // R8G8B8A8_UNORM is compatible for both Vulkan and D3D12 backend
-
-        // create renderer
-        Swapchain->Initialize(Context, SwapchainFormat);
-
-        std::vector<RHIFormat> ColorRTFormats = { RHIFormat::R8G8B8A8_SRGB };
-        std::vector<RHIFormat> PresentRTFormats = { SwapchainFormat };
-        //std::vector<RHIFormat> ColorRTFormats1 = { RHIFormat::R8G8B8A8_UNORM };
-        PTRenderPass->Initialize(Context, ColorRTFormats);
-        PresentPass->Initialize(Context, PresentRTFormats);
-
-        {
-	        // Frame Resources
-            ImageExtent3D ext = Swapchain->GetFrameSize();
-            FrameSize = ext;
-            RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
-            RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
-            RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
-            RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
-            std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
-            std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
-            FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
-            FBuffer2->Initialize(Context, PTRenderPass.get(), ColorRT2, RHIScreenBufferDepth.get());
-        }
-
-
-        Pipeline.InitializePipeline(Context, *PTRenderPass);
-        PostPipeline.InitializePipeline(Context, *PresentPass);
-        TestCompPipeline.InitializePipeline(Context);
-
-        RHIFullScreenQuadBuffer->Initialize(Context, sizeof(float3)*8, RHIResourceState::BUFFER_VERTEX);
-        RHIFullScreenQuadIndexBuffer->Initialize(Context, sizeof(uint32_t)* 6, RHIResourceState::BUFFER_INDEX);
-        float3 FullScreenVertices[4] = { float3(-1., -1., 0.), float3(-1., 1., 0.), float3(1., 1., 0.), float3(1., -1., 0.) };
-        uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
-        RHIFullScreenQuadBuffer->CopyToBuffer(Context, FullScreenVertices, sizeof(float3) * 8);
-        RHIFullScreenQuadIndexBuffer->CopyToBuffer(Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
-        CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
-        StorageBuffer->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_SHADER_STORAGE);
-        ImGUI->Initialize(Context, Swapchain.get(), PresentPass.get());
-
-        cuo.frameId = 1;
-    }
-
-    void UpdateUniformBuffer(float4x4 camToWorld, float time, bool isClick) {
-        // sensor size 32mm
-        // focal length 45mm
-        // fov = 2 * atan(sensor_size/2/focal_length)
-        cuo.camToWorld = camToWorld;
-        cuo.time = time;
-        if (isClick)
-        {
-            cuo.frameId = 0;
-        }
-        if (bClear) {
-            cuo.frameId = 0;
-            bClear = false;
-        }
-    }
-
-    virtual void Render(float4 ViewPos) {
-        ImGUI->UpdateUI(pFuncImDraw);
-        cuo.screenres.r = Swapchain->GetFrameSize().Width;
-        cuo.screenres.g = Swapchain->GetFrameSize().Height;
-        currentFrame = cuo.frameId;
-        CameraUniform->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
-        StorageBuffer->CopyToBuffer(Context, &cuo, sizeof(CameraUniformObject));
-        IRHIFrameBuffer* FrameBuffer = nullptr;
-        std::unique_ptr<IRHICommandBuffer> CommandBuffer;
-        CommandBuffer = Context->CreateRHICommandBuffer();
-        CommandBuffer->Initialize(Context);
-        CommandBuffer->BeginCommandBuffer();
-        Swapchain->AcquireFrame(Context, FrameBuffer, PresentPass.get());
-        if (FrameBuffer==nullptr)
-        {
-            return;
-        }
-
-        if (FrameSize != Swapchain->GetFrameSize())
-        {
-            // recreate frame resources
-            RHIScreenBuffer1->Cleanup(Context);
-            RHIScreenBuffer2->Cleanup(Context);
-            RHIScreenBufferDepth->Cleanup(Context);
-            RHIStoreImage->Cleanup(Context);
-            FBuffer1->Cleanup(Context);
-            FBuffer2->Cleanup(Context);
-
-            ImageExtent3D ext = Swapchain->GetFrameSize();
-            FrameSize = ext;
-            RHIScreenBuffer1->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
-            RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
-            RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
-            RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
-            std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
-            std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
-            FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
-            FBuffer2->Initialize(Context, PTRenderPass.get(), ColorRT2, RHIScreenBufferDepth.get());
-        }
-
-        if (Recompile) {
-            CompileAllShaders(TestShaders);
-            Pipeline.ReloadPipeline(Context, *PTRenderPass);
-            PostPipeline.ReloadPipeline(Context, *PresentPass);
-            TestCompPipeline.ReloadPipeline(Context);
-            Recompile = false;
-        }
-        if (cuo.frameId < maxFrames|| maxFrames<0) {
-            RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_WRITE);
-            TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
-            TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
-            TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
-            TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
-            cuo.frameId++;
-        }
-        RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
-        PresentPass->BeginRenderPass(CommandBuffer.get(), FrameBuffer);
-        // Comment this line if you don't want ImGUI
-        if (!RenderingPaused && !ShaderCompileHasError) {
-            PostPipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
-            PostPipeline.PipelineObject->SetImageSampler(RHIStoreImage.get(), 0);
-            PostPipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
-            PostPipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
-            IndexBufferSize = 6;
-            PostPipeline.PipelineObject->Draw(CommandBuffer.get(), IndexBufferSize, 0, 1);
-        }
-        ImGUI->DispatchImGUI(CommandBuffer.get());
-        PresentPass->EndRenderPass(CommandBuffer.get());
-        CommandBuffer->EndCommandBuffer();
-        TestCompPipeline.PipelineObject->CopyDescriptors(Context);
-        PostPipeline.PipelineObject->CopyDescriptors(Context);
-        Swapchain->PresentFrameAndRelease(Context, CommandBuffer.get());
-        Context->WaitDeviceIdle();
-        swap  = !swap;
-    }
-
-    void ProcessInput()
-    {
-        Context->ProcessFrameInput();
-    }
-};
-
-//void InitializeMeshRenderProxy(MeshRenderProxy& OutRenderProxy, Mesh& InMesh, RenderViewport& Viewport)
-//{
-//    IRHICommandBuffer CmdBuffer;
-//    CmdBuffer.Initialize(&Viewport.Context);
-//    OutRenderProxy.RHIVertexBuffer.Initialize(&Viewport.Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
-//    OutRenderProxy.RHIIndexBuffer.Initialize(&Viewport.Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::INDEX);
-//    OutRenderProxy.RHIVertexBuffer.CopyToBuffer(&CmdBuffer, &Viewport.Context, InMesh.Vertices.data(), InMesh.Vertices.size() * sizeof(Mesh::VertexType));
-//    OutRenderProxy.RHIIndexBuffer.CopyToBuffer(&CmdBuffer, &Viewport.Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
-//    int texWidth, texHeight, texChannels;
-//    stbi_uc* pixels = stbi_load(InMesh.TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-//    assert(texHeight > 0 && texWidth > 0);
-//    OutRenderProxy.Texture.Initialize(&Viewport.Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::SHADER_READ);
-//    OutRenderProxy.Texture.CopyToTexture(&CmdBuffer, &Viewport.Context, pixels, 4);
-//    OutRenderProxy.IndexBufferSize = InMesh.Indices.size();
-//    stbi_image_free(pixels);
-//}
 
 struct ModelUniformObject {
     alignas(16) float4x4 model;
@@ -619,56 +251,28 @@ void SetSceneUniform(IRHIContext* Context, std::vector<ModelUniformObject>& Obje
     Objects.push_back(uniformobject);
 }
 
-#define PT_VERTSHADER "./shaders/glsl/PathTracer.vert"
-#define PT_FRAGSHADER "./shaders/glsl/PathTracer.frag"
-#define PTPOST_VERTSHADER "./shaders/glsl/ScreenPost.vert"
-#define PTPOST_FRAGSHADER "./shaders/glsl/ScreenPost.frag"
-#define TEST_COMPSHADER "./shaders/glsl/Test.comp"
-
-void CompileAllShaders(bool CompileTest) {
-    GLSLCompiler Compiler;
-    bool IsSucceeded = true;
-    IsSucceeded = true;
-    if (CompileTest)
-    {
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_VERTSHADER, "./shaderbytecode/glsl/PathTracer.vert.spv", "-DCOMPILETEST");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag.spv", "-DCOMPILETEST");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_VERTSHADER, "./shaderbytecode/glsl/ScreenPost.vert.spv", "-DCOMPILETEST");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_FRAGSHADER, "./shaderbytecode/glsl/ScreenPost.frag.spv", "-DCOMPILETEST");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(TEST_COMPSHADER, "./shaderbytecode/glsl/Test.comp.spv", "-DCOMPILETEST");
-    }
-    else {
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_VERTSHADER, "./shaderbytecode/glsl/PathTracer.vert.spv", "");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PT_FRAGSHADER, "./shaderbytecode/glsl/PathTracer.frag.spv", "");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_VERTSHADER, "./shaderbytecode/glsl/ScreenPost.vert.spv", "");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(PTPOST_FRAGSHADER, "./shaderbytecode/glsl/ScreenPost.frag.spv", "");
-        IsSucceeded = IsSucceeded && Compiler.DirectCompile(TEST_COMPSHADER, "./shaderbytecode/glsl/Test.comp.spv", "");
-    }
-    if (!IsSucceeded) {
-        ShaderCompileHasError = true;
-    }
-    else {
-        ShaderCompileHasError = false;
-    }
-}
-
 #if 1
-int main() {
-	do {
-        CompileAllShaders();
-        if (ShaderCompileHasError) {
-            system("pause");
-        }
-    } while (ShaderCompileHasError);
-    Log("All shaders compilation succeeded. ");
-    PathTraceRenderer PTRenderer;
-    PTRenderer.pFuncImDraw = DrawUI;
-    PTRenderer.CreateRenderer(1000, 1000);
-
+Engine::Engine() {
     CameraTransformLocalToWorld = float4x4(1.f);
+}
+Engine::~Engine() {}
+
+void Engine::Initialize(int width, int height) {
+    //do {
+    //    CompileAllShaders(&GControl);
+    //    if (GControl.ShaderCompileHasError) {
+    //        system("pause");
+    //    }
+    //} while (GControl.ShaderCompileHasError);
+    Log("All shaders compilation succeeded. ");
+
+    PTRenderer.pFuncImDraw = &Engine::DrawUI;
+    PTRenderer.CreateRenderer(width, height);
+
     CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
     CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
     CameraTransformLocalToWorld[3] = float4(-0.27f, -0.8f, 0.27f, 1.f);
+    GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
 
     PTRenderer.SceneUniform->Initialize(PTRenderer.Context, sizeof(ModelUniformObject), 8, RHIResourceState::BUFFER_UNIFORM);
 
@@ -701,7 +305,9 @@ int main() {
 
     PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, sizeof(ModelUniformObject) * 8, RHIResourceState::BUFFER_SHADER_STORAGE);
     PTRenderer.PrimitiveBuffer->CopyToBuffer(PTRenderer.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
+}
 
+void Engine::Run() {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     while (PTRenderer.Context->IsWindowAlive())
@@ -709,47 +315,21 @@ int main() {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        PTRenderer.UpdateUniformBuffer(CameraTransformLocalToWorld, time, isClick);
-        PTRenderer.Render(float4(1.f));
+        PTRenderer.UpdateUniformBuffer(GControl.CameraTransformLocalToWorld, time, &GControl);
+        PTRenderer.Render(float4(1.f), &GControl);
         PTRenderer.ProcessInput();
     }
+}
+
+void Engine::Shutdown() {}
+
+int main() {
+    Engine engine;
+    engine.Initialize(1000, 1000);
+    engine.Run();
+    engine.Shutdown();
     return 0;
 }
-#elif 1
-
-class BlinnPhongPipeline : public PassPipeline {
-public:
-    std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
-    std::unique_ptr<IRHIPipelineObject> PipelineObject;
-
-    std::vector<ShaderFileType> VertexShaderSPIRV;
-    std::vector<ShaderFileType> FragmentShaderSPIRV;
-
-    BlinnPhongPipeline() {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.vert.spv");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.frag.spv");
-    }
-
-    virtual void InitializePipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        PipelineFactory = Context->CreateRHIPipelineFactory();
-        PipelineObject = Context->CreateRHIPipelineObject();
-        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineFactory->SetUniformBinding(0);
-        PipelineFactory->SetUniformBinding(1);
-        PipelineFactory->SetImageSamplerBinding(2);
-        PipelineFactory->AddBufferBinding(0, sizeof(float3));
-        PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
-        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
-    }
-
-    virtual void ReloadPipeline(IRHIContext* Context, IRHIRenderPass& RenderPass) override {
-        VertexShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.vert.spv");
-        FragmentShaderSPIRV = readFile("shaderbytecode/glsl/BlinnPhong.frag.spv");
-        PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
-        PipelineObject->Cleanup(Context);
-        PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, &RenderPass);
-    }
-};
 #elif 0
 
 #include "spirv_glsl.hpp"
