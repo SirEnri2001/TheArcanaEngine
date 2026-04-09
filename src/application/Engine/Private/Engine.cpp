@@ -14,8 +14,6 @@
 #include "CoreGeometry.h"
 #include "CoreScene.h"
 #include "CoreLog.inl"
-//#include "PBRRenderer.h"
-//#include "Renderer.h"
 #include "RHI.h"
 #include "RHIImGuiHelper.h"
 #include "PathTraceRenderer.h"
@@ -34,6 +32,7 @@ const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
 const std::string CUBE_PATH = "models/cube/cube.obj";
 
 RenderControl Engine::GControl;
+ERendererSelection Engine::RendererSelection = ERendererSelection::BlinnPhong;
 
 void readFile_U32I(const std::string& filename, std::vector<uint32_t>& buffer_u32) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -128,6 +127,16 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
         }
 
         ImGui::Text("Frame: %d", Engine::GControl.currentFrame);
+        
+        ImGui::Separator();
+        ImGui::Text("Renderer Selection:");
+        if (ImGui::RadioButton("Path Tracing", (int*)&Engine::RendererSelection, (int)ERendererSelection::PathTracing)) {
+            // PathTracing selected
+        }
+        if (ImGui::RadioButton("Blinn-Phong", (int*)&Engine::RendererSelection, (int)ERendererSelection::BlinnPhong)) {
+            // BlinnPhong selected
+        }
+        ImGui::Text("(Note: Change requires restart to take effect)");
 
         if (Engine::GControl.ShaderCompileHasError) {
             ImGui::OpenPopup("Shader Compiler Error");
@@ -215,7 +224,7 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
         float4x4 ViewTransform = float4x4(1.0f);
         float4x4 PitchRotate = glm::rotate(float4x4(1.0f), DeltaY, float3(0.f, 1.f, 0.f));
         float4x4 YawRotate = glm::rotate(float4x4(1.0f), DeltaX, float3(0.f, 0.f, 1.f));
-        float4x4 Translate = glm::translate(float4x4(1.0f), PlayerMove*0.001f);
+        float4x4 Translate = glm::translate(float4x4(1.0f), PlayerMove*0.01f);
         Engine::GControl.CameraTransformLocalToWorld = Engine::GControl.CameraTransformLocalToWorld * Translate * PitchRotate * YawRotate;
     }else
     {
@@ -230,16 +239,6 @@ struct ModelUniformObject {
     alignas(16) float3 color;
     alignas(16) float3 emission;
 };
-
-void SetModelUniform(IRHIContext* Context, IRHIBuffer& Uniform, float4x4 ModelMat, float3 Color) {
-    ModelUniformObject uniformobject;
-    Uniform.Initialize(Context, sizeof(ModelUniformObject), RHIResourceState::BUFFER_UNIFORM);
-    uniformobject.model = ModelMat;
-    uniformobject.modelInv = glm::inverse(ModelMat);
-    uniformobject.color = Color;
-    uniformobject.modelInvTranspose = glm::transpose(uniformobject.modelInv);
-    Uniform.CopyToBuffer(Context, &uniformobject, sizeof(ModelUniformObject));
-}
 
 void SetSceneUniform(IRHIContext* Context, std::vector<ModelUniformObject>& Objects, float4x4 ModelMat, float3 Color, float3 emission) {
     ModelUniformObject uniformobject;
@@ -258,68 +257,77 @@ Engine::Engine() {
 Engine::~Engine() {}
 
 void Engine::Initialize(int width, int height) {
-    //do {
-    //    CompileAllShaders(&GControl);
-    //    if (GControl.ShaderCompileHasError) {
-    //        system("pause");
-    //    }
-    //} while (GControl.ShaderCompileHasError);
-    Log("All shaders compilation succeeded. ");
+    if (RendererSelection == ERendererSelection::PathTracing) {
+        PTRenderer.pFuncImDraw = &Engine::DrawUI;
+        PTRenderer.CreateRenderer(width, height);
 
-    PTRenderer.pFuncImDraw = &Engine::DrawUI;
-    PTRenderer.CreateRenderer(width, height);
+        CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
+        CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
+        CameraTransformLocalToWorld[3] = float4(-0.27f, -0.8f, 0.27f, 1.f);
+        GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
 
-    CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
-    CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
-    CameraTransformLocalToWorld[3] = float4(-0.27f, -0.8f, 0.27f, 1.f);
-    GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
+        PTRenderer.SceneUniform->Initialize(PTRenderer.Context, sizeof(ModelUniformObject), 8, RHIResourceState::BUFFER_UNIFORM);
 
-    PTRenderer.SceneUniform->Initialize(PTRenderer.Context, sizeof(ModelUniformObject), 8, RHIResourceState::BUFFER_UNIFORM);
+        std::vector<ModelUniformObject> Objects;
+        // Floor
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        // Celling
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        // Leftwall
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f), float3(0., 0., 0.));
+        // Rightwall
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f), float3(0., 0., 0.));
+        // Backwall
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        // Shortbox
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        // Tallbox
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        // Light
+        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
 
-    std::vector<ModelUniformObject> Objects;
-    // Floor
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
-
-    // Celling
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
-
-    // Leftwall
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f), float3(0., 0., 0.));
-
-    // Rightwall
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f), float3(0., 0., 0.));
-
-    // Backwall
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
-
-    // Shortbox
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
-
-    // Tallbox
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
-
-    // Light
-    SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
-
-    PTRenderer.SceneUniform->CopyToBuffer(PTRenderer.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
-
-    PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, sizeof(ModelUniformObject) * 8, RHIResourceState::BUFFER_SHADER_STORAGE);
-    PTRenderer.PrimitiveBuffer->CopyToBuffer(PTRenderer.Context, Objects.data(), Objects.size() * sizeof(ModelUniformObject));
+        PTRenderer.SceneUniform->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
+        PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, (uint32_t)(sizeof(ModelUniformObject) * 8), RHIResourceState::BUFFER_SHADER_STORAGE);
+        PTRenderer.PrimitiveBuffer->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
+    }
+    else if (RendererSelection == ERendererSelection::BlinnPhong) {
+        BPRenderer.pFuncImDraw = &Engine::DrawUI;
+        BPRenderer.CreateRenderer(width, height);
+        
+        CameraTransformLocalToWorld = glm::translate(float4x4(1.0f), float3(-10.f, 0, 0.0f));
+        GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
+    }
 }
+
 
 void Engine::Run() {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
-    while (PTRenderer.Context->IsWindowAlive())
+    IRHIContext* ActiveContext = nullptr;
+    if (RendererSelection == ERendererSelection::PathTracing) {
+        ActiveContext = PTRenderer.Context;
+    } else if (RendererSelection == ERendererSelection::BlinnPhong) {
+        ActiveContext = BPRenderer.Context;
+    }
+
+    if (!ActiveContext) return;
+
+    while (ActiveContext->IsWindowAlive())
     {
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        PTRenderer.UpdateUniformBuffer(GControl.CameraTransformLocalToWorld, time, &GControl);
-        PTRenderer.Render(float4(1.f), &GControl);
-        PTRenderer.ProcessInput();
+        if (RendererSelection == ERendererSelection::PathTracing) {
+            PTRenderer.UpdateUniformBuffer(GControl.CameraTransformLocalToWorld, time, &GControl);
+            PTRenderer.Render(float4(1.f), &GControl);
+            PTRenderer.ProcessInput();
+        } else if (RendererSelection == ERendererSelection::BlinnPhong) {
+            BPRenderer.Render(GControl.CameraTransformLocalToWorld[3], &GControl);
+            BPRenderer.Context->ProcessFrameInput();
+        }
     }
 }
+
 
 void Engine::Shutdown() {}
 

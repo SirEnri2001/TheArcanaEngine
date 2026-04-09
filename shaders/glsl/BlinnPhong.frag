@@ -29,5 +29,5 @@ void main() {
     float spec = pow(max(dot(fragNormal, halfwayDir), 0.0), 16.0);
     float ambient = 0.1;
     float diffuse = max(dot(fragNormal, lightDir), 0.);
-    outColor = (ambient + diffuse + spec) * vec4(modelubo.color, 1.0);
+    outColor = (ambient + diffuse + spec) * texture(texSampler, fragTexCoord);
 }

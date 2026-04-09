@@ -31,6 +31,8 @@ struct RenderControl {
 	bool RenderingPaused = false;
 	bool ShaderCompileHasError = false;
 	float4x4 CameraTransformLocalToWorld;
+	float4x4 CameraLookAt;
+	float4x4 CameraPersp;
 	bool isClick = false;
 	bool bClear = false;
 	int maxFrames = -1;
