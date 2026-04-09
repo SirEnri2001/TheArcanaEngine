@@ -35,6 +35,7 @@ void RHIVulkanImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTEx
 	if (HasFlag(InUsageMask, RHIResourceState::SHADER_READ))
 	{
 		VkImageUsage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+		VkImageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // used when creating Mipmap level subresources
 	}
 	if (HasFlag(InUsageMask, RHIResourceState::SHADER_WRITE))
 	{
@@ -59,7 +60,7 @@ void RHIVulkanImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTEx
 	}
 	DescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	Desc = RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState::UNDEFINED);
-	CreateImage(Image, VulkanContext->Device, ImageExtent, 1, VK_SAMPLE_COUNT_1_BIT, InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
+	CreateImage(Image, VulkanContext->Device, ImageExtent, MipLevel, VK_SAMPLE_COUNT_1_BIT, InnerFormat, VK_IMAGE_TILING_OPTIMAL, VkImageUsage);
 	VkMemoryRequirements memRequirements;
 	vkGetImageMemoryRequirements(VulkanContext->Device, Image, &memRequirements);
 	CreateDeviceMemory(DeviceMemory, VulkanContext->Device, memRequirements.size, VulkanContext->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
@@ -68,6 +69,12 @@ void RHIVulkanImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTEx
 	if (bHasSampler)
 	{
 		CreateSampler(DescriptorInfo.sampler, VulkanContext->Device, VulkanContext->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
+
+		RHIVulkanCommandBuffer Buffer;
+		Buffer.Initialize(Context);
+		BeginCommandBufferOneTimeSubmit(Buffer.CommandBuffer);
+		CreateMipmapForImage(Buffer.CommandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
+		EndCommandBufferOneTimeSubmit(Buffer.CommandBuffer, VulkanContext->GraphicsQueue);
 	}
 }
 
@@ -101,14 +108,15 @@ void RHIVulkanImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRH
 		vkUnmapMemory(VulkanContext->Device, stagingBufferMemory);
 	}
 
-	BeginCommandBufferOneTimeSubmit(VkCmdBuf);
-	//TransitionImageLayout(Image, VkCmdBuf, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevel);
-	Transition(CommandBuffer, RHIResourceState::COPY_DST);
-	CopyBufferToImage(stagingBuffer, Image, VkCmdBuf, ImageExtent.width, ImageExtent.height);
-	CreateMipmapForImage(VkCmdBuf, Image, ImageExtent.width, ImageExtent.height, MipLevel);
-	//TransitionImageLayout(Image, VkCmdBuf, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevel);
-	Transition(CommandBuffer, RHIResourceState::SHADER_READ);
-	EndCommandBufferOneTimeSubmit(VkCmdBuf, VulkanContext->GraphicsQueue);
+	RHIVulkanCommandBuffer Buffer;
+	Buffer.Initialize(Context);
+
+	BeginCommandBufferOneTimeSubmit(Buffer.CommandBuffer);
+	Transition(&Buffer, RHIResourceState::COPY_DST);
+	CopyBufferToImage(stagingBuffer, Image, Buffer.CommandBuffer, ImageExtent.width, ImageExtent.height);
+	CreateMipmapForImage(Buffer.CommandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
+	Transition(&Buffer, RHIResourceState::SHADER_READ);
+	EndCommandBufferOneTimeSubmit(Buffer.CommandBuffer, VulkanContext->GraphicsQueue);
 
 	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);
 	vkFreeMemory(VulkanContext->Device, stagingBufferMemory, nullptr);
