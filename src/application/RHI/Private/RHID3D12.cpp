@@ -578,7 +578,7 @@ RHID3D12PipelineFactory::RHID3D12PipelineFactory()
 void RHID3D12PipelineFactory::AddBufferLayout(uint32_t BindingIndex, uint32_t Location, RHIFormat Format, uint32_t Offset)
 {
     // Define the vertex input layout.
-    inputElementDescs.push_back({ "ATTRIBUTE", Location,
+    inputElementDescs.push_back({ "TEXCOORD", Location,
         GetFormat(Format), BindingIndex, Offset, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0});
 }
 

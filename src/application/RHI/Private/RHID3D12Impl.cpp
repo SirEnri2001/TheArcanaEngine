@@ -162,10 +162,10 @@ std::string SPIRVToHLSL(const uint32_t* SPIRV_DATA, uint32_t size)
     auto HLSLOptions = HLSL.get_hlsl_options();
     HLSLOptions.shader_model = 40;
     HLSL.set_hlsl_options(HLSLOptions);
-    spirv_cross::HLSLVertexAttributeRemap VertexAttribRemap;
-    VertexAttribRemap.location = 0;
-    VertexAttribRemap.semantic = "ATTRIBUTE0";
-    HLSL.add_vertex_attribute_remap(VertexAttribRemap);
+    //spirv_cross::HLSLVertexAttributeRemap VertexAttribRemap;
+    //VertexAttribRemap.location = 0;
+    //VertexAttribRemap.semantic = "ATTRIBUTE0";
+    //HLSL.add_vertex_attribute_remap(VertexAttribRemap);
 
     // Compile to GLSL, ready to give to GL driver.
     std::string source = HLSL.compile();
