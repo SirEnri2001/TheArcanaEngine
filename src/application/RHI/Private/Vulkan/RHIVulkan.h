@@ -233,7 +233,8 @@ public:
 
     void Initialize(IRHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t InMipLevel = -1) override;
 	void Initialize(IRHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel) override;
-	void CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride) override;
+     void CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride) override;
+	void CopyFromTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* OutData, uint32_t Stride) override;
 	void Cleanup(IRHIContext* Context) override;
 	VkDescriptorImageInfo& GetDescriptorImageInfo();
 	virtual void Resize(IRHIContext* Context, uint32_t Height, uint32_t Width) override;

@@ -36,6 +36,7 @@ void RHIVulkanImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTEx
 	{
 		VkImageUsage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 		VkImageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT; // used when creating Mipmap level subresources
+		VkImageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	}
 	if (HasFlag(InUsageMask, RHIResourceState::SHADER_WRITE))
 	{
@@ -69,12 +70,13 @@ void RHIVulkanImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTEx
 	if (bHasSampler)
 	{
 		CreateSampler(DescriptorInfo.sampler, VulkanContext->Device, VulkanContext->CurrentPhysicalDevice.PDProperties.limits.maxSamplerAnisotropy);
-
-		RHIVulkanCommandBuffer Buffer;
-		Buffer.Initialize(Context);
-		BeginCommandBufferOneTimeSubmit(Buffer.CommandBuffer);
-		CreateMipmapForImage(Buffer.CommandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
-		EndCommandBufferOneTimeSubmit(Buffer.CommandBuffer, VulkanContext->GraphicsQueue);
+		if (MipLevel > 1) {
+			RHIVulkanCommandBuffer Buffer;
+			Buffer.Initialize(Context);
+			BeginCommandBufferOneTimeSubmit(Buffer.CommandBuffer);
+			CreateMipmapForImage(Buffer.CommandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
+			EndCommandBufferOneTimeSubmit(Buffer.CommandBuffer, VulkanContext->GraphicsQueue);
+		}
 	}
 }
 
@@ -85,7 +87,7 @@ VkDescriptorImageInfo& RHIVulkanImageResource::GetDescriptorImageInfo() {
 	return Desc;
 }
 
-void RHIVulkanImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride)
+ void RHIVulkanImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride)
 {
 	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
 	auto* VulkanCommandBuffer = static_cast<RHIVulkanCommandBuffer*>(CommandBuffer);
@@ -117,6 +119,46 @@ void RHIVulkanImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRH
 	CreateMipmapForImage(Buffer.CommandBuffer, Image, ImageExtent.width, ImageExtent.height, MipLevel);
 	Transition(&Buffer, RHIResourceState::SHADER_READ);
 	EndCommandBufferOneTimeSubmit(Buffer.CommandBuffer, VulkanContext->GraphicsQueue);
+
+	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);
+	vkFreeMemory(VulkanContext->Device, stagingBufferMemory, nullptr);
+}
+
+void RHIVulkanImageResource::CopyFromTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* OutData, uint32_t Stride)
+{
+	auto* VulkanContext = static_cast<RHIVulkanContext*>(Context);
+	
+	VkDeviceSize imageSize = ImageExtent.width * ImageExtent.height * Stride;
+	VkBuffer stagingBuffer;
+	VkDeviceMemory stagingBufferMemory;
+	VkMemoryRequirements memRequirements;
+	
+	CreateBuffer(stagingBuffer, VulkanContext->Device, imageSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+	vkGetBufferMemoryRequirements(VulkanContext->Device, stagingBuffer, &memRequirements);
+	CreateDeviceMemory(stagingBufferMemory, VulkanContext->Device, memRequirements.size, VulkanContext->GetMemoryType(memRequirements, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+	vkBindBufferMemory(VulkanContext->Device, stagingBuffer, stagingBufferMemory, 0);
+
+	RHIVulkanCommandBuffer Buffer;
+	Buffer.Initialize(Context);
+
+	BeginCommandBufferOneTimeSubmit(Buffer.CommandBuffer);
+	
+	VkImageStateDesc OldDesc = Desc;
+	Transition(&Buffer, RHIResourceState::COPY_SRC);
+	CopyImageToBuffer(Image, stagingBuffer, Buffer.CommandBuffer, ImageExtent.width, ImageExtent.height);
+	
+	// Transition back to old state
+	TransitionImageLayout(Image, Buffer.CommandBuffer, Desc.ImageLayout, OldDesc.ImageLayout, Desc.Access, OldDesc.Access, 
+		Desc.PipelineStage, OldDesc.PipelineStage, MipLevel);
+	Desc = OldDesc;
+	DescriptorInfo.imageLayout = Desc.ImageLayout;
+
+	EndCommandBufferOneTimeSubmit(Buffer.CommandBuffer, VulkanContext->GraphicsQueue);
+
+	void* SrcData;
+	vkMapMemory(VulkanContext->Device, stagingBufferMemory, 0, imageSize, 0, &SrcData);
+	memcpy(OutData, SrcData, static_cast<size_t>(imageSize));
+	vkUnmapMemory(VulkanContext->Device, stagingBufferMemory);
 
 	vkDestroyBuffer(VulkanContext->Device, stagingBuffer, nullptr);
 	vkFreeMemory(VulkanContext->Device, stagingBufferMemory, nullptr);

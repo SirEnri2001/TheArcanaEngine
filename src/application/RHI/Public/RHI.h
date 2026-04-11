@@ -200,7 +200,15 @@ public:
      * @param Data 
      * @param Stride 
      */
-    virtual void CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride) = 0;
+     virtual void CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride) = 0;
+    /**
+     * Copy data from texture to host
+     * @param CommandBuffer Command buffer to record copy commands
+     * @param Context 
+     * @param OutData Pointer to host memory to receive data
+     * @param Stride Bytes per pixel
+     */
+    virtual void CopyFromTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* OutData, uint32_t Stride) = 0;
     virtual void Cleanup(IRHIContext* Context) = 0;
     virtual void Resize(IRHIContext* Context, uint32_t Height, uint32_t Width) = 0;
     virtual void Transition(IRHICommandBuffer* CommandBuffer, RHIResourceState InState) = 0;

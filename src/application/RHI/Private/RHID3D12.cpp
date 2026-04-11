@@ -389,7 +389,7 @@ void RHID3D12ImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTExt
     }
 }
 
-void RHID3D12ImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride)
+ void RHID3D12ImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride)
 {
     auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(m_texture.Get(), 0, 1);
@@ -418,6 +418,62 @@ void RHID3D12ImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHI
     ID3D12CommandList* ppCommandLists[] = { CmdBuffer.m_commandList.Get() };
     D3D12Context->m_commandQueue->ExecuteCommandLists(1, ppCommandLists);
     D3D12Context->WaitForPreviousFrame();
+}
+
+void RHID3D12ImageResource::CopyFromTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* OutData, uint32_t Stride)
+{
+    auto* D3D12Context = static_cast<RHID3D12Context*>(Context);
+    
+    UINT64 rowPitch = (Stride * textureDesc.Width + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
+    UINT64 readbackBufferSize = rowPitch * textureDesc.Height;
+    
+    ComPtr<ID3D12Resource> readbackBuffer;
+    ThrowIfFailed(D3D12Context->m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(readbackBufferSize),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&readbackBuffer)));
+
+    RHID3D12CommandBuffer CmdBuffer;
+    CmdBuffer.Initialize(Context);
+    CmdBuffer.BeginCommandBuffer();
+    
+    D3D12_RESOURCE_STATES PreviousState = ResourceState;
+    CmdBuffer.m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), PreviousState, D3D12_RESOURCE_STATE_COPY_SOURCE));
+    
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+    footprint.Footprint.Format = textureDesc.Format;
+    footprint.Footprint.Width = textureDesc.Width;
+    footprint.Footprint.Height = textureDesc.Height;
+    footprint.Footprint.Depth = 1;
+    footprint.Footprint.RowPitch = (UINT)rowPitch;
+
+    CD3DX12_TEXTURE_COPY_LOCATION dst(readbackBuffer.Get(), footprint);
+    CD3DX12_TEXTURE_COPY_LOCATION src(m_texture.Get(), 0);
+    CmdBuffer.m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    
+    CmdBuffer.m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_texture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, PreviousState));
+    
+    CmdBuffer.EndCommandBuffer();
+    ID3D12CommandList* ppCommandLists[] = { CmdBuffer.m_commandList.Get() };
+    D3D12Context->m_commandQueue->ExecuteCommandLists(1, ppCommandLists);
+    D3D12Context->WaitForPreviousFrame();
+
+    // Map and copy back to OutData
+    void* mappedData;
+    CD3DX12_RANGE readRange(0, readbackBufferSize);
+    ThrowIfFailed(readbackBuffer->Map(0, &readRange, &mappedData));
+    
+    uint8_t* pSrc = reinterpret_cast<uint8_t*>(mappedData);
+    uint8_t* pDst = reinterpret_cast<uint8_t*>(OutData);
+    for (uint32_t y = 0; y < textureDesc.Height; ++y)
+    {
+        memcpy(pDst + y * textureDesc.Width * Stride, pSrc + y * rowPitch, textureDesc.Width * Stride);
+    }
+    
+    readbackBuffer->Unmap(0, nullptr);
 }
 
 void RHID3D12ImageResource::Cleanup(IRHIContext* Context)

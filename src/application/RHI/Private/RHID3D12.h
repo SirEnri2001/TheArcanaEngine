@@ -221,7 +221,8 @@ public:
 
     virtual void Initialize(IRHIContext* Context, uint32_t Height, uint32_t Width, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1) override;
     virtual void Initialize(IRHIContext* Context, ImageExtent3D RTExtent, RHIFormat InFormat, RHIResourceState InUsageMask, int32_t MipLevel = -1)  override;
-    virtual void CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride) override;
+     virtual void CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride) override;
+    virtual void CopyFromTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* OutData, uint32_t Stride) override;
     virtual void Cleanup(IRHIContext* Context) override;
     virtual void Resize(IRHIContext* Context, uint32_t Height, uint32_t Width) override;
     virtual void Transition(IRHICommandBuffer* CommandBuffer, RHIResourceState InState) override;
