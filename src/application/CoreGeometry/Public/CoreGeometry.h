@@ -26,12 +26,12 @@ namespace CoreGeometryImpl
 
 template<typename PositionType, typename ColorType, typename TexCoordType, typename NormalType, typename TangentType>
 struct TVertex {
-    PositionType Position;
-    ColorType Color;
-    TexCoordType TexCoord;
-    NormalType Normal;
-    TangentType TangentTypeX;
-    TangentType TangentTypeY;
+    alignas(16) PositionType Position;
+    alignas(16) ColorType Color;
+    alignas(16) TexCoordType TexCoord;
+    alignas(16) NormalType Normal;
+    alignas(16) TangentType TangentTypeX;
+    alignas(16) TangentType TangentTypeY;
 };
 
 template<typename TVertex, typename TIndex>

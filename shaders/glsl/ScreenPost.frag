@@ -8,6 +8,7 @@ layout(binding = 1) uniform CameraUniform {
     ivec2 screenres;
     float time;
     int frameId;
+    float enableGamma;
 } cameraubo;
 
 layout(location = 0) in vec3 fragPos;
@@ -37,5 +38,6 @@ void main() {
     vec2 screenxy = (fragPos.xy + 1.0) * 0.5;
     vec3 hdrColor = texture(texSampler, screenxy.xy).xyz;
     outColor.xyz = HDRToSRGB(hdrColor);
+    //outColor.xyz = hdrColor;
     outColor.w = 1.;
 }

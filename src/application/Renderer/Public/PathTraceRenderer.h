@@ -16,6 +16,9 @@
 #define RENDERER_INCLUDE
 #include "Renderer.h"
 
+#define COREGEOMETRY_INCLUDE
+#include "CoreGeometry.h"
+
 #define PT_VERTSHADER     "./glsl/PathTracer.vert"
 #define PT_FRAGSHADER     "./glsl/PathTracer.frag"
 #define PTPOST_VERTSHADER "./glsl/ScreenPost.vert"
@@ -41,6 +44,7 @@ public:
     virtual void SetAllShaderBindings(IRHIContext* Context) override;
 };
 
+using PTVertex = TVertex<float3, float3, float2, float3, float3>;
 class PATHTRACERENDERER_API PathTraceRenderer : public IRenderer {
 public:
     uint32_t IndexBufferSize;
@@ -58,6 +62,7 @@ public:
     std::unique_ptr<IRHIBuffer> SceneUniform;
     std::unique_ptr<IRHIBuffer> StorageBuffer;
     std::unique_ptr<IRHIBuffer> PrimitiveBuffer;
+    std::unique_ptr<IRHIBuffer> MeshVerticesBuffer;
     std::unique_ptr<IRHISwapchain> Swapchain;
     std::unique_ptr<IRHIFrameBuffer> FBuffer1;
     std::unique_ptr<IRHIFrameBuffer> FBuffer2;
@@ -78,15 +83,18 @@ public:
         alignas(8) glm::uvec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
         alignas(8) float time;
         alignas(4) int frameId;
+        alignas(4) int vertexCount;
     } cuo;
 
     PathTraceRenderer() = default;
 
-    // --- IRenderer interface implementation ---
-    virtual void CreateRenderer(uint32_t Height, uint32_t Width) override;
+     // --- IRenderer interface implementation ---
+    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) override;
     virtual void Render(float4 ViewPos, RenderControl* control) override;
+    virtual void CaptureFrame(const std::string& Path) override;
 
     // --- PathTraceRenderer specific methods ---
     void UpdateUniformBuffer(float4x4 camToWorld, float time, RenderControl* control);
     void ProcessInput();
+    void LoadMesh(const std::string& MeshPath);
 };

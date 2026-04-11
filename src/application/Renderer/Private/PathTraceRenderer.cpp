@@ -2,14 +2,18 @@
 #include <fstream>
 
 #define PATHTRACERENDERER_IMPLEMENT
-#include "PathTraceRenderer.h"
+ #include "PathTraceRenderer.h"
 #define SHADERCOMPILER_INCLUDE
 #include "ShaderCompiler.h"
+
+ #define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 void ComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->SetDescriptorBinding(0, DescriptorType::IMAGE2D, IRHIPipelineFactory::EPipelineStages::CS);
     PipelineFactory->SetDescriptorBinding(1, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
     PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(3, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
 }
 
 void PathTracerPipeline::SetAllShaderBindings(IRHIContext* Context) {
@@ -27,8 +31,8 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
 }
 
-void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width) {
-    uptr_Context = IRHIPlatformSupport::Get(RHIBackend::D3D12)->CreateRHIContext();
+ void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) {
+    uptr_Context = IRHIPlatformSupport::Get(Backend)->CreateRHIContext();
     Context = uptr_Context.get();
     Context->Initialize(Width, Height);
     RHIFullScreenQuadBuffer = Context->CreateRHIBuffer();
@@ -47,6 +51,7 @@ void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width) {
     ImGUI = Context->CreateRHIImGUI();
     StorageBuffer = Context->CreateRHIBuffer();
     PrimitiveBuffer = Context->CreateRHIBuffer();
+    MeshVerticesBuffer = Context->CreateRHIBuffer();
 
     SwapchainFormat = B8G8R8A8_SRGB; //R8G8B8A8_UNORM; // R8G8B8A8_UNORM is compatible for both Vulkan and D3D12 backend
 
@@ -87,7 +92,7 @@ void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width) {
     RHIFullScreenQuadBuffer->Initialize(Context, sizeof(float3) * 8, RHIResourceState::BUFFER_VERTEX);
     RHIFullScreenQuadIndexBuffer->Initialize(Context, sizeof(uint32_t) * 6, RHIResourceState::BUFFER_INDEX);
     float3 FullScreenVertices[4] = { float3(-1., -1., 0.), float3(-1., 1., 0.), float3(1., 1., 0.), float3(1., -1., 0.) };
-    uint32_t FullScreenVerticesIndex[6] = { 0, 1, 2, 0, 2, 3 };
+    uint32_t FullScreenVerticesIndex[6] = { 0, 2, 1, 0, 3, 2 };
     RHIFullScreenQuadBuffer->CopyToBuffer(Context, FullScreenVertices, sizeof(float3) * 8);
     RHIFullScreenQuadIndexBuffer->CopyToBuffer(Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
     CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
@@ -95,7 +100,18 @@ void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width) {
     ImGUI->Initialize(Context, Swapchain.get(), PresentPass.get());
 
     cuo.frameId = 1;
+    LoadMesh("./models/spot/spot_triangulated.obj");
 }
+
+ void PathTraceRenderer::LoadMesh(const std::string& MeshPath) {
+     // Load Mesh
+     auto Mesh = TMesh<PTVertex, uint32_t>::LoadObj(MeshPath);
+     CalculateNormal<PTVertex, uint32_t>(Mesh);
+
+     MeshVerticesBuffer->Initialize(Context, sizeof(PTVertex) * Mesh.Vertices.size(), RHIResourceState::BUFFER_SHADER_STORAGE);
+     MeshVerticesBuffer->CopyToBuffer(Context, Mesh.Vertices.data(), (uint32_t)(Mesh.Vertices.size() * sizeof(PTVertex)));
+     cuo.vertexCount = Mesh.Vertices.size();
+ }
 
 void PathTraceRenderer::UpdateUniformBuffer(float4x4 camToWorld, float time, RenderControl* control) {
     // sensor size 32mm
@@ -164,6 +180,7 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
         TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
         TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
         TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
+        TestCompPipeline.PipelineObject->SetStorageBuffer(MeshVerticesBuffer.get(), 3);
         TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
         cuo.frameId++;
     }
@@ -188,7 +205,34 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
     swap = !swap;
 }
 
-void PathTraceRenderer::ProcessInput()
+ void PathTraceRenderer::ProcessInput()
 {
     Context->ProcessFrameInput();
+}
+
+void PathTraceRenderer::CaptureFrame(const std::string& Path) {
+    uint32_t width = FrameSize.Width;
+    uint32_t height = FrameSize.Height;
+    std::vector<float> pixels(width * height * 4);
+    
+    RHIStoreImage->CopyFromTexture(nullptr, Context, pixels.data(), sizeof(float) * 4);
+
+    std::vector<uint8_t> rgba(width * height * 4);
+    for (size_t i = 0; i < pixels.size(); i += 4) {
+        float r = pixels[i];
+        float g = pixels[i+1];
+        float b = pixels[i+2];
+        
+        // Simple gamma correction
+        r = pow(glm::clamp(r, 0.0f, 1.0f), 1.0f / 2.2f);
+        g = pow(glm::clamp(g, 0.0f, 1.0f), 1.0f / 2.2f);
+        b = pow(glm::clamp(b, 0.0f, 1.0f), 1.0f / 2.2f);
+
+        rgba[i]   = (uint8_t)(r * 255.0f);
+        rgba[i+1] = (uint8_t)(g * 255.0f);
+        rgba[i+2] = (uint8_t)(b * 255.0f);
+        rgba[i+3] = 255;
+    }
+    
+    stbi_write_png(Path.c_str(), width, height, 4, rgba.data(), width * 4);
 }

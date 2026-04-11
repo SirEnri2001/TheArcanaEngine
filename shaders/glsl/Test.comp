@@ -1,4 +1,7 @@
 #version 450
+#extension GL_ARB_shading_language_include : require
+
+#include "Common.glsl"
 
 layout (binding = 0, rgba8) uniform image2D outImage;
 layout(std140, binding = 1) readonly buffer UniformBuffer{
@@ -6,6 +9,7 @@ layout(std140, binding = 1) readonly buffer UniformBuffer{
     ivec2 screenres;
     float time;
     int frameId;
+    int vertexCount;
 } uniforms;
 
 struct ModelUniform {
@@ -16,240 +20,36 @@ struct ModelUniform {
     vec3 emission;
 };
 
+struct SurfaceIntersect{
+    float t;
+    vec3 pointIntersectWorld;
+    vec3 baseColor;
+    vec3 worldNormal;
+    vec3 emissive;
+};
+
+
 layout(std140, binding = 2) readonly buffer PrimitiveBuffer{
     ModelUniform data[8];
 } primitives;
 
+struct MeshVertices{
+    vec3 Position;
+    vec3 Color;
+    vec2 TexCoord;
+    vec3 Normal;
+    vec3 TangentX;
+    vec3 TangentY;
+};
+
+layout(std140, binding=3) readonly buffer MeshVerticesBuffer {
+    MeshVertices Vertices[];
+} b_MeshVertices;
+
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-#define PI 3.14159265358979323846
+#include "Geometry.glsl"
 
-/// BEGIN HASH FUNCTIONS
-//----------------------------------------------------------------------------------------
-
-//The name "hash[Out][In]" describes the function signature:
-// * EXAMPLES:
-// * hash12: float = hash(vec2)  // 1 component out, 2 components in
-// * hash21: vec2  = hash(float)  // 2 components out, 1 component in
-// * hash22: vec2  = hash(vec2)  // 2 components out, 2 components in
-// * hash33: vec3  = hash(vec3)  // 3 components out, 3 components in
-float hash11(float p)
-{
-    p = fract(p * .1031);
-    p *= p + 33.33;
-    p *= p + p;
-    return fract(p);
-}
-
-//----------------------------------------------------------------------------------------
-//  1 out, 2 in...
-float hash12(vec2 p)
-{
-	vec3 p3  = fract(vec3(p.xyx) * .1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
-//----------------------------------------------------------------------------------------
-//  1 out, 3 in...
-float hash13(vec3 p3)
-{
-	p3  = fract(p3 * .1031);
-    p3 += dot(p3, p3.zyx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-//----------------------------------------------------------------------------------------
-// 1 out 4 in...
-float hash14(vec4 p4)
-{
-	p4 = fract(p4  * vec4(.1031, .1030, .0973, .1099));
-    p4 += dot(p4, p4.wzxy+33.33);
-    return fract((p4.x + p4.y) * (p4.z + p4.w));
-}
-
-//----------------------------------------------------------------------------------------
-//  2 out, 1 in...
-vec2 hash21(float p)
-{
-	vec3 p3 = fract(vec3(p) * vec3(.1031, .1030, .0973));
-	p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.xx+p3.yz)*p3.zy);
-
-}
-
-//----------------------------------------------------------------------------------------
-///  2 out, 2 in...
-vec2 hash22(vec2 p)
-{
-	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yzx+33.33);
-    return fract((p3.xx+p3.yz)*p3.zy);
-
-}
-
-//----------------------------------------------------------------------------------------
-///  2 out, 3 in...
-vec2 hash23(vec3 p3)
-{
-	p3 = fract(p3 * vec3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yzx+33.33);
-    return fract((p3.xx+p3.yz)*p3.zy);
-}
-
-//----------------------------------------------------------------------------------------
-//  3 out, 1 in...
-vec3 hash31(float p)
-{
-   vec3 p3 = fract(vec3(p) * vec3(.1031, .1030, .0973));
-   p3 += dot(p3, p3.yzx+33.33);
-   return fract((p3.xxy+p3.yzz)*p3.zyx); 
-}
-
-
-//----------------------------------------------------------------------------------------
-///  3 out, 2 in...
-vec3 hash32(vec2 p)
-{
-	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yxz+33.33);
-    return fract((p3.xxy+p3.yzz)*p3.zyx);
-}
-
-//----------------------------------------------------------------------------------------
-///  3 out, 3 in...
-vec3 hash33(vec3 p3)
-{
-	p3 = fract(p3 * vec3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yxz+33.33);
-    return fract((p3.xxy + p3.yxx)*p3.zyx);
-
-}
-
-//----------------------------------------------------------------------------------------
-// 4 out, 1 in...
-vec4 hash41(float p)
-{
-	vec4 p4 = fract(vec4(p) * vec4(.1031, .1030, .0973, .1099));
-    p4 += dot(p4, p4.wzxy+33.33);
-    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
-    
-}
-
-//----------------------------------------------------------------------------------------
-// 4 out, 2 in...
-vec4 hash42(vec2 p)
-{
-	vec4 p4 = fract(vec4(p.xyxy) * vec4(.1031, .1030, .0973, .1099));
-    p4 += dot(p4, p4.wzxy+33.33);
-    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
-
-}
-
-//----------------------------------------------------------------------------------------
-// 4 out, 3 in...
-vec4 hash43(vec3 p)
-{
-	vec4 p4 = fract(vec4(p.xyzx)  * vec4(.1031, .1030, .0973, .1099));
-    p4 += dot(p4, p4.wzxy+33.33);
-    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
-}
-
-//----------------------------------------------------------------------------------------
-// 4 out, 4 in...
-vec4 hash44(vec4 p4)
-{
-	p4 = fract(p4  * vec4(.1031, .1030, .0973, .1099));
-    p4 += dot(p4, p4.wzxy+33.33);
-    return fract((p4.xxyz+p4.yzzw)*p4.zywx);
-}
-/// END HASH FUNCTIONS
-
-
-
-void RayIntersect(in vec3 rayPos, in vec3 rayDir, out float t, out vec3 baseColor, out vec3 worldNormal, out vec3 emission, out vec4 worldPoint){
-    t = 999999999.;
-    baseColor = vec3(0.);
-    worldNormal = vec3(0.);
-    emission = vec3(0.);
-    for(int i = 0;i < 8;i ++){
-        ModelUniform ubo = primitives.data[i];
-        
-        mat3 modelInvTranspose = mat3(
-            ubo.modelInvTranspose[0].xyz, 
-            ubo.modelInvTranspose[1].xyz, 
-            ubo.modelInvTranspose[2].xyz
-        );
-        vec3 invertRayPos = vec3(ubo.modelInv * vec4(rayPos, 1.));
-        vec3 invertRayDir = vec3(ubo.modelInv * vec4(rayDir, 0.));
-        float tzplus  = ( 1. - invertRayPos.z) / invertRayDir.z;
-        float tzminus = (-1. - invertRayPos.z) / invertRayDir.z;
-        float typlus  = ( 1. - invertRayPos.y) / invertRayDir.y;
-        float tyminus = (-1. - invertRayPos.y) / invertRayDir.y;
-        float txplus  = ( 1. - invertRayPos.x) / invertRayDir.x;
-        float txminus = (-1. - invertRayPos.x) / invertRayDir.x;
-        if(tzplus> 0. && tzplus < t){
-            vec3 Intersect = invertRayPos + tzplus * invertRayDir;
-            if(abs(Intersect.x)<1. && abs(Intersect.y)<1.){
-                t = tzplus;
-                baseColor = ubo.color;
-                worldNormal = vec3(modelInvTranspose * vec3(0., 0., 1.));
-                emission = ubo.emission;
-                worldPoint = ubo.model * vec4(Intersect,1.0);
-            }
-        }
-        if(tzminus> 0. && tzminus < t){
-            vec3 Intersect = invertRayPos + tzminus * invertRayDir;
-            if(abs(Intersect.x)<1. && abs(Intersect.y)<1.){
-                t = tzminus;
-                baseColor = ubo.color;
-                worldNormal = vec3(modelInvTranspose * vec3(0., 0., -1.));
-                emission = ubo.emission;
-                worldPoint = ubo.model * vec4(Intersect,1.0);
-            }
-        }
-        if(typlus> 0. && typlus < t){
-            vec3 Intersect = invertRayPos + typlus * invertRayDir;
-            if(abs(Intersect.x)<1. && abs(Intersect.z)<1.){
-                t = typlus;
-                baseColor = ubo.color;
-                worldNormal = vec3(modelInvTranspose * vec3(0., 1., 0.));
-                emission = ubo.emission;
-                worldPoint = ubo.model * vec4(Intersect,1.0);
-            }
-        }
-        if(tyminus> 0. && tyminus < t){
-            vec3 Intersect = invertRayPos + tyminus * invertRayDir;
-            if(abs(Intersect.x)<1. && abs(Intersect.z)<1.){
-                t = tyminus;
-                baseColor = ubo.color;
-                worldNormal = vec3(modelInvTranspose * vec3(0., -1., 0.));
-                emission = ubo.emission;
-                worldPoint = ubo.model * vec4(Intersect,1.0);
-            }
-        }
-        if(txplus> 0. && txplus < t){
-            vec3 Intersect = invertRayPos + txplus * invertRayDir;
-            if(abs(Intersect.z)<1. && abs(Intersect.y)<1.){
-                t = txplus;
-                baseColor = ubo.color;
-                worldNormal = vec3(modelInvTranspose * vec3(1., 0., 0.));
-                emission = ubo.emission;
-                worldPoint = ubo.model * vec4(Intersect,1.0);
-            }
-        }
-        if(txminus> 0. && txminus < t){
-            vec3 Intersect = invertRayPos + txminus * invertRayDir;
-            if(abs(Intersect.z)<1. && abs(Intersect.y)<1.){
-                t = txminus;
-                baseColor = ubo.color;
-                worldNormal = vec3(modelInvTranspose * vec3(-1., 0., 0.));
-                emission = ubo.emission;
-                worldPoint = ubo.model * vec4(Intersect,1.0);
-            }
-        }
-    }
-    worldNormal = normalize(worldNormal);
-}
 vec2 StratifiedSample2D(uint sampleIndex, uint sqrtN, vec2 pixel, float seed)
 {
     uint x = sampleIndex % sqrtN;
@@ -259,43 +59,7 @@ vec2 StratifiedSample2D(uint sampleIndex, uint sqrtN, vec2 pixel, float seed)
     return (vec2(x, y) + jitter) / float(sqrtN);
 }
 
-uint Permute(uint i, uint l, uint p)
-{
-    uint w = l - 1;
-    w |= w >> 1;
-    w |= w >> 2;
-    w |= w >> 4;
-    w |= w >> 8;
-    w |= w >> 16;
-    i ^= p;
-    i *= 0xe170893d;
-    i ^= p >> 16;
-    i ^= (i & w) >> 4;
-    i ^= p >> 8;
-    i *= 0x0929eb3f;
-    i ^= p >> 23;
-    i ^= (i & w) >> 1;
-    i *= 1 | p >> 27;
-    i *= 0x6935fa69;
-    i ^= (i & w) >> 11;
-    i *= 0x74dcb303;
-    i ^= (i & w) >> 2;
-    i *= 0x9e501cc3;
-    i ^= (i & w) >> 2;
-    i *= 0xc860a3df;
-    i &= w;
-    i ^= i >> 5;
-    return i % l;
-}
-uint Permute2(uint x)
-{
-    x ^= x >> 16;
-    x *= 0x7feb352dU;
-    x ^= x >> 15;
-    x *= 0x846ca68bU;
-    x ^= x >> 16;
-    return x;
-}
+
 vec2 SampleXi_Stratify(in float seed, in uint tid){
     uint sqrtN = 16;
     uint frames = uniforms.frameId;
@@ -373,9 +137,6 @@ void TestSampling(){
 void main() 
 {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    // perturb the sampling point
-
-    //GetRandomDir(uniforms.time / 100., pixel_f.xy * 0.1, perturb);
     ivec2 size = imageSize(outImage);
     uint tid = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * size.x;
     vec2 size_f = vec2(size);
@@ -411,46 +172,43 @@ void main()
     vec3 w_o = vec3(camToWorld * vec4(rayCamSpaceDir, 0.));
     vec4 eye_pos = camToWorld * vec4(0., 0., 0., 1.);
     vec3 rayWorldOrigin = vec3(eye_pos);
-    vec3 baseColor;
-    vec3 worldNormal = vec3(0., 0., 0.);
-    vec3 emission = vec3(0., 0., 0.);
-    vec3 accumulatedIlluminate = vec3(0.);
-    float t = 99999.;
-    int validRays = 0;
-    bool inBox = true;
     vec3 throughput = vec3(1.0);
     vec4 worldPoint = vec4(0.0, 0.0, 0.0, 1.0);
-    for (int i = 0; i < 24; i++){
+    SurfaceIntersect Intersect;
+    Intersect.t = 99999.;
+    Intersect.emissive = vec3(0., 0., 0.);
+    Intersect.worldNormal = vec3(1., 0., 0.);
+    for (int i = 0; i < 1; i++){
         vec2 Xi = SampleXi(514., tid*(i+1));
-        RayIntersect(rayWorldOrigin, w_o, t, baseColor, worldNormal, emission, worldPoint);
-        if(t>10000){
-            outColor = vec4(0., 0., 0., 1.);
-            break;
-        }
-        if (emission.x > 0.0001){
-            outColor = vec4(throughput*emission*30., 1.0);
-            break;
-        }
-        rayWorldOrigin = rayWorldOrigin + (t-0.001) * w_o;
-        vec3 w_i_local;
-        float pdf;
-        w_i_local = CosineSampleHemisphere(Xi, pdf);
-        vec3 tangent_world = vec3(0., 0., 1.);
-        if(length(cross(tangent_world, worldNormal))<0.0001){
-            tangent_world = vec3(0., 1., 0.);
-        }
-        vec3 bitangent_world = normalize(cross(worldNormal, tangent_world));
-        tangent_world = normalize(cross(bitangent_world, worldNormal));
-        vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * worldNormal;
-        if (pdf < 0.00001){
-            outColor = vec4(0., 0., 0., 1.);
-            break;
-        }
-        throughput *= baseColor * abs(dot(w_i_world, worldNormal));
-        w_o = w_i_world;
+        RayIntersect(rayWorldOrigin, w_o, Intersect);
+        // if(Intersect.t>10000){
+        //     outColor = vec4(0., 0., 0., 1.);
+        //     break;
+        // }
+        // if (Intersect.emissive.x > 0.0001){
+        //     outColor = vec4(throughput*Intersect.emissive*30., 1.0);
+        //     break;
+        // }
+        // rayWorldOrigin = rayWorldOrigin + (Intersect.t - 0.001) * w_o;
+        // vec3 w_i_local;
+        // float pdf;
+        // w_i_local = CosineSampleHemisphere(Xi, pdf);
+        // vec3 tangent_world = vec3(0., 0., 1.);
+        // if(length(cross(tangent_world, Intersect.worldNormal))<0.0001){
+        //     tangent_world = vec3(0., 1., 0.);
+        // }
+        // vec3 bitangent_world = normalize(cross(Intersect.worldNormal, tangent_world));
+        // tangent_world = normalize(cross(bitangent_world, Intersect.worldNormal));
+        // vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * Intersect.worldNormal;
+        // if (pdf < 0.00001){
+        //     outColor = vec4(0., 0., 0., 1.);
+        //     break;
+        // }
+        // throughput *= Intersect.baseColor * abs(dot(w_i_world, Intersect.worldNormal));
+        // w_o = w_i_world;
     }
-    //outColor = vec4(1. / t, 0., 0., 1.);
-    //outColor = vec4(worldNormal * 0.5 + 0.5, 1.0);
+    // outColor = vec4(Intersect.t, 0., 1., 1.);
+    outColor = vec4(Intersect.worldNormal * 0.5 + 0.5, 1.);
     if(uniforms.frameId>0 && inColor.x==inColor.x){
         outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
         outColor.w = 1.0;
