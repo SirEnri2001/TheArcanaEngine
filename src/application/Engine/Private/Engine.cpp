@@ -20,8 +20,10 @@
 #include "Renderer.h"
 #include "Engine.h"
 
-#define STB_IMAGE_IMPLEMENTATION
+ #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 const std::string MODEL_PATH = "models/spot/spot_triangulated_good.obj";
 const std::string TEXTURE_PATH = "models/spot/spot_texture.png";
@@ -31,8 +33,7 @@ const std::string VERT_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.vert";
 const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
 const std::string CUBE_PATH = "models/cube/cube.obj";
 
-RenderControl Engine::GControl;
-ERendererSelection Engine::RendererSelection = ERendererSelection::BlinnPhong;
+ RenderControl Engine::GControl;
 
 void readFile_U32I(const std::string& filename, std::vector<uint32_t>& buffer_u32) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -126,17 +127,11 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
         if (ImGui::SliderInt("MaxFrames",&Engine::GControl.maxFrames, -1, 5000, "%d")) {
         }
 
+        ImGui::Checkbox("Enable Gamma", &Engine::GControl.enableGamma);
+
         ImGui::Text("Frame: %d", Engine::GControl.currentFrame);
         
         ImGui::Separator();
-        ImGui::Text("Renderer Selection:");
-        if (ImGui::RadioButton("Path Tracing", (int*)&Engine::RendererSelection, (int)ERendererSelection::PathTracing)) {
-            // PathTracing selected
-        }
-        if (ImGui::RadioButton("Blinn-Phong", (int*)&Engine::RendererSelection, (int)ERendererSelection::BlinnPhong)) {
-            // BlinnPhong selected
-        }
-        ImGui::Text("(Note: Change requires restart to take effect)");
 
         if (Engine::GControl.ShaderCompileHasError) {
             ImGui::OpenPopup("Shader Compiler Error");
@@ -256,10 +251,15 @@ Engine::Engine() {
 }
 Engine::~Engine() {}
 
-void Engine::Initialize(int width, int height) {
+ void Engine::Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int InMaxFrames, const std::string& InOutputPath) {
+    RendererSelection = Renderer;
+    BackendSelection = Backend;
+    MaxFrames = InMaxFrames;
+    OutputPath = InOutputPath;
+
     if (RendererSelection == ERendererSelection::PathTracing) {
         PTRenderer.pFuncImDraw = &Engine::DrawUI;
-        PTRenderer.CreateRenderer(width, height);
+        PTRenderer.CreateRenderer(width, height, BackendSelection);
 
         CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
         CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
@@ -292,7 +292,7 @@ void Engine::Initialize(int width, int height) {
     }
     else if (RendererSelection == ERendererSelection::BlinnPhong) {
         BPRenderer.pFuncImDraw = &Engine::DrawUI;
-        BPRenderer.CreateRenderer(width, height);
+        BPRenderer.CreateRenderer(width, height, BackendSelection);
         
         CameraTransformLocalToWorld = glm::translate(float4x4(1.0f), float3(-10.f, 0, 0.0f));
         GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
@@ -300,18 +300,22 @@ void Engine::Initialize(int width, int height) {
 }
 
 
-void Engine::Run() {
+ void Engine::Run() {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     IRHIContext* ActiveContext = nullptr;
+    IRenderer* ActiveRenderer = nullptr;
     if (RendererSelection == ERendererSelection::PathTracing) {
         ActiveContext = PTRenderer.Context;
+        ActiveRenderer = &PTRenderer;
     } else if (RendererSelection == ERendererSelection::BlinnPhong) {
         ActiveContext = BPRenderer.Context;
+        ActiveRenderer = &BPRenderer;
     }
 
     if (!ActiveContext) return;
 
+    int currentFrame = 0;
     while (ActiveContext->IsWindowAlive())
     {
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -325,15 +329,45 @@ void Engine::Run() {
             BPRenderer.Render(GControl.CameraTransformLocalToWorld[3], &GControl);
             BPRenderer.Context->ProcessFrameInput();
         }
+
+        currentFrame++;
+        if (MaxFrames > 0 && currentFrame >= MaxFrames) {
+            if (!OutputPath.empty()) {
+                ActiveRenderer->CaptureFrame(OutputPath);
+            }
+            break;
+        }
     }
 }
 
 
 void Engine::Shutdown() {}
 
-int main() {
+ int main(int argc, char** argv) {
+    ERendererSelection renderer = ERendererSelection::PathTracing;
+    RHIBackend rhi = RHIBackend::Vulkan;
+    int maxFrames = -1;
+    std::string outputPath = "";
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--renderer" && i + 1 < argc) {
+            std::string val = argv[++i];
+            if (val == "PathTracing") renderer = ERendererSelection::PathTracing;
+            else if (val == "BlinnPhong") renderer = ERendererSelection::BlinnPhong;
+        } else if (arg == "--rhi" && i + 1 < argc) {
+            std::string val = argv[++i];
+            if (val == "D3D12") rhi = RHIBackend::D3D12;
+            else if (val == "Vulkan") rhi = RHIBackend::Vulkan;
+        } else if (arg == "--frame-count" && i + 1 < argc) {
+            maxFrames = std::stoi(argv[++i]);
+        } else if (arg == "--output" && i + 1 < argc) {
+            outputPath = argv[++i];
+        }
+    }
+
     Engine engine;
-    engine.Initialize(1000, 1000);
+    engine.Initialize(1000, 1000, renderer, rhi, maxFrames, outputPath);
     engine.Run();
     engine.Shutdown();
     return 0;

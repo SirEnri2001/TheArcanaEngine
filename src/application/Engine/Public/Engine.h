@@ -17,7 +17,7 @@ public:
     Engine();
     ~Engine();
 
-    void Initialize(int width, int height);
+     void Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int MaxFrames = -1, const std::string& OutputPath = "");
     void Run();
     void Shutdown();
 
@@ -25,7 +25,10 @@ private:
     static void DrawUI(ImGuiSharedGlobals* ImGlobals);
 
     static RenderControl GControl;
-    static ERendererSelection RendererSelection;
+    ERendererSelection RendererSelection;
+    RHIBackend BackendSelection;
+    int MaxFrames;
+    std::string OutputPath;
 
     PathTraceRenderer PTRenderer;
     BlinnPhongRenderer BPRenderer;

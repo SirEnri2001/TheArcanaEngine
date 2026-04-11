@@ -37,6 +37,7 @@ struct RenderControl {
 	bool bClear = false;
 	int maxFrames = -1;
 	int currentFrame = 0;
+	bool enableGamma = true;
 };
 
 typedef char ShaderFileType;
@@ -124,8 +125,11 @@ public:
 	// --- Renderer lifecycle interface ---
 
 	/** Create and initialize the renderer with the given viewport dimensions. */
-	virtual void CreateRenderer(uint32_t Height, uint32_t Width) = 0;
+	virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) = 0;
 
 	/** Execute a single render frame. */
 	virtual void Render(float4 ViewPos, RenderControl* control) = 0;
+
+	/** Capture the current frame and save it to the given path. */
+	virtual void CaptureFrame(const std::string& Path) = 0;
 };

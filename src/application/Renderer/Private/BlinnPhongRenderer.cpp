@@ -2,7 +2,8 @@
 #include "BlinnPhongRenderer.h"
 
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+ #include <stb_image.h>
+#include <stb_image_write.h>
 
 #include <iostream>
 #include <stdexcept>
@@ -27,8 +28,8 @@ void BlinnPhongPipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->AddBufferLayout(0, 3, RHIFormat::R32G32B32_SFLOAT, offsetof(BlinnPhongVertex, Normal));
 }
 
-void BlinnPhongRenderer::CreateRenderer(uint32_t Height, uint32_t Width) {
-    uptr_Context = IRHIPlatformSupport::Get(RHIBackend::Vulkan)->CreateRHIContext();
+ void BlinnPhongRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) {
+    uptr_Context = IRHIPlatformSupport::Get(Backend)->CreateRHIContext();
     Context = uptr_Context.get();
     Context->Initialize(Width, Height);
 
@@ -151,6 +152,14 @@ void BlinnPhongRenderer::UpdateUniforms(float4 ViewPos, RenderControl* control) 
     // ModelUBO
     modelData.model = float4x4(1.0f); // Identity for now, or use control transform
     modelData.modelInv = inverse(modelData.model);
-    modelData.color = float3(1.0f, 1.0f, 1.0f);
+     modelData.color = float3(1.0f, 1.0f, 1.0f);
     ModelUBO->CopyToBuffer(Context, &modelData, sizeof(ModelUniform));
+}
+
+void BlinnPhongRenderer::CaptureFrame(const std::string& Path) {
+    // For BlinnPhongRenderer, we currently don't have an offscreen RHIStoreImage like PathTraceRenderer.
+    // This would require reading from the swapchain or adding an offscreen target.
+    // For now, we'll provide a placeholder or skip if not easily accessible.
+    // In a real implementation, we'd read back the current frame buffer.
+    std::cout << "CaptureFrame not yet fully implemented for BlinnPhongRenderer" << std::endl;
 }
