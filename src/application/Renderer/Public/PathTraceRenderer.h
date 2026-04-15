@@ -63,6 +63,7 @@ public:
     std::unique_ptr<IRHIBuffer> StorageBuffer;
     std::unique_ptr<IRHIBuffer> PrimitiveBuffer;
     std::unique_ptr<IRHIBuffer> MeshVerticesBuffer;
+    std::unique_ptr<IRHIBuffer> MeshBVHBuffer;
     std::unique_ptr<IRHISwapchain> Swapchain;
     std::unique_ptr<IRHIFrameBuffer> FBuffer1;
     std::unique_ptr<IRHIFrameBuffer> FBuffer2;
@@ -73,6 +74,7 @@ public:
     ComputePipeline TestCompPipeline;
     RHIFormat SwapchainFormat;
     ImageExtent3D FrameSize;
+    std::vector<BVHBox<PTVertex, uint32_t>> BVHBoxes;
 
     bool swap = false;
 

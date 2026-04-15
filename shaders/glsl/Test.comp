@@ -42,9 +42,22 @@ struct MeshVertices{
     vec3 TangentY;
 };
 
-layout(std140, binding=3) readonly buffer MeshVerticesBuffer {
+layout(std430, binding=3) readonly buffer MeshVerticesBuffer {
     MeshVertices Vertices[];
 } b_MeshVertices;
+
+struct BVH {
+    vec3 BoxMin;
+    vec3 BoxMax;
+    int ChildIndex1;
+    int ChildIndex2;
+    int TriangleIndexStart;
+    int TriangleIndexEnd;
+};
+
+layout(std430, binding=4) readonly buffer BVHBoxesBuffer {
+    BVH bvhs[];
+} b_BVH;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -177,7 +190,7 @@ void main()
     SurfaceIntersect Intersect;
     Intersect.t = 99999.;
     Intersect.emissive = vec3(0., 0., 0.);
-    Intersect.worldNormal = vec3(1., 0., 0.);
+    Intersect.worldNormal = vec3(0., 0., 0.);
     for (int i = 0; i < 1; i++){
         vec2 Xi = SampleXi(514., tid*(i+1));
         RayIntersect(rayWorldOrigin, w_o, Intersect);
@@ -208,7 +221,7 @@ void main()
         // w_o = w_i_world;
     }
     // outColor = vec4(Intersect.t, 0., 1., 1.);
-    outColor = vec4(Intersect.worldNormal * 0.5 + 0.5, 1.);
+    outColor = vec4(Intersect.baseColor, 1.);
     if(uniforms.frameId>0 && inColor.x==inColor.x){
         outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
         outColor.w = 1.0;

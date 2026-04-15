@@ -85,6 +85,74 @@ void RayIntersectBox(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in 
     }
 }
 
+bool RayIntersectBVH(in vec3 boxMin, in vec3 boxMax, in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect IntersectInfo){
+    float tzplus  = ( boxMax.z - rayOrigin.z) / rayDir.z;
+    float tzminus = ( boxMin.z - rayOrigin.z) / rayDir.z;
+    float typlus  = ( boxMax.y - rayOrigin.y) / rayDir.y;
+    float tyminus = ( boxMin.y - rayOrigin.y) / rayDir.y;
+    float txplus  = ( boxMax.x - rayOrigin.x) / rayDir.x;
+    float txminus = ( boxMin.x - rayOrigin.x) / rayDir.x;
+    bool isIntersected = false;
+    if(tzplus> 0. && tzplus < IntersectInfo.t){
+        vec3 Intersect = rayOrigin + tzplus * rayDir;
+        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.y < boxMax.y && Intersect.y > boxMin.y){
+            isIntersected = true;
+            IntersectInfo.t = tzplus;
+            IntersectInfo.worldNormal = vec3(0., 0., 1.);
+            IntersectInfo.pointIntersectWorld = Intersect;
+        }
+    }
+    if(tzminus> 0. && tzminus < IntersectInfo.t){
+        vec3 Intersect = rayOrigin + tzminus * rayDir;
+        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.y < boxMax.y && Intersect.y > boxMin.y){
+            isIntersected = true;
+            IntersectInfo.t = tzminus;
+            IntersectInfo.worldNormal = vec3(0., 0., -1.);
+            IntersectInfo.pointIntersectWorld = Intersect;
+        }
+    }
+    if(typlus> 0. && typlus < IntersectInfo.t){
+        vec3 Intersect = rayOrigin + typlus * rayDir;
+        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
+            isIntersected = true;
+            IntersectInfo.t = typlus;
+            IntersectInfo.worldNormal = vec3(0., 1., 0.);
+            IntersectInfo.pointIntersectWorld = Intersect;
+        }
+    }
+    if(tyminus> 0. && tyminus < IntersectInfo.t){
+        vec3 Intersect = rayOrigin + tyminus * rayDir;
+        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
+            isIntersected = true;
+            IntersectInfo.t = tyminus;
+            IntersectInfo.worldNormal =vec3(0., -1., 0.);
+            IntersectInfo.pointIntersectWorld = Intersect;
+        }
+    }
+    if(txplus> 0. && txplus < IntersectInfo.t){
+        vec3 Intersect = rayOrigin + txplus * rayDir;
+        if(Intersect.y < boxMax.y && Intersect.y > boxMin.y && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
+            isIntersected = true;
+            IntersectInfo.t = txplus;
+            IntersectInfo.worldNormal = vec3(1., 0., 0.);
+            IntersectInfo.pointIntersectWorld = Intersect;
+        }
+    }
+    if(txminus> 0. && txminus < IntersectInfo.t){
+        vec3 Intersect = rayOrigin + txminus * rayDir;
+        if(Intersect.y < boxMax.y && Intersect.y > boxMin.y && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
+            isIntersected = true;
+            IntersectInfo.t = txminus;
+            IntersectInfo.worldNormal = vec3(-1., 0., 0.);
+            IntersectInfo.pointIntersectWorld = Intersect;
+        }
+    }
+    if (isIntersected){
+        IntersectInfo.worldNormal = normalize(IntersectInfo.worldNormal);
+    }
+    return isIntersected;
+}
+
 bool RayIntersectTriangle(vec3 Pa, vec3 Pb, vec3 Pc, vec3 rayOrigin, vec3 rayDir, in out SurfaceIntersect IntersectInfo) {
     vec3 edge1 = Pb - Pa;
     vec3 edge2 = Pc - Pa;
@@ -122,13 +190,21 @@ void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect Int
         RayIntersectBox(ubo, rayOrigin, rayDir, IntersectInfo);
     }
 
-    for (int i = 0; i < uniforms.vertexCount; i+=3){
-        MeshVertices v1 = b_MeshVertices.Vertices[i];
-        MeshVertices v2 = b_MeshVertices.Vertices[i + 1];
-        MeshVertices v3 = b_MeshVertices.Vertices[i + 2];
-        vec3 translate = vec3(-0.25,0.25,0.25);
-        if (RayIntersectTriangle(v1.Position*0.1 + translate, v2.Position*0.1 + translate, v3.Position*0.1 + translate, rayOrigin, rayDir, IntersectInfo)){
-            IntersectInfo.baseColor = vec3(0., 1., 0.);
-        }
+    // for (int i = 0; i < uniforms.vertexCount; i+=3){
+    //     MeshVertices v1 = b_MeshVertices.Vertices[i];
+    //     MeshVertices v2 = b_MeshVertices.Vertices[i + 1];
+    //     MeshVertices v3 = b_MeshVertices.Vertices[i + 2];
+    //     vec3 translate = vec3(-0.25,0.25,0.25);
+    //     if (RayIntersectTriangle(v1.Position, v2.Position, v3.Position, rayOrigin, rayDir, IntersectInfo)){
+    //         IntersectInfo.baseColor = vec3(0., 1., 0.);
+    //     }
+    // }
+    BVH bvh = b_BVH.bvhs[0];
+    int child1Index = -1;
+    int child2Index = -1;
+    BVH child1bvh;
+    BVH child1bvh;
+    if (RayIntersectBVH(bvh.BoxMin, bvh.BoxMax, rayOrigin, rayDir, IntersectInfo)){
+        
     }
 }

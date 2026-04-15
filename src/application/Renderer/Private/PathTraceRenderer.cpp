@@ -14,6 +14,7 @@ void ComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->SetDescriptorBinding(1, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
     PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
     PipelineFactory->SetDescriptorBinding(3, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(4, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
 }
 
 void PathTracerPipeline::SetAllShaderBindings(IRHIContext* Context) {
@@ -52,6 +53,7 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
     StorageBuffer = Context->CreateRHIBuffer();
     PrimitiveBuffer = Context->CreateRHIBuffer();
     MeshVerticesBuffer = Context->CreateRHIBuffer();
+    MeshBVHBuffer = Context->CreateRHIBuffer();
 
     SwapchainFormat = B8G8R8A8_SRGB; //R8G8B8A8_UNORM; // R8G8B8A8_UNORM is compatible for both Vulkan and D3D12 backend
 
@@ -104,12 +106,19 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
 }
 
  void PathTraceRenderer::LoadMesh(const std::string& MeshPath) {
+     static_assert(sizeof(BVHBox<PTVertex, uint32_t>) == 48);
      // Load Mesh
      auto Mesh = TMesh<PTVertex, uint32_t>::LoadObj(MeshPath);
      CalculateNormal<PTVertex, uint32_t>(Mesh);
-
+     BuildBVHOnMesh<PTVertex, uint32_t>(Mesh, BVHBoxes);
+     for (int i = 0; i < 100 && i < BVHBoxes.size(); i++) {
+         std::cout << "BVH " << i << " " << BVHBoxes[i].ChildIndex1 << " " << BVHBoxes[i].ChildIndex2 << std::endl;
+     }
      MeshVerticesBuffer->Initialize(Context, sizeof(PTVertex) * Mesh.Vertices.size(), RHIResourceState::BUFFER_SHADER_STORAGE);
      MeshVerticesBuffer->CopyToBuffer(Context, Mesh.Vertices.data(), (uint32_t)(Mesh.Vertices.size() * sizeof(PTVertex)));
+
+     MeshBVHBuffer->Initialize(Context, sizeof(BVHBox<PTVertex, uint32_t>) * BVHBoxes.size(), RHIResourceState::BUFFER_SHADER_STORAGE);
+     MeshBVHBuffer->CopyToBuffer(Context, BVHBoxes.data(), (uint32_t)(BVHBoxes.size() * sizeof(BVHBox<PTVertex, uint32_t>)));
      cuo.vertexCount = Mesh.Vertices.size();
  }
 
@@ -181,6 +190,7 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
         TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
         TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
         TestCompPipeline.PipelineObject->SetStorageBuffer(MeshVerticesBuffer.get(), 3);
+        TestCompPipeline.PipelineObject->SetStorageBuffer(MeshBVHBuffer.get(), 4);
         TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
         cuo.frameId++;
     }
