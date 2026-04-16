@@ -63,62 +63,62 @@ struct BVHBox {
 
 // split the mesh at [0, SplitPos] and [SplitPos, MaxTriangleCount]
 template<typename VertexType, typename IndexType>
-size_t BuildBVHBox_Recursive(std::vector<BVHBox<VertexType, IndexType>>& BVH_Array,
-    typename std::vector<std::array<VertexType,3>>::iterator MeshStart,
+int BuildBVHBox_Recursive(std::vector<BVHBox<VertexType, IndexType>>& BVH_Array,
+    typename std::vector<std::array<VertexType, 3>>::iterator MeshStart,
     typename std::vector<std::array<VertexType, 3>>::iterator TIter_Start,
     typename std::vector<std::array<VertexType, 3>>::iterator TIter_End, size_t TrianglePerBox = 1)
 {
-    if (TIter_Start == TIter_End) {
+    if (TIter_Start >= TIter_End) {
         return -1;
     }
+
     BVHBox<VertexType, IndexType> MeshBoundingBox;
-    MeshBoundingBox.BoxMax[0] = -std::numeric_limits<float>::max();
-    MeshBoundingBox.BoxMax[1] = -std::numeric_limits<float>::max();
-    MeshBoundingBox.BoxMax[2] = -std::numeric_limits<float>::max();
-    MeshBoundingBox.BoxMin[0] = std::numeric_limits<float>::max();
-    MeshBoundingBox.BoxMin[1] = std::numeric_limits<float>::max();
-    MeshBoundingBox.BoxMin[2] = std::numeric_limits<float>::max();
-    
+    MeshBoundingBox.BoxMax = typename VertexType::PositionType(-std::numeric_limits<float>::max());
+    MeshBoundingBox.BoxMin = typename VertexType::PositionType(std::numeric_limits<float>::max());
+
     for (auto TIter = TIter_Start; TIter < TIter_End; TIter++) {
         for (int i = 0; i < 3; i++) {
             auto& Vert = (*TIter)[i];
-            MeshBoundingBox.BoxMax[0] = std::max(Vert.Position[0], MeshBoundingBox.BoxMax[0]);
-            MeshBoundingBox.BoxMax[1] = std::max(Vert.Position[1], MeshBoundingBox.BoxMax[1]);
-            MeshBoundingBox.BoxMax[2] = std::max(Vert.Position[2], MeshBoundingBox.BoxMax[2]);
-            MeshBoundingBox.BoxMin[0] = std::min(Vert.Position[0], MeshBoundingBox.BoxMin[0]);
-            MeshBoundingBox.BoxMin[1] = std::min(Vert.Position[1], MeshBoundingBox.BoxMin[1]);
-            MeshBoundingBox.BoxMin[2] = std::min(Vert.Position[2], MeshBoundingBox.BoxMin[2]);
+            for (int j = 0; j < 3; j++) {
+                MeshBoundingBox.BoxMax[j] = std::max(Vert.Position[j], MeshBoundingBox.BoxMax[j]);
+                MeshBoundingBox.BoxMin[j] = std::min(Vert.Position[j], MeshBoundingBox.BoxMin[j]);
+            }
         }
     }
-    MeshBoundingBox.TriangleIndexEnd = TIter_End - MeshStart;
-    MeshBoundingBox.TriangleIndexStart = TIter_Start - MeshStart;
 
-    size_t CurrentBoundingIndex = BVH_Array.size() - 1;
+    MeshBoundingBox.TriangleIndexStart = (IndexType)(TIter_Start - MeshStart);
+    MeshBoundingBox.TriangleIndexEnd = (IndexType)(TIter_End - MeshStart);
+
     if (TIter_End - TIter_Start <= TrianglePerBox) {
         MeshBoundingBox.ChildIndex1 = -1;
         MeshBoundingBox.ChildIndex2 = -1;
+        int CurrentBoundingIndex = (int)BVH_Array.size();
         BVH_Array.push_back(MeshBoundingBox);
         return CurrentBoundingIndex;
     }
 
-    size_t SplitAxis = 2;
     auto BoxExtent = MeshBoundingBox.BoxMax - MeshBoundingBox.BoxMin;
-    if (BoxExtent[0] > BoxExtent[1] && BoxExtent[0] > BoxExtent[2]) {
-        SplitAxis = 0;
-    }
-    else if (BoxExtent[1] > BoxExtent[0] && BoxExtent[1] > BoxExtent[2]) {
-        SplitAxis = 1;
-    }
-    std::sort(TIter_Start, TIter_End, [SplitAxis](std::array<VertexType, 3> T1, std::array<VertexType, 3> T2) { 
-        return T1[0].Position[SplitAxis] < T2[0].Position[SplitAxis];
+    int SplitAxis = 0;
+    if (BoxExtent[1] > BoxExtent[0] && BoxExtent[1] > BoxExtent[2]) SplitAxis = 1;
+    else if (BoxExtent[2] > BoxExtent[0] && BoxExtent[2] > BoxExtent[1]) SplitAxis = 2;
+
+    std::sort(TIter_Start, TIter_End, [SplitAxis](const std::array<VertexType, 3>& T1, const std::array<VertexType, 3>& T2) {
+        float c1 = (T1[0].Position[SplitAxis] + T1[1].Position[SplitAxis] + T1[2].Position[SplitAxis]) / 3.0f;
+        float c2 = (T2[0].Position[SplitAxis] + T2[1].Position[SplitAxis] + T2[2].Position[SplitAxis]) / 3.0f;
+        return c1 < c2;
     });
 
     auto SplitPos_Iter = TIter_Start + (TIter_End - TIter_Start) / 2;
+
+    int CurrentBoundingIndex = (int)BVH_Array.size();
     BVH_Array.push_back(MeshBoundingBox);
-    CurrentBoundingIndex = BVH_Array.size() - 1;
-    MeshBoundingBox.ChildIndex1 = BuildBVHBox_Recursive(BVH_Array, MeshStart, TIter_Start, SplitPos_Iter, TrianglePerBox);
-    MeshBoundingBox.ChildIndex2 = BuildBVHBox_Recursive(BVH_Array, MeshStart, SplitPos_Iter, TIter_End, TrianglePerBox);
-    BVH_Array[CurrentBoundingIndex] = MeshBoundingBox;
+
+    int Child1 = BuildBVHBox_Recursive(BVH_Array, MeshStart, TIter_Start, SplitPos_Iter, TrianglePerBox);
+    int Child2 = BuildBVHBox_Recursive(BVH_Array, MeshStart, SplitPos_Iter, TIter_End, TrianglePerBox);
+
+    BVH_Array[CurrentBoundingIndex].ChildIndex1 = Child1;
+    BVH_Array[CurrentBoundingIndex].ChildIndex2 = Child2;
+
     return CurrentBoundingIndex;
 }
 
@@ -126,13 +126,14 @@ template<typename VertexType, typename IndexType>
 void BuildBVHOnMesh(TMesh<VertexType, IndexType>& InOutMesh, std::vector<BVHBox<typename VertexType, IndexType>>& OutBVHs) {
     std::vector<std::array<VertexType, 3>> Triangles;
     Triangles.resize(InOutMesh.Vertices.size() / 3);
-    for (int i = 0; i < Triangles.size(); i++) {
+    for (int i = 0; i < (int)Triangles.size(); i++) {
         Triangles[i][0] = InOutMesh.Vertices[3 * i + 0];
         Triangles[i][1] = InOutMesh.Vertices[3 * i + 1];
         Triangles[i][2] = InOutMesh.Vertices[3 * i + 2];
     }
+    OutBVHs.clear();
     BuildBVHBox_Recursive<VertexType, IndexType>(OutBVHs, Triangles.begin(), Triangles.begin(), Triangles.end(), 1);
-    for (int i = 0; i < Triangles.size(); i++) {
+    for (int i = 0; i < (int)Triangles.size(); i++) {
         InOutMesh.Vertices[3 * i + 0] = Triangles[i][0];
         InOutMesh.Vertices[3 * i + 1] = Triangles[i][1];
         InOutMesh.Vertices[3 * i + 2] = Triangles[i][2];

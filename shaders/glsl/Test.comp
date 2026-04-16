@@ -191,37 +191,37 @@ void main()
     Intersect.t = 99999.;
     Intersect.emissive = vec3(0., 0., 0.);
     Intersect.worldNormal = vec3(0., 0., 0.);
-    for (int i = 0; i < 1; i++){
+    for (int i = 0; i < 24; i++){
         vec2 Xi = SampleXi(514., tid*(i+1));
         RayIntersect(rayWorldOrigin, w_o, Intersect);
-        // if(Intersect.t>10000){
-        //     outColor = vec4(0., 0., 0., 1.);
-        //     break;
-        // }
-        // if (Intersect.emissive.x > 0.0001){
-        //     outColor = vec4(throughput*Intersect.emissive*30., 1.0);
-        //     break;
-        // }
-        // rayWorldOrigin = rayWorldOrigin + (Intersect.t - 0.001) * w_o;
-        // vec3 w_i_local;
-        // float pdf;
-        // w_i_local = CosineSampleHemisphere(Xi, pdf);
-        // vec3 tangent_world = vec3(0., 0., 1.);
-        // if(length(cross(tangent_world, Intersect.worldNormal))<0.0001){
-        //     tangent_world = vec3(0., 1., 0.);
-        // }
-        // vec3 bitangent_world = normalize(cross(Intersect.worldNormal, tangent_world));
-        // tangent_world = normalize(cross(bitangent_world, Intersect.worldNormal));
-        // vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * Intersect.worldNormal;
-        // if (pdf < 0.00001){
-        //     outColor = vec4(0., 0., 0., 1.);
-        //     break;
-        // }
-        // throughput *= Intersect.baseColor * abs(dot(w_i_world, Intersect.worldNormal));
-        // w_o = w_i_world;
+        if(Intersect.t>10000){
+            outColor = vec4(0., 0., 0., 1.);
+            break;
+        }
+        if (Intersect.emissive.x > 0.0001){
+            outColor = vec4(throughput*Intersect.emissive*30., 1.0);
+            break;
+        }
+        rayWorldOrigin = rayWorldOrigin + (Intersect.t - 0.001) * w_o;
+        vec3 w_i_local;
+        float pdf;
+        w_i_local = CosineSampleHemisphere(Xi, pdf);
+        vec3 tangent_world = vec3(0., 0., 1.);
+        if(length(cross(tangent_world, Intersect.worldNormal))<0.0001){
+            tangent_world = vec3(0., 1., 0.);
+        }
+        vec3 bitangent_world = normalize(cross(Intersect.worldNormal, tangent_world));
+        tangent_world = normalize(cross(bitangent_world, Intersect.worldNormal));
+        vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * Intersect.worldNormal;
+        if (pdf < 0.00001){
+            outColor = vec4(0., 0., 0., 1.);
+            break;
+        }
+        throughput *= Intersect.baseColor * abs(dot(w_i_world, Intersect.worldNormal));
+        w_o = w_i_world;
     }
     // outColor = vec4(Intersect.t, 0., 1., 1.);
-    outColor = vec4(Intersect.baseColor, 1.);
+    // outColor = vec4(Intersect.baseColor, 1.);
     if(uniforms.frameId>0 && inColor.x==inColor.x){
         outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
         outColor.w = 1.0;

@@ -183,28 +183,59 @@ bool RayIntersectTriangle(vec3 Pa, vec3 Pb, vec3 Pc, vec3 rayOrigin, vec3 rayDir
     return false;
 }
 
+bool IntersectAABB(vec3 origin, vec3 invDir, vec3 boxMin, vec3 boxMax, out float tMin) {
+    vec3 t1 = (boxMin - origin) * invDir;
+    vec3 t2 = (boxMax - origin) * invDir;
+    vec3 vMin = min(t1, t2);
+    vec3 vMax = max(t1, t2);
+    tMin = max(max(vMin.x, vMin.y), vMin.z);
+    float tMax = min(min(vMax.x, vMax.y), vMax.z);
+    return tMax >= max(tMin, 0.0);
+}
+
 void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect IntersectInfo){
-    IntersectInfo.t = 9999999.;
-    for(int i = 0;i < 8;i ++){
+    IntersectInfo.t = 1e30;
+    
+    // Intersect analytical primitives (boxes)
+    for(int i = 0; i < 8; i++){
         ModelUniform ubo = primitives.data[i];
         RayIntersectBox(ubo, rayOrigin, rayDir, IntersectInfo);
     }
 
-    // for (int i = 0; i < uniforms.vertexCount; i+=3){
-    //     MeshVertices v1 = b_MeshVertices.Vertices[i];
-    //     MeshVertices v2 = b_MeshVertices.Vertices[i + 1];
-    //     MeshVertices v3 = b_MeshVertices.Vertices[i + 2];
-    //     vec3 translate = vec3(-0.25,0.25,0.25);
-    //     if (RayIntersectTriangle(v1.Position, v2.Position, v3.Position, rayOrigin, rayDir, IntersectInfo)){
-    //         IntersectInfo.baseColor = vec3(0., 1., 0.);
-    //     }
-    // }
-    BVH bvh = b_BVH.bvhs[0];
-    int child1Index = -1;
-    int child2Index = -1;
-    BVH child1bvh;
-    BVH child1bvh;
-    if (RayIntersectBVH(bvh.BoxMin, bvh.BoxMax, rayOrigin, rayDir, IntersectInfo)){
-        
+    // BVH Traversal
+    vec3 invDir = 1.0 / rayDir;
+    int stack[64];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0; // Root node index
+
+    while (stackPtr > 0) {
+        int nodeIdx = stack[--stackPtr];
+        BVH node = b_BVH.bvhs[nodeIdx];
+
+        float tBox;
+        if (!IntersectAABB(rayOrigin, invDir, node.BoxMin, node.BoxMax, tBox) || tBox >= IntersectInfo.t) {
+            continue;
+        }
+
+        if (node.ChildIndex1 == -1 && node.ChildIndex2 == -1) {
+            // Leaf node: intersect triangles
+            for (int i = node.TriangleIndexStart; i < node.TriangleIndexEnd; i++) {
+                vec3 v0 = b_MeshVertices.Vertices[3 * i + 0].Position;
+                vec3 v1 = b_MeshVertices.Vertices[3 * i + 1].Position;
+                vec3 v2 = b_MeshVertices.Vertices[3 * i + 2].Position;
+                if (RayIntersectTriangle(v0, v1, v2, rayOrigin, rayDir, IntersectInfo)) {
+                    IntersectInfo.baseColor = vec3(0.8, 0.8, 0.8); // Default mesh color
+                    // Interpolate other attributes if needed
+                }
+            }
+        } else {
+            // Internal node: push children
+            // Optimization: push further child first to process closer child earlier
+            if (node.ChildIndex1 != -1) stack[stackPtr++] = node.ChildIndex1;
+            if (node.ChildIndex2 != -1) stack[stackPtr++] = node.ChildIndex2;
+        }
+
+        // Safety break to prevent infinite loops (should not happen with correct BVH)
+        if (stackPtr >= 64) break;
     }
 }
