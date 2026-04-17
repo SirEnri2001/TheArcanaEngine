@@ -108,12 +108,6 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
             Engine::GControl.Recompile = true;
             Engine::GControl.TestShaders = false;
         }
-        
-        if (ImGui::Button("Recompile Test Shaders")) {
-            Engine::GControl.bClear = true;
-            Engine::GControl.Recompile = true;
-            Engine::GControl.TestShaders = true;
-        }
 
         if (ImGui::Button("Pause")) {
             Engine::GControl.RenderingPaused = true;
@@ -126,6 +120,8 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
 
         if (ImGui::SliderInt("MaxFrames",&Engine::GControl.maxFrames, -1, 5000, "%d")) {
         }
+
+        ImGui::SliderFloat("Moving speed", &Engine::GControl.movingSpeed, 0.1f, 1.f);
 
         ImGui::Checkbox("Enable Gamma", &Engine::GControl.enableGamma);
 
@@ -210,16 +206,16 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
         }
         if (ImGui::IsKeyDown(ImGuiKey_E) || ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
         {
-            PlayerMove -= float3(0.f, 0.f, 1.f);
+            PlayerMove += float3(0.f, 0.f, 1.f);
         }
         if (ImGui::IsKeyDown(ImGuiKey_Q) || ImGui::IsKeyDown(ImGuiKey_Space))
         {
-            PlayerMove += float3(0.f, 0.f, 1.f);
+            PlayerMove -= float3(0.f, 0.f, 1.f);
         }
         float4x4 ViewTransform = float4x4(1.0f);
-        float4x4 PitchRotate = glm::rotate(float4x4(1.0f), DeltaY, float3(0.f, 1.f, 0.f));
+        float4x4 PitchRotate = glm::rotate(float4x4(1.0f), -DeltaY, float3(0.f, 1.f, 0.f));
         float4x4 YawRotate = glm::rotate(float4x4(1.0f), DeltaX, float3(0.f, 0.f, 1.f));
-        float4x4 Translate = glm::translate(float4x4(1.0f), PlayerMove*0.01f);
+        float4x4 Translate = glm::translate(float4x4(1.0f), PlayerMove * 0.01f * Engine::GControl.movingSpeed);
         Engine::GControl.CameraTransformLocalToWorld = Engine::GControl.CameraTransformLocalToWorld * Translate * PitchRotate * YawRotate;
     }else
     {
@@ -228,6 +224,7 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
 }
 
 struct ModelUniformObject {
+    int modelType;
     alignas(16) float4x4 model;
     alignas(16) float4x4 modelInv;
     alignas(16) float4x4 modelInvTranspose;
@@ -235,8 +232,9 @@ struct ModelUniformObject {
     alignas(16) float3 emission;
 };
 
-void SetSceneUniform(IRHIContext* Context, std::vector<ModelUniformObject>& Objects, float4x4 ModelMat, float3 Color, float3 emission) {
+void SetSceneUniform(int modelType, std::vector<ModelUniformObject>& Objects, float4x4 ModelMat, float3 Color, float3 emission) {
     ModelUniformObject uniformobject;
+    uniformobject.modelType = modelType;
     uniformobject.model = ModelMat;
     uniformobject.modelInv = glm::inverse(ModelMat);
     uniformobject.modelInvTranspose = glm::transpose(uniformobject.modelInv);
@@ -270,24 +268,29 @@ Engine::~Engine() {}
 
         std::vector<ModelUniformObject> Objects;
         // Floor
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Celling
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Leftwall
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.5f, 0.f, 0.f), float3(0., 0., 0.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(1.f, 0.f, 0.f), float3(0., 0., 0.));
         // Rightwall
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 0.5f, 0.f), float3(0., 0., 0.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 1.f, 0.f), float3(0., 0., 0.));
         // Backwall
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Shortbox
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        //SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Tallbox
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.4f, 0.4f, 0.4f), float3(0., 0., 0.));
+        //SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Light
-        SetSceneUniform(PTRenderer.Context, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
 
+        // Cow
+        SetSceneUniform(0, Objects, glm::translate(float4x4(1.0), float3(-0.25f, 0.25f, 0.17f)) * 
+            glm::rotate(float4x4(1.0), glm::radians(180.f+45.f), float3(0, 0, 1)) * 
+            glm::rotate(float4x4(1.0), glm::radians(90.f), float3(1, 0, 0)) * 
+            glm::scale(float4x4(1.0f), float3(0.15f, 0.15f, 0.15f)), float3(1.f, 1.f, 0.f), float3(0., 0., 0.));
         PTRenderer.SceneUniform->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
-        PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, (uint32_t)(sizeof(ModelUniformObject) * 8), RHIResourceState::BUFFER_SHADER_STORAGE);
+        PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, (uint32_t)(sizeof(ModelUniformObject) * Objects.size()), RHIResourceState::BUFFER_SHADER_STORAGE);
         PTRenderer.PrimitiveBuffer->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
     }
     else if (RendererSelection == ERendererSelection::BlinnPhong) {

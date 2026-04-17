@@ -14,6 +14,7 @@
 #include <vector>
 #include <algorithm>
 #include <array>
+#include <map>
 #include "tiny_obj_loader.h"
 
 namespace CoreGeometryImpl
@@ -25,9 +26,10 @@ namespace CoreGeometryImpl
 }
 
 
-template<typename TPos, typename ColorType, typename TexCoordType, typename NormalType, typename TangentType>
+template<typename TPos, typename ColorType, typename TexCoordType, typename TNor, typename TangentType>
 struct TVertex {
     using PositionType = TPos;
+    using NormalType = TNor;
     alignas(16) PositionType Position;
     alignas(16) ColorType Color;
     alignas(16) TexCoordType TexCoord;
@@ -132,7 +134,7 @@ void BuildBVHOnMesh(TMesh<VertexType, IndexType>& InOutMesh, std::vector<BVHBox<
         Triangles[i][2] = InOutMesh.Vertices[3 * i + 2];
     }
     OutBVHs.clear();
-    BuildBVHBox_Recursive<VertexType, IndexType>(OutBVHs, Triangles.begin(), Triangles.begin(), Triangles.end(), 1);
+    BuildBVHBox_Recursive<VertexType, IndexType>(OutBVHs, Triangles.begin(), Triangles.begin(), Triangles.end(), 10);
     for (int i = 0; i < (int)Triangles.size(); i++) {
         InOutMesh.Vertices[3 * i + 0] = Triangles[i][0];
         InOutMesh.Vertices[3 * i + 1] = Triangles[i][1];
@@ -205,20 +207,56 @@ TMesh<VertexType, IndexType> TMesh<VertexType, IndexType>::LoadObj(const std::st
 }
 
 template <typename VertexType, typename IndexType>
-void CalculateNormal(TMesh<VertexType, IndexType>& InOutMesh)
+void CalculateNormal(TMesh<VertexType, IndexType>& InOutMesh, bool bSmooth = true)
 {
-    for (size_t i = 0; i < InOutMesh.Vertices.size() / 3; i++)
+    for (auto& v : InOutMesh.Vertices)
     {
-        auto v1 = InOutMesh.Vertices[3 * i + 1].Position - InOutMesh.Vertices[3 * i].Position;
-        auto v2 = InOutMesh.Vertices[3 * i + 2].Position - InOutMesh.Vertices[3 * i].Position;
-        InOutMesh.Vertices[3 * i].Normal += cross(v1, v2);
-        InOutMesh.Vertices[3 * i + 1].Normal += cross(v1, v2);
-        InOutMesh.Vertices[3 * i + 2].Normal += cross(v1, v2);
+        v.Normal = {};
     }
 
-    for (size_t i = 0; i < InOutMesh.Vertices.size(); i++)
+    if (bSmooth)
     {
-        InOutMesh.Vertices[i].Normal = normalize(InOutMesh.Vertices[i].Normal);
+        auto pos_cmp = [](const typename VertexType::PositionType& a, const typename VertexType::PositionType& b) {
+            for (int i = 0; i < 3; i++) {
+                if (a[i] != b[i]) return a[i] < b[i];
+            }
+            return false;
+        };
+        std::map<typename VertexType::PositionType, typename VertexType::NormalType, decltype(pos_cmp)> posNormalMap(pos_cmp);
+
+        for (size_t i = 0; i < InOutMesh.Vertices.size() / 3; i++)
+        {
+            auto v0 = InOutMesh.Vertices[3 * i].Position;
+            auto v1 = InOutMesh.Vertices[3 * i + 1].Position;
+            auto v2 = InOutMesh.Vertices[3 * i + 2].Position;
+            auto faceNormal = cross(v1 - v0, v2 - v0);
+            posNormalMap[v0] = posNormalMap.count(v0) ? posNormalMap[v0] + faceNormal : faceNormal;
+            posNormalMap[v1] = posNormalMap.count(v1) ? posNormalMap[v1] + faceNormal : faceNormal;
+            posNormalMap[v2] = posNormalMap.count(v2) ? posNormalMap[v2] + faceNormal : faceNormal;
+        }
+
+        for (size_t i = 0; i < InOutMesh.Vertices.size(); i++)
+        {
+            auto& normal = posNormalMap[InOutMesh.Vertices[i].Position];
+            if (length(normal) > 1e-6)
+                InOutMesh.Vertices[i].Normal = normalize(normal);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < InOutMesh.Vertices.size() / 3; i++)
+        {
+            auto v0 = InOutMesh.Vertices[3 * i].Position;
+            auto v1 = InOutMesh.Vertices[3 * i + 1].Position;
+            auto v2 = InOutMesh.Vertices[3 * i + 2].Position;
+            auto faceNormal = cross(v1 - v0, v2 - v0);
+            if (length(faceNormal) > 1e-6)
+                faceNormal = normalize(faceNormal);
+
+            InOutMesh.Vertices[3 * i].Normal = faceNormal;
+            InOutMesh.Vertices[3 * i + 1].Normal = faceNormal;
+            InOutMesh.Vertices[3 * i + 2].Normal = faceNormal;
+        }
     }
 }
 

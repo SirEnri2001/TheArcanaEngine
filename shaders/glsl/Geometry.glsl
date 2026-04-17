@@ -193,21 +193,26 @@ bool IntersectAABB(vec3 origin, vec3 invDir, vec3 boxMin, vec3 boxMax, out float
     return tMax >= max(tMin, 0.0);
 }
 
-void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect IntersectInfo){
-    IntersectInfo.t = 1e30;
+void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect GlobalIntersectInfo){
     
     // Intersect analytical primitives (boxes)
-    for(int i = 0; i < 8; i++){
+    for(int i = 0; i < 6; i++){
         ModelUniform ubo = primitives.data[i];
-        RayIntersectBox(ubo, rayOrigin, rayDir, IntersectInfo);
+        RayIntersectBox(ubo, rayOrigin, rayDir, GlobalIntersectInfo);
     }
+    SurfaceIntersect IntersectInfo;
+    IntersectInfo.t = 1e30;
+    ModelUniform ubo = primitives.data[6];
+    vec3 GlobalRayOrigin = rayOrigin;
+    rayOrigin = vec3(ubo.modelInv * vec4(rayOrigin, 1.));
+    rayDir = normalize(vec3(ubo.modelInv * vec4(rayDir, 0.)));
 
     // BVH Traversal
     vec3 invDir = 1.0 / rayDir;
     int stack[64];
     int stackPtr = 0;
     stack[stackPtr++] = 0; // Root node index
-
+    bool intersectMesh = false;
     while (stackPtr > 0) {
         int nodeIdx = stack[--stackPtr];
         BVH node = b_BVH.bvhs[nodeIdx];
@@ -216,7 +221,7 @@ void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect Int
         if (!IntersectAABB(rayOrigin, invDir, node.BoxMin, node.BoxMax, tBox) || tBox >= IntersectInfo.t) {
             continue;
         }
-
+        
         if (node.ChildIndex1 == -1 && node.ChildIndex2 == -1) {
             // Leaf node: intersect triangles
             for (int i = node.TriangleIndexStart; i < node.TriangleIndexEnd; i++) {
@@ -224,7 +229,21 @@ void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect Int
                 vec3 v1 = b_MeshVertices.Vertices[3 * i + 1].Position;
                 vec3 v2 = b_MeshVertices.Vertices[3 * i + 2].Position;
                 if (RayIntersectTriangle(v0, v1, v2, rayOrigin, rayDir, IntersectInfo)) {
-                    IntersectInfo.baseColor = vec3(0.8, 0.8, 0.8); // Default mesh color
+                    IntersectInfo.baseColor = vec3(0.1, 0.1, 0.1); // Default mesh color
+                    IntersectInfo.emissive = vec3(0., 0., 0.);
+                    vec3 P = IntersectInfo.pointIntersectWorld;
+                    float S = length(cross(v2 - v0, v1 - v0));
+                    float Sa = length(cross(v2 - P, v1 - P));
+                    float Sb = length(cross(v0 - P, v2 - P));
+                    IntersectInfo.worldNormal = 
+                        (b_MeshVertices.Vertices[3 * i + 0].Normal * Sa +  
+                        b_MeshVertices.Vertices[3 * i + 1].Normal * Sb + 
+                        b_MeshVertices.Vertices[3 * i + 2].Normal * (S - Sa - Sb)) / S;
+                    IntersectInfo.texcoord = 
+                        (b_MeshVertices.Vertices[3 * i + 0].TexCoord * Sa +  
+                        b_MeshVertices.Vertices[3 * i + 1].TexCoord * Sb + 
+                        b_MeshVertices.Vertices[3 * i + 2].TexCoord * (S - Sa - Sb)) / S; 
+                    intersectMesh = true;
                     // Interpolate other attributes if needed
                 }
             }
@@ -237,5 +256,17 @@ void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect Int
 
         // Safety break to prevent infinite loops (should not happen with correct BVH)
         if (stackPtr >= 64) break;
+    }
+    if (intersectMesh){
+        vec3 worldTarget = vec3(ubo.model * vec4(rayOrigin + IntersectInfo.t * rayDir, 1.));
+        float world_t = length(GlobalRayOrigin - worldTarget);
+        if (world_t < GlobalIntersectInfo.t){
+            GlobalIntersectInfo.t = world_t;
+            GlobalIntersectInfo.pointIntersectWorld = worldTarget;
+            GlobalIntersectInfo.baseColor = texture(meshTex, IntersectInfo.texcoord).xyz;
+            GlobalIntersectInfo.worldNormal = normalize(vec3(ubo.modelInvTranspose * vec4(IntersectInfo.worldNormal, 0.)));
+            GlobalIntersectInfo.emissive = vec3(0., 0., 0.);
+            GlobalIntersectInfo.texcoord = IntersectInfo.texcoord;
+        }
     }
 }

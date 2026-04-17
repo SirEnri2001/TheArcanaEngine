@@ -38,6 +38,7 @@ struct RenderControl {
 	int maxFrames = -1;
 	int currentFrame = 0;
 	bool enableGamma = true;
+	float movingSpeed = 0.5;
 };
 
 typedef char ShaderFileType;

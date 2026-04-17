@@ -81,10 +81,7 @@ void RHIVulkanImageResource::Initialize(IRHIContext* Context, ImageExtent3D RTEx
 }
 
 VkDescriptorImageInfo& RHIVulkanImageResource::GetDescriptorImageInfo() {
-
-	static VkDescriptorImageInfo Desc;
-	Desc = DescriptorInfo;
-	return Desc;
+	return DescriptorInfo;
 }
 
  void RHIVulkanImageResource::CopyToTexture(IRHICommandBuffer* CommandBuffer, IRHIContext* Context, void* Data, uint32_t Stride)

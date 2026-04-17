@@ -56,6 +56,7 @@ public:
     std::unique_ptr<IRHIImageResource> RHIScreenBuffer2;
     std::unique_ptr<IRHIImageResource> RHIScreenBufferDepth;
     std::unique_ptr<IRHIImageResource> RHIStoreImage;
+    std::unique_ptr<IRHIImageResource> RHIMeshTexture;
     std::unique_ptr<IRHIRenderPass> PresentPass;
     std::unique_ptr<IRHIRenderPass> PTRenderPass;
     std::unique_ptr<IRHIBuffer> CameraUniform;

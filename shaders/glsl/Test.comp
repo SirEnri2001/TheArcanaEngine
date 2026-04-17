@@ -13,6 +13,7 @@ layout(std140, binding = 1) readonly buffer UniformBuffer{
 } uniforms;
 
 struct ModelUniform {
+    int modelType; // 0: mesh, 1: box
     mat4 model;
     mat4 modelInv;
     mat4 modelInvTranspose;
@@ -26,11 +27,12 @@ struct SurfaceIntersect{
     vec3 baseColor;
     vec3 worldNormal;
     vec3 emissive;
+    vec2 texcoord;
 };
 
 
 layout(std140, binding = 2) readonly buffer PrimitiveBuffer{
-    ModelUniform data[8];
+    ModelUniform data[];
 } primitives;
 
 struct MeshVertices{
@@ -46,6 +48,8 @@ layout(std430, binding=3) readonly buffer MeshVerticesBuffer {
     MeshVertices Vertices[];
 } b_MeshVertices;
 
+
+
 struct BVH {
     vec3 BoxMin;
     vec3 BoxMax;
@@ -58,6 +62,8 @@ struct BVH {
 layout(std430, binding=4) readonly buffer BVHBoxesBuffer {
     BVH bvhs[];
 } b_BVH;
+
+layout(binding=5) uniform sampler2D meshTex;
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -191,15 +197,16 @@ void main()
     Intersect.t = 99999.;
     Intersect.emissive = vec3(0., 0., 0.);
     Intersect.worldNormal = vec3(0., 0., 0.);
-    for (int i = 0; i < 24; i++){
+    for (int i = 0; i < 10; i++){
         vec2 Xi = SampleXi(514., tid*(i+1));
+        Intersect.t = 99999.;
         RayIntersect(rayWorldOrigin, w_o, Intersect);
         if(Intersect.t>10000){
             outColor = vec4(0., 0., 0., 1.);
             break;
         }
         if (Intersect.emissive.x > 0.0001){
-            outColor = vec4(throughput*Intersect.emissive*30., 1.0);
+            outColor = vec4(throughput*Intersect.emissive * 10., 1.0);
             break;
         }
         rayWorldOrigin = rayWorldOrigin + (Intersect.t - 0.001) * w_o;
@@ -220,7 +227,7 @@ void main()
         throughput *= Intersect.baseColor * abs(dot(w_i_world, Intersect.worldNormal));
         w_o = w_i_world;
     }
-    // outColor = vec4(Intersect.t, 0., 1., 1.);
+    //outColor = vec4(Intersect.t / 5., 0., 1., 1.);
     // outColor = vec4(Intersect.baseColor, 1.);
     if(uniforms.frameId>0 && inColor.x==inColor.x){
         outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));

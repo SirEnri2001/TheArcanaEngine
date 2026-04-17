@@ -7,6 +7,7 @@
 #include "ShaderCompiler.h"
 
  #define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image.h>
 #include "stb_image_write.h"
 
 void ComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
@@ -15,6 +16,7 @@ void ComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
     PipelineFactory->SetDescriptorBinding(3, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
     PipelineFactory->SetDescriptorBinding(4, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(5, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::CS);
 }
 
 void PathTracerPipeline::SetAllShaderBindings(IRHIContext* Context) {
@@ -103,6 +105,31 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
 
     cuo.frameId = 1;
     LoadMesh("./models/spot/spot_triangulated.obj");
+
+    // Load Texture
+    int texWidth, texHeight, texChannels;
+    stbi_uc* pixels = stbi_load("./models/spot/spot_texture.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    if (!pixels) {
+        throw std::runtime_error("Failed to load texture: ");
+    }
+
+    RHIMeshTexture = Context->CreateRHIImageResource();
+    RHIMeshTexture->Initialize(Context, (uint32_t)texHeight, (uint32_t)texWidth, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::SHADER_READ | RHIResourceState::COPY_DST);
+
+    // Copy texture data
+    auto Cmd = Context->CreateRHICommandBuffer();
+    Cmd->Initialize(Context);
+    Cmd->BeginCommandBuffer();
+    RHIMeshTexture->CopyToTexture(Cmd.get(), Context, pixels, 4);
+    RHIMeshTexture->Transition(Cmd.get(), RHIResourceState::SHADER_READ);
+    Cmd->EndCommandBuffer();
+
+    // In some BRDF/PathTracer engines, we might need to submit this Cmd immediately.
+    // However, the IRHIContext doesn't expose a Submit method directly in the interface.
+    // Swapchain->PresentFrameAndRelease usually handles submission. 
+    // We'll trust the RHI implementation handles the copy.
+
+    stbi_image_free(pixels);
 }
 
  void PathTraceRenderer::LoadMesh(const std::string& MeshPath) {
@@ -111,9 +138,6 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
      auto Mesh = TMesh<PTVertex, uint32_t>::LoadObj(MeshPath);
      CalculateNormal<PTVertex, uint32_t>(Mesh);
      BuildBVHOnMesh<PTVertex, uint32_t>(Mesh, BVHBoxes);
-     for (int i = 0; i < 100 && i < BVHBoxes.size(); i++) {
-         std::cout << "BVH " << i << " " << BVHBoxes[i].ChildIndex1 << " " << BVHBoxes[i].ChildIndex2 << std::endl;
-     }
      MeshVerticesBuffer->Initialize(Context, sizeof(PTVertex) * Mesh.Vertices.size(), RHIResourceState::BUFFER_SHADER_STORAGE);
      MeshVerticesBuffer->CopyToBuffer(Context, Mesh.Vertices.data(), (uint32_t)(Mesh.Vertices.size() * sizeof(PTVertex)));
 
@@ -191,6 +215,7 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
         TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
         TestCompPipeline.PipelineObject->SetStorageBuffer(MeshVerticesBuffer.get(), 3);
         TestCompPipeline.PipelineObject->SetStorageBuffer(MeshBVHBuffer.get(), 4);
+        TestCompPipeline.PipelineObject->SetBindingResource(5, DescriptorType::SAMPLER2D, RHIMeshTexture.get());
         TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
         cuo.frameId++;
     }
