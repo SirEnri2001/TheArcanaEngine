@@ -278,17 +278,18 @@ Engine::~Engine() {}
         // Backwall
         SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Shortbox
-        //SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.185f, 0.169f, 0.0825f)) * glm::rotate(float4x4(1.0), glm::radians(-196.62f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.085f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Tallbox
-        //SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.368f, 0.351f, 0.165f)) * glm::rotate(float4x4(1.0), glm::radians(-252.77f), float3(0, 0, 1.)) * glm::scale(float4x4(1.0f), float3(0.085f, 0.085f, 0.17f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
         // Light
-        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.53999f)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 0.001f)), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
+        SetSceneUniform(2, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.535f)) * glm::rotate(float4x4(1.0), glm::radians(180.f), float3(0, 1, 0.)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 1.f)*2.f), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
 
         // Cow
-        SetSceneUniform(0, Objects, glm::translate(float4x4(1.0), float3(-0.25f, 0.25f, 0.17f)) * 
-            glm::rotate(float4x4(1.0), glm::radians(180.f+45.f), float3(0, 0, 1)) * 
-            glm::rotate(float4x4(1.0), glm::radians(90.f), float3(1, 0, 0)) * 
-            glm::scale(float4x4(1.0f), float3(0.15f, 0.15f, 0.15f)), float3(1.f, 1.f, 0.f), float3(0., 0., 0.));
+        //SetSceneUniform(0, Objects, glm::translate(float4x4(1.0), float3(-0.25f, 0.25f, 0.17f)) * 
+        //    glm::rotate(float4x4(1.0), glm::radians(180.f+45.f), float3(0, 0, 1)) * 
+        //    glm::rotate(float4x4(1.0), glm::radians(90.f), float3(1, 0, 0)) * 
+        //    glm::scale(float4x4(1.0f), float3(0.15f, 0.15f, 0.15f)), float3(1.f, 1.f, 0.f), float3(0., 0., 0.));
+        PTRenderer.cuo.modelUniformCount = Objects.size();
         PTRenderer.SceneUniform->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
         PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, (uint32_t)(sizeof(ModelUniformObject) * Objects.size()), RHIResourceState::BUFFER_SHADER_STORAGE);
         PTRenderer.PrimitiveBuffer->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));

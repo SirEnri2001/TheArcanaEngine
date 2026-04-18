@@ -1,87 +1,48 @@
 
-void RayIntersectBox(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect IntersectInfo){
-    mat3 modelInvTranspose = mat3(
-        ubo.modelInvTranspose[0].xyz, 
-        ubo.modelInvTranspose[1].xyz, 
-        ubo.modelInvTranspose[2].xyz
-    );
-    vec3 invertRayOrigin = vec3(ubo.modelInv * vec4(rayOrigin, 1.));
-    vec3 invertRayDir = vec3(ubo.modelInv * vec4(rayDir, 0.));
-    float tzplus  = ( 1. - invertRayOrigin.z) / invertRayDir.z;
-    float tzminus = (-1. - invertRayOrigin.z) / invertRayDir.z;
-    float typlus  = ( 1. - invertRayOrigin.y) / invertRayDir.y;
-    float tyminus = (-1. - invertRayOrigin.y) / invertRayDir.y;
-    float txplus  = ( 1. - invertRayOrigin.x) / invertRayDir.x;
-    float txminus = (-1. - invertRayOrigin.x) / invertRayDir.x;
-    bool isIntersected = false;
-    if(tzplus> 0. && tzplus < IntersectInfo.t){
-        vec3 Intersect = invertRayOrigin + tzplus * invertRayDir;
-        if(abs(Intersect.x)<1. && abs(Intersect.y)<1.){
-            isIntersected = true;
-            IntersectInfo.t = tzplus;
+void RayIntersectBox(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect IntersectInfo) {
+    vec3 ro = (ubo.modelInv * vec4(rayOrigin, 1.0)).xyz;
+    vec3 rd = (ubo.modelInv * vec4(rayDir, 0.0)).xyz;
+    vec3 invRd = 1.0 / rd;
+
+    vec3 t0 = (-1.0 - ro) * invRd;
+    vec3 t1 = ( 1.0 - ro) * invRd;
+    vec3 tmin = min(t0, t1), tmax = max(t0, t1);
+
+    float Tmin = max(max(tmin.x, tmin.y), tmin.z);
+    float Tmax = min(min(tmax.x, tmax.y), tmax.z);
+
+    if (Tmin < Tmax && Tmax > 0.0) {
+        float t = Tmin > 0.0 ? Tmin : Tmax;
+        if (t < IntersectInfo.t) {
+            vec3 lp = ro + t * rd;
+            IntersectInfo.t = t;
             IntersectInfo.baseColor = ubo.color;
-            IntersectInfo.worldNormal = vec3(modelInvTranspose * vec3(0., 0., 1.));
             IntersectInfo.emissive = ubo.emission;
-            IntersectInfo.pointIntersectWorld = vec3(ubo.model * vec4(Intersect,1.0));
+            IntersectInfo.pointIntersectWorld = (ubo.model * vec4(lp, 1.0)).xyz;
+            // Normal calculation: pick the axis with the hit point near 1.0
+            vec3 localNormal = step(0.999, abs(lp)) * sign(lp);
+            IntersectInfo.worldNormal = normalize(mat3(ubo.modelInvTranspose) * localNormal);
         }
     }
-    if(tzminus> 0. && tzminus < IntersectInfo.t){
-        vec3 Intersect = invertRayOrigin + tzminus * invertRayDir;
-        if(abs(Intersect.x)<1. && abs(Intersect.y)<1.){
-            isIntersected = true;
-            IntersectInfo.t = tzminus;
+}
+
+void RayIntersectPlane(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect IntersectInfo){
+    vec3 invertRayOrigin = (ubo.modelInv * vec4(rayOrigin, 1.0)).xyz;
+    vec3 invertRayDir = (ubo.modelInv * vec4(rayDir, 0.0)).xyz;
+
+    // Plane is at z=0, normal is (0,0,1)
+    float t = -invertRayOrigin.z / invertRayDir.z;
+
+    if(t > 0. && t < IntersectInfo.t){
+        vec3 Intersect = invertRayOrigin + t * invertRayDir;
+        // Default local size is 1x1 (from -0.5 to 0.5)
+        if(abs(Intersect.x) < 0.5 && abs(Intersect.y) < 0.5){
+            IntersectInfo.t = t;
             IntersectInfo.baseColor = ubo.color;
-            IntersectInfo.worldNormal = vec3(modelInvTranspose * vec3(0., 0., -1.));
+            IntersectInfo.worldNormal = normalize(mat3(ubo.modelInvTranspose) * vec3(0., 0., 1.));
             IntersectInfo.emissive = ubo.emission;
-            IntersectInfo.pointIntersectWorld = vec3(ubo.model * vec4(Intersect,1.0));
+            IntersectInfo.pointIntersectWorld = (ubo.model * vec4(Intersect, 1.0)).xyz;
         }
-    }
-    if(typlus> 0. && typlus < IntersectInfo.t){
-        vec3 Intersect = invertRayOrigin + typlus * invertRayDir;
-        if(abs(Intersect.x)<1. && abs(Intersect.z)<1.){
-            isIntersected = true;
-            IntersectInfo.t = typlus;
-            IntersectInfo.baseColor = ubo.color;
-            IntersectInfo.worldNormal = vec3(modelInvTranspose * vec3(0., 1., 0.));
-            IntersectInfo.emissive = ubo.emission;
-            IntersectInfo.pointIntersectWorld = vec3(ubo.model * vec4(Intersect,1.0));
-        }
-    }
-    if(tyminus> 0. && tyminus < IntersectInfo.t){
-        vec3 Intersect = invertRayOrigin + tyminus * invertRayDir;
-        if(abs(Intersect.x)<1. && abs(Intersect.z)<1.){
-            isIntersected = true;
-            IntersectInfo.t = tyminus;
-            IntersectInfo.baseColor = ubo.color;
-            IntersectInfo.worldNormal = vec3(modelInvTranspose * vec3(0., -1., 0.));
-            IntersectInfo.emissive = ubo.emission;
-            IntersectInfo.pointIntersectWorld = vec3(ubo.model * vec4(Intersect,1.0));
-        }
-    }
-    if(txplus> 0. && txplus < IntersectInfo.t){
-        vec3 Intersect = invertRayOrigin + txplus * invertRayDir;
-        if(abs(Intersect.z)<1. && abs(Intersect.y)<1.){
-            isIntersected = true;
-            IntersectInfo.t = txplus;
-            IntersectInfo.baseColor = ubo.color;
-            IntersectInfo.worldNormal = vec3(modelInvTranspose * vec3(1., 0., 0.));
-            IntersectInfo.emissive = ubo.emission;
-            IntersectInfo.pointIntersectWorld = vec3(ubo.model * vec4(Intersect,1.0));
-        }
-    }
-    if(txminus> 0. && txminus < IntersectInfo.t){
-        vec3 Intersect = invertRayOrigin + txminus * invertRayDir;
-        if(abs(Intersect.z)<1. && abs(Intersect.y)<1.){
-            isIntersected = true;
-            IntersectInfo.t = txminus;
-            IntersectInfo.baseColor = ubo.color;
-            IntersectInfo.worldNormal = vec3(modelInvTranspose * vec3(-1., 0., 0.));
-            IntersectInfo.emissive = ubo.emission;
-            IntersectInfo.pointIntersectWorld = vec3(ubo.model * vec4(Intersect,1.0));
-        }
-    }
-    if (isIntersected){
-        IntersectInfo.worldNormal = normalize(IntersectInfo.worldNormal);
     }
 }
 
@@ -193,13 +154,7 @@ bool IntersectAABB(vec3 origin, vec3 invDir, vec3 boxMin, vec3 boxMax, out float
     return tMax >= max(tMin, 0.0);
 }
 
-void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect GlobalIntersectInfo){
-    
-    // Intersect analytical primitives (boxes)
-    for(int i = 0; i < 6; i++){
-        ModelUniform ubo = primitives.data[i];
-        RayIntersectBox(ubo, rayOrigin, rayDir, GlobalIntersectInfo);
-    }
+void RayIntersectMeshBVH(in out ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect GlobalIntersectInfo) {
     SurfaceIntersect IntersectInfo;
     IntersectInfo.t = 1e30;
     IntersectInfo.pointIntersectWorld = vec3(0., 0., 0.);
@@ -207,7 +162,7 @@ void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect Glo
     IntersectInfo.emissive = vec3(0., 0., 0.);
     IntersectInfo.worldNormal = vec3(0., 0., 0.);
     IntersectInfo.texcoord = vec2(0., 0.);
-    ModelUniform ubo = primitives.data[6];
+
     vec3 GlobalRayOrigin = rayOrigin;
     rayOrigin = vec3(ubo.modelInv * vec4(rayOrigin, 1.));
     rayDir = normalize(vec3(ubo.modelInv * vec4(rayDir, 0.)));
@@ -272,6 +227,28 @@ void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect Glo
             GlobalIntersectInfo.worldNormal = normalize(vec3(ubo.modelInvTranspose * vec4(IntersectInfo.worldNormal, 0.)));
             GlobalIntersectInfo.emissive = vec3(0., 0., 0.);
             GlobalIntersectInfo.texcoord = IntersectInfo.texcoord;
+        }
+    }
+}
+
+void RayIntersect(in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect GlobalIntersectInfo){
+    // // Intersect analytical primitives (boxes)
+    // for(int i = 0; i < 6; i++){
+    //     ModelUniform ubo = primitives.data[i];
+    //     RayIntersectBox(ubo, rayOrigin, rayDir, GlobalIntersectInfo);
+    // }
+    // ModelUniform ubo = primitives.data[6];
+    int count = uniforms.modelUniformCount;
+    for(int i = 0; i < count; i++){
+        ModelUniform ubo = primitives.data[i];
+        if (ubo.modelType==0){
+            RayIntersectMeshBVH(ubo, rayOrigin, rayDir, GlobalIntersectInfo);
+        }
+        if (ubo.modelType==1){
+            RayIntersectBox(ubo, rayOrigin, rayDir, GlobalIntersectInfo);
+        }
+        if (ubo.modelType==2){
+            RayIntersectPlane(ubo, rayOrigin, rayDir, GlobalIntersectInfo);
         }
     }
 }

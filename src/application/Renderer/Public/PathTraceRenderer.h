@@ -84,9 +84,10 @@ public:
     struct CameraUniformObject {
         alignas(16) float4x4 camToWorld;
         alignas(8) glm::uvec2 screenres; // not sure 8 or 16 to use here, renderdoc says shader uses 8
-        alignas(8) float time;
-        alignas(4) int frameId;
-        alignas(4) int vertexCount;
+        float time;
+        int32_t frameId;
+        int32_t vertexCount;
+        int32_t modelUniformCount;
     } cuo;
 
     PathTraceRenderer() = default;
