@@ -134,7 +134,7 @@ void SampleLightSquare(in vec2 Xi, in ModelUniform ubo, out vec3 worldPoint, out
 {
     vec3 localPoint = vec3(Xi - vec2(0.5, 0.5), 0.);
     worldPoint = vec3(ubo.model * vec4(localPoint, 1.));
-    worldNormal = vec3(ubo.modelInvTranspose * vec4(vec3(0., 0., -1.), 0.));
+    worldNormal = vec3(ubo.modelInvTranspose * vec4(vec3(0., 0., 1.), 0.));
     float area = length(cross(vec3(ubo.model * vec4(0.5, 0., 0., 1.)) , vec3(ubo.model * vec4(0., 0.5, 0., 1.))));
     pdf = 1. / area;
 }
@@ -156,8 +156,8 @@ void SampleDirectLight(in vec2 Xi, in ModelUniform ubo_light, in vec3 rayOrigin,
     Inters.texcoord = vec2(0., 0.);
 
     RayIntersect(rayOrigin, rayDirection, Inters);
-    // || 
-    if (length(Inters.emissive) < 0.001){
+    
+    if (length(Inters.emissive) < 0.001 || abs(length(lightWorldPoint - rayOrigin) - Inters.t) > 1e-4){
         isBlocked = true;
     }
     pdf *= pow(length(lightWorldPoint - rayOrigin), 2.) / clamp(dot(-rayDirection, surfaceNormal), 0., 1.);
@@ -233,7 +233,7 @@ void main()
     Intersect.emissive = vec3(0., 0., 0.);
     Intersect.worldNormal = vec3(0., 0., 0.);
     Intersect.texcoord = vec2(0., 0.);
-    int lightObjIndex = 7;
+    int lightObjIndex = 0;
     int totalIters = 3;
     for (int i = 0; i < totalIters; i++){
         vec2 Xi = SampleXi(514., tid*(i+1) + uniforms.frameId * totalIters), Xi2 = SampleXi(114., tid*(i+1)+ uniforms.frameId * totalIters);
@@ -249,35 +249,35 @@ void main()
         }
         rayWorldOrigin = rayWorldOrigin + (Intersect.t - 0.001) * w_o;
 
-        // vec3 dir = vec3(0., 0., 0.);
-        // vec3 nor = vec3(0., 0., 0.);
-        // float pdf = 0.;
-        // bool isBlocked = false;
-        // SampleDirectLight(Xi2, primitives.data[lightObjIndex], rayWorldOrigin, isBlocked, dir, nor, pdf);
-        // if (!isBlocked){
-        //     outColor.xyz = Intersect.baseColor * clamp(dot(dir, Intersect.worldNormal), 0., 1.) / pdf;
-        //     break;
-        // }else{
-        //     outColor.xyz = vec3(0., 0., 0.);
-        //     break;
-        // }
-
-        vec3 w_i_local;
-        float pdf;
-        w_i_local = CosineSampleHemisphere(Xi, pdf);
-        vec3 tangent_world = vec3(0., 0., 1.);
-        if(length(cross(tangent_world, Intersect.worldNormal))<0.0001){
-            tangent_world = vec3(0., 1., 0.);
-        }
-        vec3 bitangent_world = normalize(cross(Intersect.worldNormal, tangent_world));
-        tangent_world = normalize(cross(bitangent_world, Intersect.worldNormal));
-        vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * Intersect.worldNormal;
-        if (pdf < 0.00001){
-            outColor = vec4(0., 0., 0., 1.);
+        vec3 dir = vec3(0., 0., 0.);
+        vec3 nor = vec3(0., 0., 0.);
+        float pdf = 0.;
+        bool isBlocked = false;
+        SampleDirectLight(Xi2, primitives.data[lightObjIndex], rayWorldOrigin, isBlocked, dir, nor, pdf);
+        if (!isBlocked){
+            outColor.xyz = Intersect.baseColor * clamp(dot(dir, Intersect.worldNormal), 0., 1.) / pdf;
+            break;
+        }else{
+            outColor.xyz = vec3(0., 0., 0.);
             break;
         }
-        throughput *= Intersect.baseColor * abs(dot(w_i_world, Intersect.worldNormal));
-        w_o = w_i_world;
+
+        // vec3 w_i_local;
+        // float pdf;
+        // w_i_local = CosineSampleHemisphere(Xi, pdf);
+        // vec3 tangent_world = vec3(0., 0., 1.);
+        // if(length(cross(tangent_world, Intersect.worldNormal))<0.0001){
+        //     tangent_world = vec3(0., 1., 0.);
+        // }
+        // vec3 bitangent_world = normalize(cross(Intersect.worldNormal, tangent_world));
+        // tangent_world = normalize(cross(bitangent_world, Intersect.worldNormal));
+        // vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * Intersect.worldNormal;
+        // if (pdf < 0.00001){
+        //     outColor = vec4(0., 0., 0., 1.);
+        //     break;
+        // }
+        // throughput *= Intersect.baseColor * abs(dot(w_i_world, Intersect.worldNormal));
+        // w_o = w_i_world;
     }
     //outColor = vec4(Intersect.worldNormal*0.5+0.5, 1.);
     // outColor = vec4(Intersect.baseColor, 1.);
