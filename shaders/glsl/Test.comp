@@ -248,6 +248,49 @@ void Sample_BSDF_Lambertian(vec2 Xi, vec3 rayOriginWorld, vec3 surfaceNormal, ou
     RayIntersect(rayOriginWorld, nextRayDirW, Result);
 }
 
+float G_Schlick(float cos_w, float r){
+    float k = (r + 1.) * (r + 1.) / 8.;
+    return cos_w / (cos_w * (1.-k) + k);
+}
+
+vec3 BSDF_CookTorrance(in out SurfaceIntersect inters, in vec3 wo, in vec3 wi, float roughness, float metallic) {
+    vec3 N = inters.worldNormal;
+    vec3 V = wo;
+    vec3 L = wi;
+    vec3 H = normalize(V + L);
+
+    // 预计算点积，确保不为负
+    float NdotV = max(dot(N, V), 0.0001); // 避免除以0
+    float NdotL = max(dot(N, L), 0.0001);
+    float NdotH = max(dot(N, H), 0.0);
+    float HdotV = max(dot(H, V), 0.0);
+
+    // 1. D 项 (GGX/Trowbridge-Reitz)
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float denomD = (NdotH * NdotH * (a2 - 1.0) + 1.0);
+    float D = a2 / (PI * denomD * denomD);
+
+    // 2. F 项 (Schlick Approximation)
+    // 绝缘体 F0 默认为 0.04，金属则由 baseColor 决定
+    vec3 F0 = mix(vec3(0.04), inters.baseColor, metallic);
+    vec3 F = F0 + (vec3(1.0) - F0) * pow(clamp(1.0 - HdotV, 0.0, 1.0), 5.0);
+
+    // 3. G 项 (Smith-Schlick GGX)
+    float G = G_Schlick(NdotV, roughness) * G_Schlick(NdotL, roughness);
+
+    // --- 组合 ---
+    // 镜面反射部分
+    vec3 specular = (D * F * G) / (4.0 * NdotV * NdotL);
+    
+    // 漫反射部分 (基于能量守恒: 1 - F)
+    // 只有非金属才有漫反射
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+    vec3 diffuse = kD * inters.baseColor / PI;
+
+    return diffuse + specular;
+}
+
 void main() 
 {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -353,19 +396,21 @@ void main()
         }
         
         // --- 3. Accumulation ---
-        vec3 f_r = currentHit.baseColor / PI;
-        
+        //vec3 f_r = currentHit.baseColor / PI;
+        vec3 f_r_light = BSDF_CookTorrance(currentHit, -ray.direction, lightDir, 0.3, 0.6);
+        vec3 f_r_bsdf = BSDF_CookTorrance(currentHit, -ray.direction, bsdfDir, 0.3, 0.6);
+
         if (pdf_light > 0.0001 && !isBlocked){
-            outColor.xyz += throughput * weight_light * f_r * Inters_light.emissive * clamp(dot(lightDir, currentHit.worldNormal), 0., 1.) / pdf_light;
+            outColor.xyz += throughput * weight_light * f_r_light * Inters_light.emissive * clamp(dot(lightDir, currentHit.worldNormal), 0., 1.) / pdf_light;
         }
         
         if (pdf_bsdf > 0.0001 && nextHit.emissive.x > 0.0001) {
-            outColor.xyz += throughput * weight_bsdf * f_r * nextHit.emissive * clamp(dot(bsdfDir, currentHit.worldNormal), 0., 1.) / pdf_bsdf;
+            outColor.xyz += throughput * weight_bsdf * f_r_bsdf * nextHit.emissive * clamp(dot(bsdfDir, currentHit.worldNormal), 0., 1.) / pdf_bsdf;
         }
         
         // --- 4. Setup next path iteration ---
         if (pdf_bsdf > 0.0001) {
-            throughput *= f_r * clamp(dot(bsdfDir, currentHit.worldNormal), 0., 1.) / pdf_bsdf;
+            throughput *= f_r_bsdf * clamp(dot(bsdfDir, currentHit.worldNormal), 0., 1.) / pdf_bsdf;
         } else {
             throughput = vec3(0.0);
             break;
