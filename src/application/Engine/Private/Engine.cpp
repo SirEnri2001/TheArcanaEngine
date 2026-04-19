@@ -124,10 +124,19 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
         ImGui::SliderFloat("Moving speed", &Engine::GControl.movingSpeed, 0.1f, 1.f);
 
         ImGui::Checkbox("Enable Gamma", &Engine::GControl.enableGamma);
+        ImGui::Checkbox("Use Single Pass", &Engine::GControl.useSinglePass);
 
         ImGui::Text("Frame: %d", Engine::GControl.currentFrame);
         ImGui::Text("FPS: %.1f", io.Framerate);
         
+        ImGui::Separator();
+        ImGui::Text("Path Tracing Parameters");
+        ImGui::SliderInt("Total Iterations", &Engine::GControl.totalIters, 1, 10);
+        ImGui::SliderInt("Dispatch Depth", &Engine::GControl.dispatchDepth, 1, 24);
+        ImGui::SliderFloat("Roughness", &Engine::GControl.roughness, 0.0f, 1.0f);
+        ImGui::SliderFloat("Lambert Prob", &Engine::GControl.prob_lambert, 0.0f, 1.0f);
+        ImGui::Checkbox("Enable NEE", &Engine::GControl.enableNEE);
+
         ImGui::Separator();
 
         if (Engine::GControl.ShaderCompileHasError) {
@@ -250,7 +259,7 @@ Engine::Engine() {
 }
 Engine::~Engine() {}
 
- void Engine::Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int InMaxFrames, const std::string& InOutputPath) {
+ void Engine::Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int InMaxFrames, const std::string& InOutputPath, bool bEnableValidation) {
     RendererSelection = Renderer;
     BackendSelection = Backend;
     MaxFrames = InMaxFrames;
@@ -258,7 +267,7 @@ Engine::~Engine() {}
 
     if (RendererSelection == ERendererSelection::PathTracing) {
         PTRenderer.pFuncImDraw = &Engine::DrawUI;
-        PTRenderer.CreateRenderer(width, height, BackendSelection);
+        PTRenderer.CreateRenderer(width, height, BackendSelection, bEnableValidation);
 
         CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
         CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
@@ -299,7 +308,7 @@ Engine::~Engine() {}
     }
     else if (RendererSelection == ERendererSelection::BlinnPhong) {
         BPRenderer.pFuncImDraw = &Engine::DrawUI;
-        BPRenderer.CreateRenderer(width, height, BackendSelection);
+        BPRenderer.CreateRenderer(width, height, BackendSelection, bEnableValidation);
         
         CameraTransformLocalToWorld = glm::translate(float4x4(1.0f), float3(-10.f, 0, 0.0f));
         GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
@@ -355,6 +364,7 @@ void Engine::Shutdown() {}
     RHIBackend rhi = RHIBackend::Vulkan;
     int maxFrames = -1;
     std::string outputPath = "";
+    bool enableValidation = true;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -370,11 +380,13 @@ void Engine::Shutdown() {}
             maxFrames = std::stoi(argv[++i]);
         } else if (arg == "--output" && i + 1 < argc) {
             outputPath = argv[++i];
+        } else if (arg == "-nsprofile") {
+            enableValidation = false;
         }
     }
 
     Engine engine;
-    engine.Initialize(1000, 1000, renderer, rhi, maxFrames, outputPath);
+    engine.Initialize(1000, 1000, renderer, rhi, maxFrames, outputPath, enableValidation);
     engine.Run();
     engine.Shutdown();
     return 0;

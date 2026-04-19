@@ -61,6 +61,7 @@ void CreateVkInstance(
     VkDebugUtilsMessengerCreateInfoEXT& OutDebugMsgCreateInfo,
     VkDebugUtilsMessengerEXT& OutDebugMessenger,
     std::vector<const char*>& InOutExtensions,
+    bool bEnableValidation,
     PFN_vkDebugUtilsMessengerCallbackEXT DebugCallback = debugCallback
 );
 

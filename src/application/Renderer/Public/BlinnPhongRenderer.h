@@ -75,7 +75,7 @@ public:
     BlinnPhongRenderer() = default;
 
      // --- IRenderer interface ---
-    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) override;
+    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation = true) override;
     virtual void Render(float4 ViewPos, RenderControl* control) override;
     virtual void CaptureFrame(const std::string& Path) override;
 

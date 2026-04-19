@@ -19,6 +19,16 @@ void ComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->SetDescriptorBinding(5, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::CS);
 }
 
+void IterationComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
+    PipelineFactory->SetDescriptorBinding(0, DescriptorType::IMAGE2D, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(1, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(3, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(4, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(5, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::CS);
+    PipelineFactory->SetDescriptorBinding(6, DescriptorType::STORAGE, IRHIPipelineFactory::EPipelineStages::CS);
+}
+
 void PathTracerPipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->SetDescriptorBinding(0, DescriptorType::UNIFORM, IRHIPipelineFactory::EPipelineStages::VS_FS);
     PipelineFactory->SetDescriptorBinding(1, DescriptorType::UNIFORM, IRHIPipelineFactory::EPipelineStages::VS_FS);
@@ -34,10 +44,15 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
 }
 
- void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) {
+ void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation) {
     uptr_Context = IRHIPlatformSupport::Get(Backend)->CreateRHIContext();
     Context = uptr_Context.get();
-    Context->Initialize(Width, Height);
+
+    ContextCreateParams Params;
+    Params.WindowWidth = Width;
+    Params.WindowHeight = Height;
+    Params.bEnableValidation = bEnableValidation;
+    Context->Initialize(Params);
     RHIFullScreenQuadBuffer = Context->CreateRHIBuffer();
     RHIFullScreenQuadIndexBuffer = Context->CreateRHIBuffer();
     RHIScreenBuffer1 = Context->CreateRHIImageResource();
@@ -56,6 +71,7 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
     PrimitiveBuffer = Context->CreateRHIBuffer();
     MeshVerticesBuffer = Context->CreateRHIBuffer();
     MeshBVHBuffer = Context->CreateRHIBuffer();
+    RayStateBuffer = Context->CreateRHIBuffer();
 
     SwapchainFormat = B8G8R8A8_SRGB; //R8G8B8A8_UNORM; // R8G8B8A8_UNORM is compatible for both Vulkan and D3D12 backend
 
@@ -86,12 +102,15 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
     Pipeline.InitializeAsGraphics(Context, *PTRenderPass, PT_VERTSHADER, PT_FRAGSHADER);
     PostPipeline.InitializeAsGraphics(Context, *PresentPass, PTPOST_VERTSHADER, PTPOST_FRAGSHADER);
     TestCompPipeline.InitializeAsCompute(Context, TEST_COMPSHADER);
+    IterationPipeline.InitializeAsCompute(Context, PT_ITERATION_COMPSHADER);
     Pipeline.SetAllShaderBindings(Context);
     PostPipeline.SetAllShaderBindings(Context);
     TestCompPipeline.SetAllShaderBindings(Context);
+    IterationPipeline.SetAllShaderBindings(Context);
     Pipeline.Compile(Context, PTRenderPass.get());
     PostPipeline.Compile(Context, PresentPass.get());
     TestCompPipeline.Compile(Context, std::nullopt);
+    IterationPipeline.Compile(Context, std::nullopt);
 
     RHIFullScreenQuadBuffer->Initialize(Context, sizeof(float3) * 8, RHIResourceState::BUFFER_VERTEX);
     RHIFullScreenQuadIndexBuffer->Initialize(Context, sizeof(uint32_t) * 6, RHIResourceState::BUFFER_INDEX);
@@ -101,6 +120,7 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
     RHIFullScreenQuadIndexBuffer->CopyToBuffer(Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
     CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
     StorageBuffer->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_SHADER_STORAGE);
+    RayStateBuffer->Initialize(Context, sizeof(RayObject) * FrameSize.Width * FrameSize.Height, RHIResourceState::BUFFER_SHADER_STORAGE);
     ImGUI->Initialize(Context, Swapchain.get(), PresentPass.get());
 
     cuo.frameId = 1;
@@ -152,6 +172,23 @@ void PathTraceRenderer::UpdateUniformBuffer(float4x4 camToWorld, float time, Ren
     // fov = 2 * atan(sensor_size/2/focal_length)
     cuo.camToWorld = camToWorld;
     cuo.time = time;
+
+    // Check if parameters changed to reset accumulation
+    if (cuo.totalIters != control->totalIters ||
+        cuo.dispatchDepth != control->dispatchDepth ||
+        cuo.roughness != control->roughness ||
+        cuo.prob_lambert != control->prob_lambert ||
+        cuo.enableNEE != (control->enableNEE ? 1 : 0)) 
+    {
+        cuo.frameId = 0;
+    }
+
+    cuo.totalIters = control->totalIters;
+    cuo.dispatchDepth = control->dispatchDepth;
+    cuo.roughness = control->roughness;
+    cuo.prob_lambert = control->prob_lambert;
+    cuo.enableNEE = control->enableNEE ? 1 : 0;
+
     if (control->isClick)
     {
         cuo.frameId = 0;
@@ -189,6 +226,7 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
         RHIStoreImage->Cleanup(Context);
         FBuffer1->Cleanup(Context);
         FBuffer2->Cleanup(Context);
+        RayStateBuffer->Cleanup(Context);
 
         ImageExtent3D ext = Swapchain->GetFrameSize();
         FrameSize = ext;
@@ -196,6 +234,7 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
         RHIScreenBuffer2->Initialize(Context, ext, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::COLOR_ATTACHMENT | RHIResourceState::SHADER_READ, 1);
         RHIScreenBufferDepth->Initialize(Context, ext, RHIFormat::D32_SFLOAT, RHIResourceState::DEPTH_ATTACHMENT, 1);
         RHIStoreImage->Initialize(Context, ext, RHIFormat::R32G32B32A32_SFLOAT, RHIResourceState::SHADER_WRITE | RHIResourceState::SHADER_READ, 1);
+        RayStateBuffer->Initialize(Context, sizeof(RayObject) * FrameSize.Width * FrameSize.Height, RHIResourceState::BUFFER_SHADER_STORAGE);
         std::vector<IRHIImageResource*> ColorRT1 = { RHIScreenBuffer1.get() };
         std::vector<IRHIImageResource*> ColorRT2 = { RHIScreenBuffer2.get() };
         FBuffer1->Initialize(Context, PTRenderPass.get(), ColorRT1, RHIScreenBufferDepth.get());
@@ -206,17 +245,36 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
         Pipeline.Compile(Context, PTRenderPass.get());
         PostPipeline.Compile(Context, PresentPass.get());
         TestCompPipeline.Compile(Context, std::nullopt);
+        IterationPipeline.Compile(Context, std::nullopt);
         control->Recompile = false;
     }
     if (cuo.frameId < control->maxFrames || control->maxFrames < 0) {
         RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_WRITE);
-        TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
-        TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
-        TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
-        TestCompPipeline.PipelineObject->SetStorageBuffer(MeshVerticesBuffer.get(), 3);
-        TestCompPipeline.PipelineObject->SetStorageBuffer(MeshBVHBuffer.get(), 4);
-        TestCompPipeline.PipelineObject->SetBindingResource(5, DescriptorType::SAMPLER2D, RHIMeshTexture.get());
-        TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
+        if (control->useSinglePass) {
+            TestCompPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
+            TestCompPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
+            TestCompPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
+            TestCompPipeline.PipelineObject->SetStorageBuffer(MeshVerticesBuffer.get(), 3);
+            TestCompPipeline.PipelineObject->SetStorageBuffer(MeshBVHBuffer.get(), 4);
+            TestCompPipeline.PipelineObject->SetBindingResource(5, DescriptorType::SAMPLER2D, RHIMeshTexture.get());
+            TestCompPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
+        }
+        else {
+            // Multi-pass dispatch with batching
+            for (int i = 0; i < cuo.totalIters; ++i) {
+                IterationPipeline.PipelineObject->SetBindingResource(0, DescriptorType::IMAGE2D, RHIStoreImage.get());
+                IterationPipeline.PipelineObject->SetStorageBuffer(StorageBuffer.get(), 1);
+                IterationPipeline.PipelineObject->SetStorageBuffer(PrimitiveBuffer.get(), 2);
+                IterationPipeline.PipelineObject->SetStorageBuffer(MeshVerticesBuffer.get(), 3);
+                IterationPipeline.PipelineObject->SetStorageBuffer(MeshBVHBuffer.get(), 4);
+                IterationPipeline.PipelineObject->SetBindingResource(5, DescriptorType::SAMPLER2D, RHIMeshTexture.get());
+                IterationPipeline.PipelineObject->SetStorageBuffer(RayStateBuffer.get(), 6);
+                IterationPipeline.PipelineObject->Dispatch(CommandBuffer.get(), (FrameSize.Width + 15) / 16, (FrameSize.Height + 15) / 16, 1);
+
+                // Note: In some RHIs, we might need a memory barrier here between dispatches for RWStructuredBuffer
+                // But if they are accessing unique locations (per-pixel), it might be safe without explicit barrier if RHI handles it.
+            }
+        }
         cuo.frameId++;
     }
     RHIStoreImage->Transition(CommandBuffer.get(), RHIResourceState::SHADER_READ);
@@ -234,6 +292,7 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
     PresentPass->EndRenderPass(CommandBuffer.get());
     CommandBuffer->EndCommandBuffer();
     TestCompPipeline.PipelineObject->CopyDescriptors(Context);
+    IterationPipeline.PipelineObject->CopyDescriptors(Context);
     PostPipeline.PipelineObject->CopyDescriptors(Context);
     Swapchain->PresentFrameAndRelease(Context, CommandBuffer.get());
     Context->WaitDeviceIdle();

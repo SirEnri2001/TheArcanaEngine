@@ -127,10 +127,10 @@ std::unique_ptr<IRHISwapchain         > RHID3D12Context::CreateRHISwapchain     
 std::unique_ptr<IRHIBuffer           > RHID3D12Context::CreateRHIBuffer            () { return std::make_unique<RHID3D12Buffer           >(); }
 
 // RHID3D12Context implementation
-void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
+void RHID3D12Context::Initialize(const ContextCreateParams& Params)
 {
-    m_width = WindowWidth;
-    m_height = WindowHeight;
+    m_width = Params.WindowWidth;
+    m_height = Params.WindowHeight;
     // Use HWND for window creation
     HINSTANCE hInstance = GetModuleHandle(NULL);
 
@@ -170,20 +170,22 @@ void RHID3D12Context::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
 
     UINT dxgiFactoryFlags = 0;
 
+    if (Params.bEnableValidation) {
 #if defined(_DEBUG)
-    // Enable the debug layer (requires the Graphics Tools "optional feature").
-    // NOTE: Enabling the debug layer after device creation will invalidate the active device.
-    {
-        ComPtr<ID3D12Debug> debugController;
-        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+        // Enable the debug layer (requires the Graphics Tools "optional feature").
+        // NOTE: Enabling the debug layer after device creation will invalidate the active device.
         {
-            debugController->EnableDebugLayer();
+            ComPtr<ID3D12Debug> debugController;
+            if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+            {
+                debugController->EnableDebugLayer();
 
-            // Enable additional debug layers.
-            dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+                // Enable additional debug layers.
+                dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+            }
         }
-    }
 #endif
+    }
 
     ThrowIfFailed(CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&factory)));
 

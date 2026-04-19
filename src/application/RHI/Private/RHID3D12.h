@@ -189,7 +189,7 @@ public:
     RHID3D12Context() = default;
     virtual ~RHID3D12Context() override = default;
 
-    virtual void Initialize(uint32_t WindowWidth, uint32_t WindowHeight) override;
+    virtual void Initialize(const ContextCreateParams& Params) override;
     virtual void Cleanup() override;
     virtual void WaitDeviceIdle() override;
     

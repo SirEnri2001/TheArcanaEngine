@@ -87,7 +87,7 @@ public:
 	RHIVulkanContext();
 	~RHIVulkanContext() override;
 
-	void Initialize(uint32_t WindowWidth, uint32_t WindowHeight) override;
+	void Initialize(const ContextCreateParams& Params) override;
 	void Cleanup() override;
 	void WaitDeviceIdle() override;
 	void ProcessFrameInput() override;

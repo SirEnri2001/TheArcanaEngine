@@ -12,3 +12,4 @@ using float3 = glm::vec3;
 using float2 = glm::vec2;
 using float4x4 = glm::mat4;
 using float3x3 = glm::mat3;
+using int4 = glm::ivec4;

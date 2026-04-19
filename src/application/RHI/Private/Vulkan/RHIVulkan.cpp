@@ -133,7 +133,7 @@ bool RHIVulkanContext::QuerySurfaceProperties()
 }
 
 
-void RHIVulkanContext::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
+void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 {
 	CreateGLFWContext();
 	VkDebugUtilsMessengerCreateInfoEXT DebugCreateInfo{};
@@ -142,13 +142,15 @@ void RHIVulkanContext::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
 	DebugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 	DebugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	DebugCreateInfo.pfnUserCallback = debugCallback;
-	CreateVkInstance(Instance, DebugCreateInfo, DebugMessenger, InstanceExtensions);
+	CreateVkInstance(Instance, DebugCreateInfo, DebugMessenger, InstanceExtensions, Params.bEnableValidation);
 
 	// Global Vulkan API Loader
 	APILoader.Instance = Instance;
 
-	if (vkCreateDebugUtilsMessengerEXT(Instance, &DebugCreateInfo, nullptr, &DebugMessenger) != VK_SUCCESS) {
-		throw std::runtime_error("failed to set up debug messenger!");
+	if (Params.bEnableValidation) {
+		if (vkCreateDebugUtilsMessengerEXT(Instance, &DebugCreateInfo, nullptr, &DebugMessenger) != VK_SUCCESS) {
+			throw std::runtime_error("failed to set up debug messenger!");
+		}
 	}
 	PhysicalDeviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -175,7 +177,7 @@ void RHIVulkanContext::Initialize(uint32_t WindowWidth, uint32_t WindowHeight)
 	Log("Select Physical Device: ", CurrentPhysicalDevice.PDProperties.deviceName);
 
 	// create glfw window
-	CreateGLFWWindow(pGLFWwindow, WindowWidth, WindowHeight, this, OnWindowResize);
+	CreateGLFWWindow(pGLFWwindow, Params.WindowWidth, Params.WindowHeight, this, OnWindowResize);
 	CreateVkSurface(Instance, pGLFWwindow, Surface);
 	SurfaceFormats.clear();
 	PresentModes.clear();

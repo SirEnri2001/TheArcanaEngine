@@ -158,6 +158,13 @@ public:
     static IRHIPlatformSupport* Get(RHIBackend InBackend);
 };
 
+struct ContextCreateParams
+{
+    uint32_t WindowWidth;
+    uint32_t WindowHeight;
+    bool bEnableValidation = true;
+};
+ 
 /** IRHIContext serves as a general RHI resource allocator.
  * It should only has necessary fields and handles to create rendering resource like Images and Buffers.
  */
@@ -166,7 +173,7 @@ class RHI_API IRHIContext
 public:
     IRHIContext() {}
     virtual ~IRHIContext() {}
-    virtual void Initialize(uint32_t WindowWidth, uint32_t WindowHeight) = 0;
+    virtual void Initialize(const ContextCreateParams& Params) = 0;
     virtual void Cleanup() = 0;
     virtual void WaitDeviceIdle() = 0;
     virtual void ProcessFrameInput() = 0;

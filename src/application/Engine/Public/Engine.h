@@ -17,7 +17,7 @@ public:
     Engine();
     ~Engine();
 
-     void Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int MaxFrames = -1, const std::string& OutputPath = "");
+     void Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int MaxFrames = -1, const std::string& OutputPath = "", bool bEnableValidation = true);
     void Run();
     void Shutdown();
 

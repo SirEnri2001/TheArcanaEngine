@@ -24,11 +24,32 @@
 #define PTPOST_VERTSHADER "./glsl/ScreenPost.vert"
 #define PTPOST_FRAGSHADER "./glsl/ScreenPost.frag"
 #define TEST_COMPSHADER   "./glsl/Test.comp"
+#define PT_ITERATION_COMPSHADER "./glsl/PTIteration.comp"
+
+struct RayObject {
+    alignas(16) float4 rayOrigin;
+    alignas(16) float4 rayDir;
+    alignas(16) float4 throughput;
+    alignas(16) float4 accumulatedColor;
+    alignas(16) float4 hitPoint;
+    alignas(16) float4 normal;
+    alignas(16) float4 emissive;
+    alignas(16) float4 baseColor;
+    alignas(16) float4 texcoord_t_objId; // .xy = texcoord, .z = t, .w = (float)objId
+    alignas(16) int4 iter_etc; // .x = iter, .y = active
+};
 
 class ComputePipeline : public IPipeline
 {
 public:
     ComputePipeline() = default; 
+    virtual void SetAllShaderBindings(IRHIContext* Context) override;
+};
+
+class IterationComputePipeline : public IPipeline
+{
+public:
+    IterationComputePipeline() = default;
     virtual void SetAllShaderBindings(IRHIContext* Context) override;
 };
 
@@ -65,6 +86,7 @@ public:
     std::unique_ptr<IRHIBuffer> PrimitiveBuffer;
     std::unique_ptr<IRHIBuffer> MeshVerticesBuffer;
     std::unique_ptr<IRHIBuffer> MeshBVHBuffer;
+    std::unique_ptr<IRHIBuffer> RayStateBuffer;
     std::unique_ptr<IRHISwapchain> Swapchain;
     std::unique_ptr<IRHIFrameBuffer> FBuffer1;
     std::unique_ptr<IRHIFrameBuffer> FBuffer2;
@@ -73,6 +95,7 @@ public:
     PathTracerPipeline Pipeline;
     PTPostPipeline PostPipeline;
     ComputePipeline TestCompPipeline;
+    IterationComputePipeline IterationPipeline;
     RHIFormat SwapchainFormat;
     ImageExtent3D FrameSize;
     std::vector<BVHBox<PTVertex, uint32_t>> BVHBoxes;
@@ -88,12 +111,17 @@ public:
         int32_t frameId;
         int32_t vertexCount;
         int32_t modelUniformCount;
+        int32_t totalIters;
+        int32_t dispatchDepth;
+        float roughness;
+        float prob_lambert;
+        int32_t enableNEE;
     } cuo;
 
     PathTraceRenderer() = default;
 
      // --- IRenderer interface implementation ---
-    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) override;
+    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation = true) override;
     virtual void Render(float4 ViewPos, RenderControl* control) override;
     virtual void CaptureFrame(const std::string& Path) override;
 

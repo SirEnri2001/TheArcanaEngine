@@ -28,10 +28,15 @@ void BlinnPhongPipeline::SetAllShaderBindings(IRHIContext* Context) {
     PipelineFactory->AddBufferLayout(0, 3, RHIFormat::R32G32B32_SFLOAT, offsetof(BlinnPhongVertex, Normal));
 }
 
- void BlinnPhongRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend) {
+ void BlinnPhongRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation) {
     uptr_Context = IRHIPlatformSupport::Get(Backend)->CreateRHIContext();
     Context = uptr_Context.get();
-    Context->Initialize(Width, Height);
+
+    ContextCreateParams Params;
+    Params.WindowWidth = Width;
+    Params.WindowHeight = Height;
+    Params.bEnableValidation = bEnableValidation;
+    Context->Initialize(Params);
 
     Swapchain = Context->CreateRHISwapchain();
     RenderPass = Context->CreateRHIRenderPass();
