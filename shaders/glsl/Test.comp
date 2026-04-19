@@ -19,7 +19,7 @@ struct ModelUniform {
     mat4 modelInv;
     mat4 modelInvTranspose;
     vec3 color;
-    vec3 emission;
+    vec3 emissive;
 };
 
 struct SurfaceIntersect{
@@ -29,8 +29,26 @@ struct SurfaceIntersect{
     vec3 worldNormal;
     vec3 emissive;
     vec2 texcoord;
+    int objId;
 };
 
+struct Ray {
+    vec3 origin;
+    vec3 direction;
+};
+
+SurfaceIntersect NewSurfaceIntersect(){
+    SurfaceIntersect Inters;
+    
+    Inters.t = 1e30;
+    Inters.pointIntersectWorld = vec3(0., 0., 0.);
+    Inters.baseColor = vec3(0., 0., 0.);
+    Inters.emissive = vec3(0., 0., 0.);
+    Inters.worldNormal = vec3(0., 0., 0.);
+    Inters.texcoord = vec2(0., 0.);
+    Inters.objId = -1;
+    return Inters;
+}
 
 layout(std140, binding = 2) readonly buffer PrimitiveBuffer{
     ModelUniform data[];
@@ -130,7 +148,11 @@ vec3 CosineSampleHemisphere(in vec2 Xi, out float pdf){
     return vec3(d.x, d.y, z);
 }
 
-void SampleLightSquare(in vec2 Xi, in ModelUniform ubo, out vec3 worldPoint, out vec3 worldNormal, out float pdf)
+float CosineSampleHemispherePDF(in vec3 wi_local){
+    return wi_local.z / PI;
+}
+
+void Sample_Square(in vec2 Xi, in ModelUniform ubo, out vec3 worldPoint, out vec3 worldNormal, out float pdf)
 {
     vec3 localPoint = vec3(Xi - vec2(0.5, 0.5), 0.);
     worldPoint = vec3(ubo.model * vec4(localPoint, 1.));
@@ -139,12 +161,17 @@ void SampleLightSquare(in vec2 Xi, in ModelUniform ubo, out vec3 worldPoint, out
     pdf = 1. / area;
 }
 
+float LightSquarePDF(in ModelUniform ubo){
+    float area = length(cross(vec3(ubo.model * vec4(0.5, 0., 0., 1.)) , vec3(ubo.model * vec4(0., 0.5, 0., 1.))));
+    return 1. / area;
+}
+
 void SampleDirectLight(in vec2 Xi, in ModelUniform ubo_light, in vec3 rayOrigin, 
     out bool isBlocked, out vec3 rayDirection, out vec3 surfaceNormal, out float pdf) {
     isBlocked = false;
     vec3 lightWorldPoint = vec3(0., 0., 0.);
     surfaceNormal = vec3(0., 0., 0.);
-    SampleLightSquare(Xi, ubo_light, lightWorldPoint, surfaceNormal, pdf);
+    Sample_Square(Xi, ubo_light, lightWorldPoint, surfaceNormal, pdf);
     rayDirection = normalize(lightWorldPoint - rayOrigin);
     SurfaceIntersect Inters;
     
@@ -161,6 +188,9 @@ void SampleDirectLight(in vec2 Xi, in ModelUniform ubo_light, in vec3 rayOrigin,
         isBlocked = true;
     }
     pdf *= pow(length(lightWorldPoint - rayOrigin), 2.) / clamp(dot(-rayDirection, surfaceNormal), 0., 1.);
+    // if (clamp(dot(-rayDirection, surfaceNormal), 0., 1.) < 0.0001){
+    //     pdf = 0.;
+    // }
 }
 
 void TestSampling(){
@@ -184,6 +214,38 @@ void TestSampling(){
     // outColor.w = 1.0;
     imageStore(outImage, pixel, outColor);
     return;
+}
+
+void Sample_LightSourceByIndex(vec2 Xi, int lightObjIndex, vec3 rayOriginW, out vec3 rayDirW, out vec3 lightNormalW, out SurfaceIntersect Result, out float pdf, out bool isBlocked){
+    Result = NewSurfaceIntersect();
+    pdf = 0.;
+    isBlocked = false;
+
+    vec3 lightPointW = vec3(0., 0., 0.);
+    lightNormalW = vec3(0., 0., 0.);
+    Sample_Square(Xi, primitives.data[lightObjIndex], lightPointW, lightNormalW, pdf);
+    rayDirW = normalize(lightPointW - rayOriginW);
+    RayIntersect(rayOriginW, rayDirW, Result);
+    
+    if (length(Result.emissive) < 0.001 || abs(length(lightPointW - rayOriginW) - Result.t) > 1e-4){
+        isBlocked = true;
+    }
+    pdf *= pow(length(lightPointW - rayOriginW), 2.) / clamp(dot(-rayDirW, lightNormalW), 0., 1.);
+}
+
+void Sample_BSDF_Lambertian(vec2 Xi, vec3 rayOriginWorld, vec3 surfaceNormal, out vec3 nextRayDirW, out SurfaceIntersect Result, out float pdf_bsdf){
+    vec3 w_i_local;
+    w_i_local = CosineSampleHemisphere(Xi, pdf_bsdf);
+    vec3 tangent_world = vec3(0., 0., 1.);
+    if(length(cross(tangent_world, surfaceNormal))<0.0001){
+        tangent_world = vec3(0., 1., 0.);
+    }
+    vec3 bitangent_world = normalize(cross(surfaceNormal, tangent_world));
+    tangent_world = normalize(cross(bitangent_world, surfaceNormal));
+    nextRayDirW = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * surfaceNormal;
+
+    Result = NewSurfaceIntersect();
+    RayIntersect(rayOriginWorld, nextRayDirW, Result);
 }
 
 void main() 
@@ -226,61 +288,120 @@ void main()
     vec3 rayWorldOrigin = vec3(eye_pos);
     vec3 throughput = vec3(1.0);
     vec4 worldPoint = vec4(0.0, 0.0, 0.0, 1.0);
-    SurfaceIntersect Intersect;
-    Intersect.t = 99999.;
-    Intersect.pointIntersectWorld = vec3(0., 0., 0.);
-    Intersect.baseColor = vec3(0., 0., 0.);
-    Intersect.emissive = vec3(0., 0., 0.);
-    Intersect.worldNormal = vec3(0., 0., 0.);
-    Intersect.texcoord = vec2(0., 0.);
     int lightObjIndex = 0;
-    int totalIters = 3;
-    for (int i = 0; i < totalIters; i++){
-        vec2 Xi = SampleXi(514., tid*(i+1) + uniforms.frameId * totalIters), Xi2 = SampleXi(114., tid*(i+1)+ uniforms.frameId * totalIters);
-        Intersect.t = 99999.;
-        RayIntersect(rayWorldOrigin, w_o, Intersect);
-        if(Intersect.t>10000){
+    int totalIters = 4;
+    
+    Ray ray;
+    ray.origin = rayWorldOrigin;
+    ray.direction = w_o;
+
+    SurfaceIntersect currentHit = NewSurfaceIntersect();
+    RayIntersect(ray.origin, ray.direction, currentHit);
+
+    for (int iter = 0; iter < totalIters; iter++){
+        vec2 Xi = SampleXi(514., tid*(iter+1) + uniforms.frameId * totalIters);
+        vec2 Xi2 = SampleXi(114., tid*(iter+1)+ uniforms.frameId * totalIters);
+        
+        if(currentHit.t > 10000.){
+            break;
+        }
+        
+        if (currentHit.emissive.x > 0.0001){
+            if (iter == 0){
+                outColor += vec4(throughput * currentHit.emissive, 1.0);
+            }
+            break;
+        }
+
+        vec3 hitPoint = ray.origin + (currentHit.t - 0.001) * ray.direction;
+
+#if 1
+        // --- 1. NEE (Light Sampling) ---
+        vec3 lightDir = vec3(0., 0., 0.);
+        vec3 lightNormal = vec3(0., 0., 0.);
+        float pdf_light = 0.;
+        bool isBlocked = false;
+        SurfaceIntersect Inters_light;
+        Sample_LightSourceByIndex(Xi2, lightObjIndex, hitPoint, lightDir, lightNormal, Inters_light, pdf_light, isBlocked);
+        
+        lightDir = normalize(lightDir);
+        lightNormal = normalize(lightNormal);
+        float weight_light = 0.;
+        
+        if (!isBlocked && pdf_light > 0.0001){
+            float pdf_light_bsdf = clamp(dot(lightDir, currentHit.worldNormal), 0., 1.) / PI;
+            weight_light = pow(pdf_light, 2.) / (pow(pdf_light, 2.) + pow(pdf_light_bsdf, 2.));
+            if (isnan(weight_light) || isinf(weight_light)) weight_light = 0.;
+        }
+        
+        // --- 2. BSDF Sampling ---
+        vec3 bsdfDir = vec3(0., 0., 0.);
+        float pdf_bsdf = 0.;
+        SurfaceIntersect nextHit;
+        Sample_BSDF_Lambertian(Xi, hitPoint, currentHit.worldNormal, bsdfDir, nextHit, pdf_bsdf);
+
+        float weight_bsdf = 0.;
+        if (pdf_bsdf > 0.0001){
+            float pdf_bsdf_light = LightSquarePDF(primitives.data[lightObjIndex]) / clamp(dot(-bsdfDir, lightNormal), 0., 1.);
+            if (clamp(dot(-bsdfDir, lightNormal), 0., 1.) < 0.0001){
+                pdf_bsdf_light = 0.;
+            }
+            if (pdf_bsdf_light > 0.){
+                weight_bsdf = pow(pdf_bsdf, 2.) / (pow(pdf_bsdf, 2.) + pow(pdf_bsdf_light, 2.));
+                if (isnan(weight_bsdf) || isinf(weight_bsdf)) weight_bsdf = 0.;
+            }
+        }
+        
+        // --- 3. Accumulation ---
+        vec3 f_r = currentHit.baseColor / PI;
+        
+        if (pdf_light > 0.0001 && !isBlocked){
+            outColor.xyz += throughput * weight_light * f_r * Inters_light.emissive * clamp(dot(lightDir, currentHit.worldNormal), 0., 1.) / pdf_light;
+        }
+        
+        if (pdf_bsdf > 0.0001 && nextHit.emissive.x > 0.0001) {
+            outColor.xyz += throughput * weight_bsdf * f_r * nextHit.emissive * clamp(dot(bsdfDir, currentHit.worldNormal), 0., 1.) / pdf_bsdf;
+        }
+        
+        // --- 4. Setup next path iteration ---
+        if (pdf_bsdf > 0.0001) {
+            throughput *= f_r * clamp(dot(bsdfDir, currentHit.worldNormal), 0., 1.) / pdf_bsdf;
+        } else {
+            throughput = vec3(0.0);
+            break;
+        }
+
+        if (any(isnan(outColor.xyz)) || any(isinf(outColor.xyz))){
+            outColor.xyz = vec3(1., 0., 1.);
+        }
+
+        ray.origin = hitPoint;
+        ray.direction = bsdfDir;
+        currentHit = nextHit;
+#else
+        vec3 bsdfDir = vec3(0., 0., 0.);
+        float pdf_bsdf = 0.;
+        SurfaceIntersect nextHit;
+        Sample_BSDF_Lambertian(Xi, hitPoint, currentHit.worldNormal, bsdfDir, nextHit, pdf_bsdf);
+
+        if (pdf_bsdf < 0.00001){
             outColor = vec4(0., 0., 0., 1.);
             break;
         }
-        if (Intersect.emissive.x > 0.0001){
-            outColor = vec4(throughput*Intersect.emissive * 10., 1.0);
-            break;
-        }
-        rayWorldOrigin = rayWorldOrigin + (Intersect.t - 0.001) * w_o;
-
-        vec3 dir = vec3(0., 0., 0.);
-        vec3 nor = vec3(0., 0., 0.);
-        float pdf = 0.;
-        bool isBlocked = false;
-        SampleDirectLight(Xi2, primitives.data[lightObjIndex], rayWorldOrigin, isBlocked, dir, nor, pdf);
-        if (!isBlocked){
-            outColor.xyz = Intersect.baseColor * clamp(dot(dir, Intersect.worldNormal), 0., 1.) / pdf;
-            break;
-        }else{
-            outColor.xyz = vec3(0., 0., 0.);
-            break;
-        }
-
-        // vec3 w_i_local;
-        // float pdf;
-        // w_i_local = CosineSampleHemisphere(Xi, pdf);
-        // vec3 tangent_world = vec3(0., 0., 1.);
-        // if(length(cross(tangent_world, Intersect.worldNormal))<0.0001){
-        //     tangent_world = vec3(0., 1., 0.);
-        // }
-        // vec3 bitangent_world = normalize(cross(Intersect.worldNormal, tangent_world));
-        // tangent_world = normalize(cross(bitangent_world, Intersect.worldNormal));
-        // vec3 w_i_world = w_i_local.x * tangent_world + w_i_local.y * bitangent_world + w_i_local.z * Intersect.worldNormal;
-        // if (pdf < 0.00001){
-        //     outColor = vec4(0., 0., 0., 1.);
-        //     break;
-        // }
-        // throughput *= Intersect.baseColor * abs(dot(w_i_world, Intersect.worldNormal));
-        // w_o = w_i_world;
+        
+        vec3 f_r = currentHit.baseColor / PI;
+        throughput *= f_r * clamp(dot(bsdfDir, currentHit.worldNormal), 0., 1.) / pdf_bsdf;
+        
+        ray.origin = hitPoint;
+        ray.direction = bsdfDir;
+        currentHit = nextHit;
+#endif
     }
     //outColor = vec4(Intersect.worldNormal*0.5+0.5, 1.);
     // outColor = vec4(Intersect.baseColor, 1.);
+
+    // scale the outColor
+    outColor.xyz *= 5.;
     if(uniforms.frameId>0 && inColor.x==inColor.x){
         outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
         outColor.w = 1.0;

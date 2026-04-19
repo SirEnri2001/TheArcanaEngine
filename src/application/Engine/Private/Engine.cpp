@@ -126,6 +126,7 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
         ImGui::Checkbox("Enable Gamma", &Engine::GControl.enableGamma);
 
         ImGui::Text("Frame: %d", Engine::GControl.currentFrame);
+        ImGui::Text("FPS: %.1f", io.Framerate);
         
         ImGui::Separator();
 

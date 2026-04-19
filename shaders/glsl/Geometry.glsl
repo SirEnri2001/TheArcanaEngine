@@ -17,7 +17,7 @@ void RayIntersectBox(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in 
             vec3 lp = ro + t * rd;
             IntersectInfo.t = t;
             IntersectInfo.baseColor = ubo.color;
-            IntersectInfo.emissive = ubo.emission;
+            IntersectInfo.emissive = ubo.emissive;
             IntersectInfo.pointIntersectWorld = (ubo.model * vec4(lp, 1.0)).xyz;
             // Normal calculation: pick the axis with the hit point near 1.0
             vec3 localNormal = step(0.999, abs(lp)) * sign(lp);
@@ -40,78 +40,10 @@ void RayIntersectPlane(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, i
             IntersectInfo.t = t;
             IntersectInfo.baseColor = ubo.color;
             IntersectInfo.worldNormal = normalize(mat3(ubo.modelInvTranspose) * vec3(0., 0., 1.));
-            IntersectInfo.emissive = ubo.emission;
+            IntersectInfo.emissive = ubo.emissive;
             IntersectInfo.pointIntersectWorld = (ubo.model * vec4(Intersect, 1.0)).xyz;
         }
     }
-}
-
-bool RayIntersectBVH(in vec3 boxMin, in vec3 boxMax, in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect IntersectInfo){
-    float tzplus  = ( boxMax.z - rayOrigin.z) / rayDir.z;
-    float tzminus = ( boxMin.z - rayOrigin.z) / rayDir.z;
-    float typlus  = ( boxMax.y - rayOrigin.y) / rayDir.y;
-    float tyminus = ( boxMin.y - rayOrigin.y) / rayDir.y;
-    float txplus  = ( boxMax.x - rayOrigin.x) / rayDir.x;
-    float txminus = ( boxMin.x - rayOrigin.x) / rayDir.x;
-    bool isIntersected = false;
-    if(tzplus> 0. && tzplus < IntersectInfo.t){
-        vec3 Intersect = rayOrigin + tzplus * rayDir;
-        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.y < boxMax.y && Intersect.y > boxMin.y){
-            isIntersected = true;
-            IntersectInfo.t = tzplus;
-            IntersectInfo.worldNormal = vec3(0., 0., 1.);
-            IntersectInfo.pointIntersectWorld = Intersect;
-        }
-    }
-    if(tzminus> 0. && tzminus < IntersectInfo.t){
-        vec3 Intersect = rayOrigin + tzminus * rayDir;
-        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.y < boxMax.y && Intersect.y > boxMin.y){
-            isIntersected = true;
-            IntersectInfo.t = tzminus;
-            IntersectInfo.worldNormal = vec3(0., 0., -1.);
-            IntersectInfo.pointIntersectWorld = Intersect;
-        }
-    }
-    if(typlus> 0. && typlus < IntersectInfo.t){
-        vec3 Intersect = rayOrigin + typlus * rayDir;
-        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
-            isIntersected = true;
-            IntersectInfo.t = typlus;
-            IntersectInfo.worldNormal = vec3(0., 1., 0.);
-            IntersectInfo.pointIntersectWorld = Intersect;
-        }
-    }
-    if(tyminus> 0. && tyminus < IntersectInfo.t){
-        vec3 Intersect = rayOrigin + tyminus * rayDir;
-        if(Intersect.x < boxMax.x && Intersect.x > boxMin.x && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
-            isIntersected = true;
-            IntersectInfo.t = tyminus;
-            IntersectInfo.worldNormal =vec3(0., -1., 0.);
-            IntersectInfo.pointIntersectWorld = Intersect;
-        }
-    }
-    if(txplus> 0. && txplus < IntersectInfo.t){
-        vec3 Intersect = rayOrigin + txplus * rayDir;
-        if(Intersect.y < boxMax.y && Intersect.y > boxMin.y && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
-            isIntersected = true;
-            IntersectInfo.t = txplus;
-            IntersectInfo.worldNormal = vec3(1., 0., 0.);
-            IntersectInfo.pointIntersectWorld = Intersect;
-        }
-    }
-    if(txminus> 0. && txminus < IntersectInfo.t){
-        vec3 Intersect = rayOrigin + txminus * rayDir;
-        if(Intersect.y < boxMax.y && Intersect.y > boxMin.y && Intersect.z < boxMax.z && Intersect.z > boxMin.z){
-            isIntersected = true;
-            IntersectInfo.t = txminus;
-            IntersectInfo.worldNormal = vec3(-1., 0., 0.);
-            IntersectInfo.pointIntersectWorld = Intersect;
-        }
-    }
-    if (isIntersected){
-        IntersectInfo.worldNormal = normalize(IntersectInfo.worldNormal);
-    }
-    return isIntersected;
 }
 
 bool RayIntersectTriangle(vec3 Pa, vec3 Pb, vec3 Pc, vec3 rayOrigin, vec3 rayDir, in out SurfaceIntersect IntersectInfo) {
