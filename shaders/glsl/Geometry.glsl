@@ -87,13 +87,7 @@ bool IntersectAABB(vec3 origin, vec3 invDir, vec3 boxMin, vec3 boxMax, out float
 }
 
 void RayIntersectMeshBVH(in out ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in out SurfaceIntersect GlobalIntersectInfo) {
-    SurfaceIntersect IntersectInfo;
-    IntersectInfo.t = 1e30;
-    IntersectInfo.pointIntersectWorld = vec3(0., 0., 0.);
-    IntersectInfo.baseColor = vec3(0., 0., 0.);
-    IntersectInfo.emissive = vec3(0., 0., 0.);
-    IntersectInfo.worldNormal = vec3(0., 0., 0.);
-    IntersectInfo.texcoord = vec2(0., 0.);
+    SurfaceIntersect IntersectInfo = NewSurfaceIntersect();
 
     vec3 GlobalRayOrigin = rayOrigin;
     rayOrigin = vec3(ubo.modelInv * vec4(rayOrigin, 1.));
