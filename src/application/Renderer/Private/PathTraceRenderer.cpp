@@ -10,40 +10,6 @@
 #include <stb_image.h>
 #include "stb_image_write.h"
 
-void ComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
-    PipelineFactory->SetDescriptorBinding(0, DescriptorType::IMAGE2D, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(1, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(3, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(4, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(5, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::CS);
-}
-
-void IterationComputePipeline::SetAllShaderBindings(IRHIContext* Context) {
-    PipelineFactory->SetDescriptorBinding(0, DescriptorType::IMAGE2D, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(1, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(2, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(3, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(4, DescriptorType::STORAGE_READONLY, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(5, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::CS);
-    PipelineFactory->SetDescriptorBinding(6, DescriptorType::STORAGE, IRHIPipelineFactory::EPipelineStages::CS);
-}
-
-void PathTracerPipeline::SetAllShaderBindings(IRHIContext* Context) {
-    PipelineFactory->SetDescriptorBinding(0, DescriptorType::UNIFORM, IRHIPipelineFactory::EPipelineStages::VS_FS);
-    PipelineFactory->SetDescriptorBinding(1, DescriptorType::UNIFORM, IRHIPipelineFactory::EPipelineStages::VS_FS);
-    PipelineFactory->SetDescriptorBinding(2, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::VS_FS);
-    PipelineFactory->AddBufferBinding(0, sizeof(float3));
-    PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
-}
-
-void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
-    PipelineFactory->SetDescriptorBinding(0, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::VS_FS);
-    PipelineFactory->SetDescriptorBinding(1, DescriptorType::UNIFORM, IRHIPipelineFactory::EPipelineStages::VS_FS);
-    PipelineFactory->AddBufferBinding(0, sizeof(float3));
-    PipelineFactory->AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
-}
-
  void PathTraceRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation) {
     uptr_Context = IRHIPlatformSupport::Get(Backend)->CreateRHIContext();
     Context = uptr_Context.get();
@@ -99,24 +65,20 @@ void PTPostPipeline::SetAllShaderBindings(IRHIContext* Context) {
     }
 
 
-    Pipeline.InitializeAsGraphics(Context, *PTRenderPass, PT_VERTSHADER, PT_FRAGSHADER);
-    PostPipeline.InitializeAsGraphics(Context, *PresentPass, PTPOST_VERTSHADER, PTPOST_FRAGSHADER);
+    Pipeline.InitializeAsGraphics(Context, *PTRenderPass, PT_VERTSHADER, PT_FRAGSHADER, sizeof(float4));
+    PostPipeline.InitializeAsGraphics(Context, *PresentPass, PTPOST_VERTSHADER, PTPOST_FRAGSHADER, sizeof(float4));
     TestCompPipeline.InitializeAsCompute(Context, TEST_COMPSHADER);
     IterationPipeline.InitializeAsCompute(Context, PT_ITERATION_COMPSHADER);
-    Pipeline.SetAllShaderBindings(Context);
-    PostPipeline.SetAllShaderBindings(Context);
-    TestCompPipeline.SetAllShaderBindings(Context);
-    IterationPipeline.SetAllShaderBindings(Context);
     Pipeline.Compile(Context, PTRenderPass.get());
     PostPipeline.Compile(Context, PresentPass.get());
     TestCompPipeline.Compile(Context, std::nullopt);
     IterationPipeline.Compile(Context, std::nullopt);
 
-    RHIFullScreenQuadBuffer->Initialize(Context, sizeof(float3) * 8, RHIResourceState::BUFFER_VERTEX);
+    RHIFullScreenQuadBuffer->Initialize(Context, sizeof(float4) * 4, RHIResourceState::BUFFER_VERTEX);
     RHIFullScreenQuadIndexBuffer->Initialize(Context, sizeof(uint32_t) * 6, RHIResourceState::BUFFER_INDEX);
-    float3 FullScreenVertices[4] = { float3(-1., -1., 0.), float3(-1., 1., 0.), float3(1., 1., 0.), float3(1., -1., 0.) };
+    float4 FullScreenVertices[4] = { float4(-1., -1., 0., 1.), float4(-1., 1., 0., 1.), float4(1., 1., 0., 1.), float4(1., -1., 0., 1.) };
     uint32_t FullScreenVerticesIndex[6] = { 0, 2, 1, 0, 3, 2 };
-    RHIFullScreenQuadBuffer->CopyToBuffer(Context, FullScreenVertices, sizeof(float3) * 8);
+    RHIFullScreenQuadBuffer->CopyToBuffer(Context, FullScreenVertices, sizeof(float4) * 4);
     RHIFullScreenQuadIndexBuffer->CopyToBuffer(Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
     CameraUniform->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_UNIFORM);
     StorageBuffer->Initialize(Context, sizeof(CameraUniformObject), RHIResourceState::BUFFER_SHADER_STORAGE);

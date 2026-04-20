@@ -11,40 +11,6 @@
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 
-//// Pipeline objects.
-//ComPtr<IDXGISwapChain3> m_swapChain;
-//ComPtr<ID3D12Device> m_device;
-//ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
-//ComPtr<ID3D12CommandAllocator> m_commandAllocator;
-//ComPtr<ID3D12CommandQueue> m_commandQueue;
-//ComPtr<ID3D12RootSignature> m_rootSignature;
-//ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-//ComPtr<ID3D12PipelineState> m_pipelineState;
-//ComPtr<ID3D12GraphicsCommandList> m_commandList;
-//UINT m_rtvDescriptorSize;
-//
-//// App resources.
-//ComPtr<ID3D12Resource> m_vertexBuffer;
-//D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-//
-//// Synchronization objects.
-//UINT m_frameIndex;
-//HANDLE m_fenceEvent;
-//ComPtr<ID3D12Fence> m_fence;
-//UINT64 m_fenceValue;
-//
-//bool m_useWarpDevice = false;
-//
-//// Root assets path.
-//std::wstring m_assetsPath;
-//
-//// Window title.
-//std::wstring m_title;
-//    // Viewport dimensions.
-//float m_aspectRatio;
-
-
-
 // Helper function for acquiring the first available hardware adapter that supports Direct3D 12.
 // If no such adapter can be found, *ppAdapter will be set to nullptr.
 _Use_decl_annotations_
@@ -162,12 +128,7 @@ std::string SPIRVToHLSL(const uint32_t* SPIRV_DATA, uint32_t size)
     auto HLSLOptions = HLSL.get_hlsl_options();
     HLSLOptions.shader_model = 40;
     HLSL.set_hlsl_options(HLSLOptions);
-    //spirv_cross::HLSLVertexAttributeRemap VertexAttribRemap;
-    //VertexAttribRemap.location = 0;
-    //VertexAttribRemap.semantic = "ATTRIBUTE0";
-    //HLSL.add_vertex_attribute_remap(VertexAttribRemap);
 
-    // Compile to GLSL, ready to give to GL driver.
     std::string source = HLSL.compile();
     return source;
 }

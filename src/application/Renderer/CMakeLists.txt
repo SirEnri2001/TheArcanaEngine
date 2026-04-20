@@ -18,6 +18,7 @@ add_library(Renderer
 PUBLIC ./Public
 PUBLIC ${CoreLog_MODULE_ROOT}/Public
 PUBLIC ${CMAKE_SOURCE_DIR}/src/thirdparties/glfw-3.4/deps
+PUBLIC ${CMAKE_SOURCE_DIR}/src/thirdparties/SPIRV-Cross-vulkan-sdk-1.4.335.0
 )
 add_dependencies(Renderer stb_image RHI ShaderCompiler)
 target_link_libraries(Renderer RHI CoreScene stb_image ShaderCompiler)

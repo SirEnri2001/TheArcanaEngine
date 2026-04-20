@@ -8,26 +8,6 @@
 #include <iostream>
 #include <stdexcept>
 
-void BlinnPhongPipeline::SetAllShaderBindings(IRHIContext* Context) {
-    // Binding 0: UniformBufferObject (VS_FS)
-    // Binding 1: Sampler2D (VS_FS)
-    // Binding 2: ModelUniform (VS_FS)
-    PipelineFactory->SetDescriptorBinding(0, DescriptorType::UNIFORM, IRHIPipelineFactory::EPipelineStages::VS_FS);
-    PipelineFactory->SetDescriptorBinding(1, DescriptorType::SAMPLER2D, IRHIPipelineFactory::EPipelineStages::VS_FS);
-    PipelineFactory->SetDescriptorBinding(2, DescriptorType::UNIFORM, IRHIPipelineFactory::EPipelineStages::VS_FS);
-
-    // Vertex Buffer Layout
-    // layout(location = 0) in vec3 inPosition;
-    // layout(location = 1) in vec3 inColor;
-    // layout(location = 2) in vec2 inTexCoord;
-    // layout(location = 3) in vec3 inNormal;
-    PipelineFactory->AddBufferBinding(0, sizeof(BlinnPhongVertex));
-    PipelineFactory->AddBufferLayout(0, 0, RHIFormat::R32G32B32_SFLOAT, offsetof(BlinnPhongVertex, Position));
-    PipelineFactory->AddBufferLayout(0, 1, RHIFormat::R32G32B32_SFLOAT, offsetof(BlinnPhongVertex, Color));
-    PipelineFactory->AddBufferLayout(0, 2, RHIFormat::R32G32_SFLOAT, offsetof(BlinnPhongVertex, TexCoord));
-    PipelineFactory->AddBufferLayout(0, 3, RHIFormat::R32G32B32_SFLOAT, offsetof(BlinnPhongVertex, Normal));
-}
-
  void BlinnPhongRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation) {
     uptr_Context = IRHIPlatformSupport::Get(Backend)->CreateRHIContext();
     Context = uptr_Context.get();
@@ -57,8 +37,7 @@ void BlinnPhongPipeline::SetAllShaderBindings(IRHIContext* Context) {
 
     FrameSize = Swapchain->GetFrameSize();
     
-    Pipeline.InitializeAsGraphics(Context, *RenderPass, BP_VERTSHADER, BP_FRAGSHADER);
-    Pipeline.SetAllShaderBindings(Context);
+    Pipeline.InitializeAsGraphics(Context, *RenderPass, BP_VERTSHADER, BP_FRAGSHADER, sizeof(BlinnPhongVertex));
     Pipeline.Compile(Context, RenderPass.get());
 
     LoadMeshAndTexture("./models/spot/spot_triangulated.obj", "./models/spot/spot_texture.png");

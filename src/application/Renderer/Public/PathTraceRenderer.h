@@ -39,32 +39,6 @@ struct RayObject {
     alignas(16) int4 iter_etc; // .x = iter, .y = active
 };
 
-class ComputePipeline : public IPipeline
-{
-public:
-    ComputePipeline() = default; 
-    virtual void SetAllShaderBindings(IRHIContext* Context) override;
-};
-
-class IterationComputePipeline : public IPipeline
-{
-public:
-    IterationComputePipeline() = default;
-    virtual void SetAllShaderBindings(IRHIContext* Context) override;
-};
-
-class PathTracerPipeline : public IPipeline {
-public:
-    PathTracerPipeline() = default;
-    virtual void SetAllShaderBindings(IRHIContext* Context) override;
-};
-
-class PTPostPipeline : public IPipeline {
-public:
-    PTPostPipeline() = default;
-    virtual void SetAllShaderBindings(IRHIContext* Context) override;
-};
-
 using PTVertex = TVertex<float3, float3, float2, float3, float3>;
 class PATHTRACERENDERER_API PathTraceRenderer : public IRenderer {
 public:
@@ -92,10 +66,10 @@ public:
     std::unique_ptr<IRHIFrameBuffer> FBuffer2;
     std::unique_ptr<IRHIImGUI> ImGUI;
 
-    PathTracerPipeline Pipeline;
-    PTPostPipeline PostPipeline;
-    ComputePipeline TestCompPipeline;
-    IterationComputePipeline IterationPipeline;
+    AutoPipeline Pipeline;
+    AutoPipeline PostPipeline;
+    AutoPipeline TestCompPipeline;
+    AutoPipeline IterationPipeline;
     RHIFormat SwapchainFormat;
     ImageExtent3D FrameSize;
     std::vector<BVHBox<PTVertex, uint32_t>> BVHBoxes;

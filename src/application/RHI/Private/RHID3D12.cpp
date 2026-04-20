@@ -626,6 +626,8 @@ DXGI_FORMAT GetFormat(RHIFormat Format)
         return DXGI_FORMAT_R32G32B32A32_FLOAT;
 	case R32G32_SFLOAT:
         return DXGI_FORMAT_R32G32B32_FLOAT;
+    case R32_SFLOAT:
+        return DXGI_FORMAT_R32_FLOAT;
 	}
 }
 

@@ -74,6 +74,7 @@ inline std::vector<char> readFile(const std::string& filename) {
 class IPipeline {
 protected:
 	std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
+	uint32_t VertexBufferStride = 0;
 public:
 	std::unique_ptr<IRHIPipelineObject> PipelineObject;
 	std::vector<ShaderFileType> VertexShaderSPIRV;
@@ -96,12 +97,13 @@ public:
 	 * @param RenderPass  The render pass this pipeline binds to
 	 * @param InVS        Vertex shader GLSL source file path   (e.g. "./shaders/glsl/PathTracer.vert")
 	 * @param InFS        Fragment shader GLSL source file path (e.g. "./shaders/glsl/PathTracer.frag")
+	 * @param InStride    Vertex buffer stride (sizeof(VertexType))
 	 *
 	 * Stores filenames, derives SPIRV output paths (<source>.spv), reads the compiled bytecode,
 	 * creates PipelineFactory/PipelineObject, and calls SetShaders on the factory.
 	 */
     virtual void InitializeAsGraphics(IRHIContext* Context, IRHIRenderPass& RenderPass,
-		const std::string& InVS, const std::string& InFS);
+		const std::string& InVS, const std::string& InFS, uint32_t InStride);
 
 	/**
 	 * Initialize a compute pipeline (CS).
@@ -120,6 +122,24 @@ public:
 
 	/** Release all GPU resources held by this pipeline. */
 	virtual void Destroy(IRHIContext* Context);
+};
+
+namespace spirv_cross {
+	class Compiler;
+	class ShaderResources;
+};
+
+/**
+ * AutoPipeline - A pipeline implementation that automatically reflects shader bindings using spirv-cross.
+ * Automatically sets up descriptor bindings and vertex attributes from compiled SPIR-V shaders.
+ */
+class AutoPipeline : public IPipeline {
+public:
+	void SetAllShaderBindings(IRHIContext* Context) override;
+
+private:
+	void ReflectShaderBindings(spirv_cross::Compiler& compiler, const spirv_cross::ShaderResources& resources, IRHIPipelineFactory::EPipelineStages stage);
+	void ReflectVertexAttributes(spirv_cross::Compiler& compiler, const spirv_cross::ShaderResources& resources);
 };
 
 /**

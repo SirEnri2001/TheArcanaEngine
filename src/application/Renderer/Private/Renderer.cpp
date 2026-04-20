@@ -4,11 +4,16 @@
 #define SHADERCOMPILER_INCLUDE
 #include "ShaderCompiler.h"
 
+#include <algorithm>
+#include "spirv_cross.hpp"
+#include "spirv_glsl.hpp"
+
 void IPipeline::InitializeAsGraphics(IRHIContext* Context, IRHIRenderPass& RenderPass,
-	const std::string& InVS, const std::string& InFS) {
+	const std::string& InVS, const std::string& InFS, uint32_t InStride) {
 	Type = EPipelineType::VS_FS;
 	VS_Filename = InVS;
 	FS_Filename = InFS;
+	VertexBufferStride = InStride;
 	PipelineFactory = Context->CreateRHIPipelineFactory();
 	PipelineObject = Context->CreateRHIPipelineObject();
 }
@@ -52,15 +57,112 @@ bool IPipeline::Compile(IRHIContext* Context, std::optional<IRHIRenderPass*> Ren
 			VertexShaderSPIRV = readFile("./shaderbytecode/" + VS_Filename + ".spv");
 			FragmentShaderSPIRV = readFile("./shaderbytecode/" + FS_Filename + ".spv");
 			PipelineFactory->SetShaders(VertexShaderSPIRV, FragmentShaderSPIRV);
+			SetAllShaderBindings(Context);
 			PipelineFactory->InitializePipelineObject(PipelineObject.get(), Context, RenderPass.value());
 		}
 		else if (Type == EPipelineType::CS) {
 			ComputeShaderSPIRV = readFile("./shaderbytecode/" + CS_Filename + ".spv");
 			PipelineFactory->SetComputeShaders(ComputeShaderSPIRV);
+			SetAllShaderBindings(Context);
 			PipelineFactory->InitializeComputePipelineObject(PipelineObject.get(), Context);
 		}
 	}
 	return IsSucceeded;
+}
+
+void AutoPipeline::SetAllShaderBindings(IRHIContext* Context) {
+	if (!PipelineFactory) return;
+
+	PipelineFactory->RemoveAllGlobalBindings();
+	PipelineFactory->RemoveAllBufferBindings();
+
+	if (Type == EPipelineType::VS_FS) {
+		spirv_cross::Compiler VSCompiler(reinterpret_cast<const uint32_t*>(VertexShaderSPIRV.data()), VertexShaderSPIRV.size() / sizeof(uint32_t));
+		spirv_cross::ShaderResources VSResources = VSCompiler.get_shader_resources();
+		ReflectShaderBindings(VSCompiler, VSResources, IRHIPipelineFactory::EPipelineStages::VS_FS);
+		ReflectVertexAttributes(VSCompiler, VSResources);
+
+		spirv_cross::Compiler FSCompiler(reinterpret_cast<const uint32_t*>(FragmentShaderSPIRV.data()), FragmentShaderSPIRV.size() / sizeof(uint32_t));
+		spirv_cross::ShaderResources FSResources = FSCompiler.get_shader_resources();
+		ReflectShaderBindings(FSCompiler, FSResources, IRHIPipelineFactory::EPipelineStages::VS_FS);
+	}
+	else if (Type == EPipelineType::CS) {
+		spirv_cross::Compiler CSCompiler(reinterpret_cast<const uint32_t*>(ComputeShaderSPIRV.data()), ComputeShaderSPIRV.size() / sizeof(uint32_t));
+		spirv_cross::ShaderResources CSResources = CSCompiler.get_shader_resources();
+		ReflectShaderBindings(CSCompiler, CSResources, IRHIPipelineFactory::EPipelineStages::CS);
+	}
+}
+
+void AutoPipeline::ReflectShaderBindings(spirv_cross::Compiler& compiler, const spirv_cross::ShaderResources& resources, IRHIPipelineFactory::EPipelineStages stage) {
+	auto AddBindings = [&](const spirv_cross::SmallVector<spirv_cross::Resource>& list, DescriptorType type) {
+		for (auto& res : list) {
+			uint32_t binding = compiler.get_decoration(res.id, spv::DecorationBinding);
+			
+			DescriptorType finalType = type;
+			if (type == DescriptorType::STORAGE) {
+				auto flags = compiler.get_buffer_block_flags(res.id);
+				if (flags.get(spv::DecorationNonWritable)) {
+					finalType = DescriptorType::STORAGE_READONLY;
+				}
+			}
+			PipelineFactory->SetDescriptorBinding(binding, finalType, stage);
+		}
+	};
+
+	AddBindings(resources.uniform_buffers, DescriptorType::UNIFORM);
+	AddBindings(resources.storage_buffers, DescriptorType::STORAGE);
+	AddBindings(resources.sampled_images, DescriptorType::SAMPLER2D);
+	AddBindings(resources.storage_images, DescriptorType::IMAGE2D);
+}
+
+void AutoPipeline::ReflectVertexAttributes(spirv_cross::Compiler& compiler, const spirv_cross::ShaderResources& resources) {
+	if (VertexBufferStride == 0) return;
+
+	if (resources.stage_inputs.empty()) return;
+
+	// Collect all vertex attributes
+	struct VertexAttribute {
+		uint32_t location;
+		uint32_t binding;
+		RHIFormat format;
+		uint32_t offset;
+	};
+	std::vector<VertexAttribute> attributes;
+	attributes.resize(resources.stage_inputs.size());
+
+	constexpr uint32_t ALIGNMENT = 16;
+
+	for (auto& input : resources.stage_inputs) {
+		uint32_t location = compiler.get_decoration(input.id, spv::DecorationLocation);
+		// only use 0 binding - one vertex buffer for now
+		uint32_t binding = 0;//compiler.get_decoration(input.id, spv::DecorationBinding);
+		
+		auto& type = compiler.get_type(input.type_id);
+		
+		// Map SPIR-V type to RHIFormat
+		RHIFormat format = RHIFormat::R32G32B32A32_SFLOAT;
+		uint32_t vecSize = type.vecsize;
+		
+		switch (vecSize) {
+		case 1: format = RHIFormat::R32_SFLOAT; break;
+		case 2: format = RHIFormat::R32G32_SFLOAT; break;
+		case 3: format = RHIFormat::R32G32B32_SFLOAT; break;
+		case 4: format = RHIFormat::R32G32B32A32_SFLOAT; break;
+		default: format = RHIFormat::R32G32B32A32_SFLOAT; break;
+		}
+
+		attributes[location] = {location, binding, format, 0};
+	}
+
+	if (attributes.empty()) return;
+	uint32_t offset = 0;
+	for (auto& attr : attributes) {
+		PipelineFactory->AddBufferLayout(0, attr.location, attr.format, offset);
+		offset += std::min((int)VertexBufferStride, 16);
+	}
+
+	// Add final binding
+	PipelineFactory->AddBufferBinding(0, VertexBufferStride);
 }
 
 void IPipeline::Destroy(IRHIContext* Context) {
@@ -71,163 +173,3 @@ void IPipeline::Destroy(IRHIContext* Context) {
 		PipelineFactory->Cleanup(Context);
 	}
 }
-
-
-//#define STB_IMAGE_IMPLEMENTATION
-//#include <stb_image.h>
-//
-//#include <chrono>
-//#include <CoreLog.inl>
-//
-//#include "GLFW/glfw3.h"
-//#include "glm/glm.hpp"
-//
-//struct FullScreenVertex
-//{
-//	
-//};
-//
-//void MeshRenderProxy::Initialize(RendererContext* Context, Mesh& InMesh)
-//{
-//    RHICommandBuffer CmdBuffer;
-//    CmdBuffer.Initialize(&Context->Context);
-//	RHIVertexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::VERTEX);
-//	RHIIndexBuffer.Initialize(&Context->Context, sizeof(Mesh::VertexType), InMesh.Vertices.size(), BufferType::INDEX);
-//	RHIVertexBuffer.CopyToBuffer(&CmdBuffer, &Context->Context, InMesh.Vertices.data(), InMesh.Vertices.size() * sizeof(Mesh::VertexType));
-//	RHIIndexBuffer.CopyToBuffer(&CmdBuffer, &Context->Context, InMesh.Indices.data(), InMesh.Indices.size() * sizeof(uint32_t));
-//    int texWidth, texHeight, texChannels;
-//	stbi_uc* pixels = stbi_load(InMesh.TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-//	assert(texHeight > 0 && texWidth > 0);
-//    Texture.Initialize(&Context->Context, texHeight, texWidth, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::SHADER_READ);
-//	Texture.CopyToTexture(&CmdBuffer, &Context->Context, pixels, 4);
-//    IndexBufferSize = InMesh.Indices.size();
-//	stbi_image_free(pixels);
-//}
-//
-//MeshRenderProxy::~MeshRenderProxy()
-//{
-//    Log("Release Render Proxy");
-//}
-//
-//
-//void Renderer::Initialize(RendererContext* Context, std::vector<char> VS, std::vector<char> PS, std::vector<char> VS1, std::vector<char> PS1)
-//{
-//    /*
-//    GBufferA.InitializeRenderTarget(&Context->Context, &Context->WindowManager,
-//        { Context->WindowManager.GetWindowWidth(), Context->WindowManager.GetWindowHeight(), 1 }, IU_COLOR_RT);
-//    GBufferD.InitializeRenderTarget(&Context->Context, &Context->WindowManager,
-//        { Context->WindowManager.GetWindowWidth(), Context->WindowManager.GetWindowHeight(), 1 }, IU_DEPTH_RT);
-//    std::vector<RHIFormat> ColorFormat = {R32G32B32_SFLOAT};
-//    RenderPass.Initialize(&Context->Context, ColorFormat);
-//    Context->WindowManager.InitializeRenderPassAsPresent(&PresentPass, &Context->Context);
-//    Context->ImGUI.Initialize(&Context->Context, &Context->WindowManager, TODO, &PresentPass);
-//    PipelineFactory.SetShaders(VS, PS);
-//    PipelineFactory.SetUniformBinding(0);
-//    PipelineFactory.SetImageSamplerBinding(1);
-//    PipelineFactory.AddBufferBinding(0, sizeof(Mesh::VertexType));
-//    PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Position));
-//    PipelineFactory.AddBufferLayout(0, 1, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Color));
-//    PipelineFactory.AddBufferLayout(0, 2, R32G32_SFLOAT, offsetof(Mesh::VertexType, TexCoord));
-//    PipelineFactory.AddBufferLayout(0, 3, R32G32B32_SFLOAT, offsetof(Mesh::VertexType, Normal));
-//    PipelineFactory.InitializePipelineObject(&PipelineObject, &Context->Context, &RenderPass);
-//
-//    PipelineFactory.RemoveAllGlobalBindings();
-//    PipelineFactory.RemoveAllBufferBindings();
-//    PipelineFactory.SetImageSamplerBinding(0);
-//    PipelineFactory.SetShaders(VS1, PS1);
-//    PipelineFactory.AddBufferBinding(0, sizeof(float3));
-//    PipelineFactory.AddBufferLayout(0, 0, R32G32B32_SFLOAT, 0);
-//    PipelineFactory.InitializePipelineObject(&PresentPipelineObject, &Context->Context, &PresentPass);
-//
-//    GraphicDispatcher.Initialize(&Context->Context);
-//
-//    RHIFullScreenQuadBuffer.Initialize(&Context->Context, sizeof(float3), 4, BufferType::VERTEX);
-//    RHIFullScreenQuadIndexBuffer.Initialize(&Context->Context, sizeof(uint32_t), 6, BufferType::INDEX);
-//    float3 FullScreenVertices[4] = {float3(-0.5, -0.5, 0.5), float3(-0.5, 0.5, 0.5), float3(0.5, 0.5, 0.5), float3(0.5, -0.5, 0.5)};
-//    uint32_t FullScreenVerticesIndex[6] = {0, 1, 2, 0, 2, 3};
-//    RHIFullScreenQuadBuffer.CopyToBuffer(&Context->Context, FullScreenVertices, sizeof(float3) * 4);
-//    RHIFullScreenQuadIndexBuffer.CopyToBuffer(&Context->Context, FullScreenVerticesIndex, sizeof(uint32_t) * 6);
-//*/
-//}
-//
-//void Renderer::SetUniform(RHIUniform* InUniform, uint32_t Binding)
-//{
-//    Uniform = InUniform;
-//}
-//
-//void Renderer::SetTextureSampler(RHIImageResource* Texture, uint32_t Binding)
-//{
-//    //PipelineFactory.SetImageSamplerBinding(Binding);
-//}
-//
-//
-//void Renderer::DrawScene(RendererContext* Context, MeshRenderProxy& InMeshProxy)
-//{
-//    MeshProxyPasses.push_back(&InMeshProxy);
-//}
-//
-//void Renderer::UpdateFrame(RendererContext* RContext)
-//{
-//    /*
-//    auto& Context = RContext->Context;
-//    RContext->ImGUI.UpdateUI(pFuncImDraw);
-//    GraphicDispatcher.WaitForGPUIdle(&Context);
-//    GraphicDispatcher.BeginFrame(&Context, &RContext->WindowManager, &PresentPass);
-//    //GraphicDispatcher.BeginRenderPass(&RenderPass, TODO);
-//    for (auto& MeshProxy : MeshProxyPasses)
-//    {
-//		PipelineObject.SetUniform(Uniform, 0);
-//        PipelineObject.SetImageSampler(&MeshProxy->Texture, 1);
-//        GraphicDispatcher.BindIndexBuffer(&MeshProxy->RHIIndexBuffer, 0);
-//        GraphicDispatcher.BindVertexBuffer(&MeshProxy->RHIVertexBuffer, 0, 0);
-//        IndexBufferSize = MeshProxy->IndexBufferSize;
-//        GraphicDispatcher.Draw(&PipelineObject, IndexBufferSize, 0, 1);
-//    }
-//    GraphicDispatcher.EndRenderPass(&RenderPass);
-//
-//    PresentPipelineObject.SetImageSampler(&GBufferA, 0);
-//    //GraphicDispatcher.BeginRenderPass(&PresentPass, TODO);
-//    GraphicDispatcher.BindIndexBuffer(&RHIFullScreenQuadIndexBuffer, 0);
-//    GraphicDispatcher.BindVertexBuffer(&RHIFullScreenQuadBuffer, 0, 0);
-//    GraphicDispatcher.Draw(&PresentPipelineObject, 6, 0, 1);
-//    // Comment this line if you don't want ImGUI
-//    RContext->ImGUI.DispatchImGUI(&GraphicDispatcher);
-//    GraphicDispatcher.EndRenderPass(&PresentPass);
-//    GraphicDispatcher.EndFrameAndSubmit(&Context, &RContext->WindowManager);
-//	*/
-//}
-//
-//
-//RendererContext* RendererContext::Get()
-//{
-//	if (GInstance==nullptr)
-//	{
-//		GInstance = new RendererContext();
-//	}
-//	return GInstance;
-//}
-//
-//void RendererContext::Initialize(int Width, int Height)
-//{
-//    /*
-//	if (bInitialized)
-//	{
-//		return;
-//	}
-//    RHIPlatformSupport::Get()->Initialize();
-//    WindowManager.Initialize(RHIPlatformSupport::Get(), Height, Width);
-//	Context.Initialize(RHIPlatformSupport::Get());
-//    WindowManager.InitializeSwapchain(&Context, RHIPlatformSupport::Get());
-//    ColorRenderTarget.InitializeRenderTarget(&Context, &WindowManager, {WindowManager.GetWindowWidth(), WindowManager.GetWindowHeight(), 1}, IU_COLOR_PRESENT_RT, 4);
-//    DepthRenderTarget.InitializeRenderTarget(&Context, &WindowManager, {WindowManager.GetWindowWidth(), WindowManager.GetWindowHeight(), 1}, IU_DEPTH_RT, 4);
-//	//PresentPass.Initialize(&Context, &WindowManager, 4, &ColorRenderTarget, &DepthRenderTarget);
-//	*/
-//}
-//
-//bool RendererContext::IsWindowAlive()
-//{
-//    return WindowManager.IsAlive();
-//}
-//
-//
-//RendererContext* RendererContext::GInstance = nullptr;

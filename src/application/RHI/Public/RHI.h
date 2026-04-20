@@ -45,6 +45,7 @@ enum RHIFormat
     R32G32B32A32_SFLOAT, /**< float4 */
     R32G32B32_SFLOAT, /**< float3 */
     R32G32_SFLOAT, /**< float2, uv coords */
+    R32_SFLOAT,
     D32_SFLOAT /**< float, depth value */
 };
 

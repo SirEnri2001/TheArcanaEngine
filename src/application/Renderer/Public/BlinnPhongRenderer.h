@@ -25,13 +25,6 @@
 
 using BlinnPhongVertex = TVertex<float3, float3, float2, float3, float3>;
 
-
-class BlinnPhongPipeline : public IPipeline {
-public:
-    BlinnPhongPipeline() = default;
-    virtual void SetAllShaderBindings(IRHIContext* Context) override;
-};
-
 class BLINNPHONGRENDERER_API BlinnPhongRenderer : public IRenderer {
 public:
     std::unique_ptr<IRHIContext> uptr_Context;
@@ -54,7 +47,7 @@ public:
     std::unique_ptr<IRHIBuffer> UBO;
     std::unique_ptr<IRHIBuffer> ModelUBO;
 
-    BlinnPhongPipeline Pipeline;
+    AutoPipeline Pipeline;
     RHIFormat SwapchainFormat;
     ImageExtent3D FrameSize;
 

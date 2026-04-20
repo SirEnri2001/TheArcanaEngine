@@ -44,6 +44,8 @@ VkFormat RHIVulkanPlatformSupport::GetVkFormat(RHIFormat InFormat)
 		return VK_FORMAT_D32_SFLOAT;
 	case R8G8B8A8_UNORM:
 		return VK_FORMAT_R8G8B8A8_UNORM;
+	case R32_SFLOAT:
+		return VK_FORMAT_R32_SFLOAT;
 	default:
 		std::runtime_error("UNIMPLEMENTED");
 	}
