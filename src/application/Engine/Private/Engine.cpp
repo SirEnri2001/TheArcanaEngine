@@ -126,6 +126,25 @@ void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
         ImGui::Checkbox("Enable Gamma", &Engine::GControl.enableGamma);
         ImGui::Checkbox("Use Single Pass", &Engine::GControl.useSinglePass);
 
+        ImGui::Separator();
+        ImGui::Text("Pipeline Selection");
+        if (ImGui::BeginCombo("##PipelineSelection", Engine::GControl.pipelineSelected < (int)Engine::GControl.pipelines.size() ? Engine::GControl.pipelines[Engine::GControl.pipelineSelected].c_str() : "None"))
+        {
+            for (int i = 0; i < Engine::GControl.pipelines.size(); i++)
+            {
+                const bool is_selected = (Engine::GControl.pipelineSelected == i);
+                if (ImGui::Selectable(Engine::GControl.pipelines[i].c_str(), is_selected))
+                {
+                    Engine::GControl.pipelineSelected = i;
+                }
+                if (is_selected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
         ImGui::Text("Frame: %d", Engine::GControl.currentFrame);
         ImGui::Text("FPS: %.1f", io.Framerate);
         

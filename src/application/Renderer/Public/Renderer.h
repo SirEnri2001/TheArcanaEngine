@@ -41,6 +41,10 @@ struct RenderControl {
 	float movingSpeed = 0.5;
 	bool useSinglePass = true;
 
+	// Pipeline selection
+	std::vector<std::string> pipelines;
+	int pipelineSelected = 0;
+
 	// Path tracing parameters
 	int totalIters = 1;
 	int dispatchDepth = 4;
@@ -83,6 +87,9 @@ public:
 	std::string VS_Filename;
 	std::string FS_Filename;
 	std::string CS_Filename;
+	std::string VS_EntryPoint = "main";
+	std::string FS_EntryPoint = "main";
+	std::string CS_EntryPoint = "main";
 	enum class EPipelineType {
 		VS_FS,
 		CS
@@ -98,22 +105,27 @@ public:
 	 * @param InVS        Vertex shader GLSL source file path   (e.g. "./shaders/glsl/PathTracer.vert")
 	 * @param InFS        Fragment shader GLSL source file path (e.g. "./shaders/glsl/PathTracer.frag")
 	 * @param InStride    Vertex buffer stride (sizeof(VertexType))
+	 * @param InVSEntry   Vertex shader entry point (default: "main")
+	 * @param InFSEntry   Fragment shader entry point (default: "main")
 	 *
 	 * Stores filenames, derives SPIRV output paths (<source>.spv), reads the compiled bytecode,
 	 * creates PipelineFactory/PipelineObject, and calls SetShaders on the factory.
 	 */
     virtual void InitializeAsGraphics(IRHIContext* Context, IRHIRenderPass& RenderPass,
-		const std::string& InVS, const std::string& InFS, uint32_t InStride);
+		const std::string& InVS, const std::string& InFS, uint32_t InStride,
+		const std::string& InVSEntry = "main", const std::string& InFSEntry = "main");
 
 	/**
 	 * Initialize a compute pipeline (CS).
-	 * @param Context  RHI context for resource creation
-	 * @param InCS     Compute shader GLSL source file path (e.g. "./shaders/glsl/Test.comp")
+	 * @param Context    RHI context for resource creation
+	 * @param InCS       Compute shader GLSL source file path (e.g. "./shaders/glsl/Test.comp")
+	 * @param InCSEntry  Compute shader entry point (default: "main")
 	 *
 	 * Stores filename, derives SPIRV output path (<source>.spv), creates PipelineFactory/PipelineObject.
 	 * Call CompilePipeline to read the compiled bytecode and configure the pipeline.
 	 */
-	virtual void InitializeAsCompute(IRHIContext* Context, const std::string& InCS);
+	virtual void InitializeAsCompute(IRHIContext* Context, const std::string& InCS,
+		const std::string& InCSEntry = "main");
 
 	virtual void SetAllShaderBindings(IRHIContext* Context) = 0;
 

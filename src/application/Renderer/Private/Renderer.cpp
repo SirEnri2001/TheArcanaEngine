@@ -9,18 +9,22 @@
 #include "spirv_glsl.hpp"
 
 void IPipeline::InitializeAsGraphics(IRHIContext* Context, IRHIRenderPass& RenderPass,
-	const std::string& InVS, const std::string& InFS, uint32_t InStride) {
+	const std::string& InVS, const std::string& InFS, uint32_t InStride,
+	const std::string& InVSEntry, const std::string& InFSEntry) {
 	Type = EPipelineType::VS_FS;
 	VS_Filename = InVS;
 	FS_Filename = InFS;
+	VS_EntryPoint = InVSEntry;
+	FS_EntryPoint = InFSEntry;
 	VertexBufferStride = InStride;
 	PipelineFactory = Context->CreateRHIPipelineFactory();
 	PipelineObject = Context->CreateRHIPipelineObject();
 }
 
-void IPipeline::InitializeAsCompute(IRHIContext* Context, const std::string& InCS) {
+void IPipeline::InitializeAsCompute(IRHIContext* Context, const std::string& InCS, const std::string& InCSEntry) {
 	Type = EPipelineType::CS;
 	CS_Filename = InCS;
+	CS_EntryPoint = InCSEntry;
 	PipelineFactory = Context->CreateRHIPipelineFactory();
 	PipelineObject = Context->CreateRHIPipelineObject();
 }
@@ -35,17 +39,17 @@ bool IPipeline::Compile(IRHIContext* Context, std::optional<IRHIRenderPass*> Ren
 	if (Type == EPipelineType::VS_FS) {
 		IsSucceeded = IsSucceeded && Compiler.DirectCompile(
 			std::string("./shaders/" + VS_Filename).c_str(),
-			std::string("./shaderbytecode/" + VS_Filename + ".spv").c_str(), ""
+			std::string("./shaderbytecode/" + VS_Filename + ".spv").c_str(), VS_EntryPoint.c_str()
 		);
 		IsSucceeded = IsSucceeded && Compiler.DirectCompile(
 			std::string("./shaders/" + FS_Filename).c_str(),
-			std::string("./shaderbytecode/" + FS_Filename + ".spv").c_str(), ""
+			std::string("./shaderbytecode/" + FS_Filename + ".spv").c_str(), FS_EntryPoint.c_str()
 		);
 	}
 	if (Type == EPipelineType::CS) {
 		IsSucceeded = IsSucceeded && Compiler.DirectCompile(
 			std::string("./shaders/" + CS_Filename).c_str(),
-			std::string("./shaderbytecode/" + CS_Filename + ".spv").c_str(), ""
+			std::string("./shaderbytecode/" + CS_Filename + ".spv").c_str(), CS_EntryPoint.c_str()
 		);
 	}
 	if (IsSucceeded) {

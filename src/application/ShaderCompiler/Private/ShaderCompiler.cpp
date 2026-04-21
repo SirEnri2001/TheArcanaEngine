@@ -8,9 +8,9 @@ void GLSLCompiler::Preprocess(const char* File) {
 
 }
 
-bool GLSLCompiler::DirectCompile(const char* InFile, const char* OutFile, const char* Args) {
+bool GLSLCompiler::DirectCompile(const char* InFile, const char* OutFile, const char* EntryPoint, const char* Args) {
 	std::stringstream CommandLine;
-	CommandLine << "glslc " << InFile << " -o " << OutFile << " " << Args;
+	CommandLine << "glslc " << InFile << " -o " << OutFile << " -fentry-point=" << EntryPoint << " " << Args;
 	int result = std::system(CommandLine.str().c_str());
 	return result == 0;
 }

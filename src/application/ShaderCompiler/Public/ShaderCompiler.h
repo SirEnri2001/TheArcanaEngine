@@ -21,7 +21,7 @@
 class SHADERCOMPILER_API GLSLCompiler {
 public:
 	void Preprocess(const char* File);
-	bool DirectCompile(const char* InFile, const char* OutFile, const char* Args);
+	bool DirectCompile(const char* InFile, const char* OutFile, const char* EntryPoint = "main", const char* Args = "");
 	void SetWorkingDirectory(const char* Dir);
 	void CompileVertexShader(const char* File);
 	void CompileFragmentShader(const char* File);
