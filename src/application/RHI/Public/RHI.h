@@ -4,7 +4,6 @@
 
 
 #pragma once
-#include "RHI.h"
 
 #ifdef RHI_IMPLEMENT
 #define RHI_API __declspec(dllexport)

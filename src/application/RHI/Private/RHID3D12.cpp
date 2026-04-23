@@ -662,6 +662,7 @@ void RHID3D12PipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, Descri
     if (Ranges.size() <= BindingIndex)
     {
         Ranges.resize(BindingIndex + 1);
+        RangeTypes.resize(BindingIndex + 1);
     }
     D3D12_STATIC_SAMPLER_DESC sampler{};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
@@ -678,33 +679,29 @@ void RHID3D12PipelineFactory::SetDescriptorBinding(uint32_t BindingIndex, Descri
     sampler.RegisterSpace = 0;
     sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     CD3DX12_DESCRIPTOR_RANGE1 UAVRange, SRVRange, CBVRange;
+    RangeTypes[BindingIndex] = BindingDescriptorType;
     switch (BindingDescriptorType)
     {
     case DescriptorType::IMAGE2D:
         UAVRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, BindingIndex);
         Ranges[BindingIndex] = UAVRange;
-        UAVCounts++;
         break;
     case DescriptorType::SAMPLER2D:
         SRVRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, BindingIndex);
         Ranges[BindingIndex] = SRVRange;
-        SRVCounts++;
         Samplers.push_back(sampler);
         break;
     case DescriptorType::UNIFORM:
         CBVRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, BindingIndex);
         Ranges[BindingIndex] = CBVRange;
-        CBVCounts++;
         break;
     case DescriptorType::STORAGE_READONLY:
         SRVRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, BindingIndex);
         Ranges[BindingIndex] = SRVRange;
-        SRVCounts++;
         break;
     case DescriptorType::STORAGE:
         UAVRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, BindingIndex);
         Ranges[BindingIndex] = UAVRange;
-        UAVCounts++;
         break;
     }
 }
@@ -764,7 +761,7 @@ void RHID3D12PipelineFactory::InitializePipelineObject(IRHIPipelineObject* OutPi
     D3D12PipelineObject->RootParameters.resize(1);
     D3D12PipelineObject->RootParameters[0] = RootParam;
     D3D12PipelineObject->Heap = D3D12Context->DescriptorFactory.Heap_GPU.Get();
-    D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(SRVCounts + UAVCounts + CBVCounts);
+    D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(RangeTypes.size());
 
 	// Create an empty root signature.
     {
@@ -829,7 +826,7 @@ void RHID3D12PipelineFactory::InitializeComputePipelineObject(IRHIPipelineObject
     D3D12PipelineObject->RootParameters.resize(1);
     D3D12PipelineObject->RootParameters[0] = RootParam;
     D3D12PipelineObject->Heap = D3D12Context->DescriptorFactory.Heap_GPU.Get();
-    D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(SRVCounts + UAVCounts + CBVCounts);
+    D3D12PipelineObject->DescriptorTable = D3D12Context->DescriptorFactory.CreateGPUDescriptorTable(RangeTypes.size());
 
     // Create root signature for compute pipeline
     {

@@ -349,10 +349,7 @@ class RHID3D12PipelineFactory : public IRHIPipelineFactory
     std::vector<D3D12_STATIC_SAMPLER_DESC> Samplers;
     std::vector<D3D12_VERTEX_BUFFER_VIEW> BufferViews;
     std::vector<CD3DX12_DESCRIPTOR_RANGE1> Ranges;
-
-    uint32_t SRVCounts = 0;
-    uint32_t UAVCounts = 0;
-    uint32_t CBVCounts = 0;
+    std::vector<DescriptorType> RangeTypes;
 
 public:
     RHID3D12PipelineFactory();
