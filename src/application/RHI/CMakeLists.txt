@@ -27,6 +27,10 @@ add_library(RHI
 ./Private/RHID3D12.cpp
 ./Private/RHID3D12Impl.h
 ./Private/RHID3D12Impl.cpp
+
+# Window Extension
+./Private/RHIWindowExtension.cpp
+./Private/RHIWindowExtension.h
 )
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/Private/Vulkan PREFIX "Implementations/Vulkan"

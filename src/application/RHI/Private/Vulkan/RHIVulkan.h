@@ -31,6 +31,8 @@ class RHIVulkanRenderPass;
 class RHIVulkanSwapchain;
 class RHIVulkanBuffer;
 
+class IRHIWindowExtension;
+
 struct VkImageStateDesc
 {
 	VkPipelineStageFlags PipelineStage;
@@ -77,7 +79,7 @@ public:
 		VkPhysicalDeviceMemoryProperties PDMemoryProperties;
 	} CurrentPhysicalDevice;
 
-	GLFWwindow* pGLFWwindow;
+	std::unique_ptr<IRHIWindowExtension> WindowExtension;
 	VkSurfaceKHR Surface;
 	VkSurfaceCapabilitiesKHR SurfaceCapabilities;
 	std::vector<VkSurfaceFormatKHR> SurfaceFormats;
@@ -101,7 +103,6 @@ public:
 	virtual std::unique_ptr<IRHIRenderPass        > CreateRHIRenderPass         () override;
     virtual std::unique_ptr<IRHISwapchain         > CreateRHISwapchain          () override;
     virtual std::unique_ptr<IRHIBuffer           > CreateRHIBuffer            () override;
-	static void OnWindowResize(GLFWwindow* window, int width, int height);
 	bool QuerySurfaceProperties();
 
 	VkFormatProperties GetFormatProperties(VkFormat Format)
@@ -353,7 +354,7 @@ public:
 	bool initialized = false;
 	RHIVulkanImGUI() = default;
 	~RHIVulkanImGUI() override = default;
-
+	IRHIWindowExtension* WindowExtension;
 	void Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass) override;
 	void DispatchImGUI(IRHICommandBuffer* CommandBuffer) override;
 	void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;

@@ -1,11 +1,11 @@
 #include <array>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_vulkan.h>
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
 
 #define RHI_IMPLEMENT
 #include "RHIVulkan.h"
 #include "RHIVulkanImpl.h"
-#include "GLFW/glfw3.h"
+#include "RHIWindowExtension.h"
 
 VkShaderStageFlagBits GetVkPipelineStage(IRHIPipelineFactory::EPipelineStages Stages) {
 	if (Stages == IRHIPipelineFactory::EPipelineStages::VS_FS) {
@@ -225,14 +225,15 @@ void RHIVulkanImGUI::Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, 
 	ImGuiInitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
 	ImGui_ImplVulkan_Init(&ImGuiInitInfo);
-	ImGui_ImplGlfw_InitForVulkan(vkContext->pGLFWwindow, true);
+	vkContext->WindowExtension->HookImGuiInit(RHIBackend::Vulkan);
+	WindowExtension = vkContext->WindowExtension.get();
 }
 
 void RHIVulkanImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context))
 {
     // Start the Dear ImGui frame
     ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
+    WindowExtension->HookImGuiNewFrame();
     ImGui::NewFrame();
 	pFuncDrawUI(&ImGlobals);
     // Rendering

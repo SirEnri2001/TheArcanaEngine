@@ -4,10 +4,11 @@
 
 
 #include "RHID3D12Impl.h"
+#include "RHIWindowExtension.h"
 
 #include "imgui.h"
-#include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
+#include "imgui_impl_win32.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <tchar.h>
@@ -131,43 +132,11 @@ void RHID3D12Context::Initialize(const ContextCreateParams& Params)
 {
     m_width = Params.WindowWidth;
     m_height = Params.WindowHeight;
-    // Use HWND for window creation
-    HINSTANCE hInstance = GetModuleHandle(NULL);
-
-    // Initialize the window class.
-    WNDCLASSEX windowClass = { 0 };
-    windowClass.cbSize = sizeof(WNDCLASSEX);
-    windowClass.style = CS_CLASSDC;
-    windowClass.lpfnWndProc = WindowProc;
-    windowClass.hInstance = hInstance;
-    windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
-    windowClass.lpszClassName = "DXSampleClass";
-    CHECK_SYSTEM_ERROR(RegisterClassEx(&windowClass));
-    //RECT windowRect = { 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
-    //AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
-
-
-    // Create the main window. 
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    RECT rect = { 0, 0, (LONG)m_width, (LONG)m_height };
-    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
-
-    CHECK_SYSTEM_ERROR(hWnd = CreateWindow(
-        "DXSampleClass",        // name of window class 
-        "TheArcanaEngine - D3D12 API",            // title-bar string 
-        WS_OVERLAPPEDWINDOW, // top-level window 
-        CW_USEDEFAULT,       // default horizontal position 
-        CW_USEDEFAULT,       // default vertical position 
-        rect.right - rect.left,
-        rect.bottom - rect.top,
-        (HWND)NULL,         // no owner window 
-        (HMENU)NULL,        // use class menu 
-        hInstance,           // handle to application instance 
-        (LPVOID)NULL);      // no window-creation data 
-    );
-    SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-    ShowWindow(hWnd, 1);
-
+    WindowExtension = CreateWindowExtension(Params.Window);
+    WindowExtension->HookBeginContextInit();
+    WindowExtension->InitializeWindow(Params.WindowWidth, Params.WindowHeight, "A-Engine D3D12");
+    WindowExtension->HookBeforeSurfaceInit();
+    WindowExtension->HookAfterSurfaceInit();
     UINT dxgiFactoryFlags = 0;
 
     if (Params.bEnableValidation) {
@@ -241,7 +210,10 @@ void RHID3D12Context::Initialize(const ContextCreateParams& Params)
 void RHID3D12Context::Cleanup()
 {
     CloseHandle(m_fenceEvent);
-    // Placeholder implementation
+    if (WindowExtension) {
+        WindowExtension->Cleanup();
+    }
+    WindowExtension.reset();
 }
 
 void RHID3D12Context::WaitDeviceIdle()
@@ -251,12 +223,12 @@ void RHID3D12Context::WaitDeviceIdle()
 
 bool RHID3D12Context::IsWindowAlive()
 {
-    return true;
+    return WindowExtension->IsWindowAlive();
 }
 
 void RHID3D12Context::ProcessFrameInput()
 {
-	
+	WindowExtension->ProcessMessages();
 }
 
 
@@ -1102,7 +1074,6 @@ void RHID3D12ImGUI::Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, I
     //ImGui::StyleColorsLight();
 
     // Setup Platform/Renderer backends
-    ImGui_ImplWin32_Init(D3D12Context->hWnd);
 
     ImGui_ImplDX12_InitInfo init_info = {};
     init_info.Device = D3D12Context->m_device.Get();
@@ -1134,6 +1105,8 @@ void RHID3D12ImGUI::Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, I
 	    return g_pd3dSrvDescHeapAlloc.Free(cpu_handle, 1);
     };
     ImGui_ImplDX12_Init(&init_info);
+    D3D12Context->WindowExtension->HookImGuiInit(RHIBackend::D3D12);
+    WindowExtension = D3D12Context->WindowExtension.get();
 }
 
 void RHID3D12ImGUI::DispatchImGUI(IRHICommandBuffer* CommandBuffer)
@@ -1153,7 +1126,7 @@ void RHID3D12ImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context))
 {
     // Start the Dear ImGui frame
     ImGui_ImplDX12_NewFrame();
-    ImGui_ImplWin32_NewFrame();
+    WindowExtension->HookImGuiNewFrame();
     ImGui::NewFrame();
 	pFuncDrawUI(&ImGlobals);
     // Rendering
@@ -1232,7 +1205,7 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
     ComPtr<IDXGISwapChain1> swapChain;
     ThrowIfFailed(D3D12Context->factory->CreateSwapChainForHwnd(
         D3D12Context->m_commandQueue.Get(),        // Swap chain needs the queue so that it can force a flush on it.
-        D3D12Context->hWnd,
+        (HWND)D3D12Context->WindowExtension->GetHWND(),
         &SwapChainDesc,
         nullptr,
         nullptr,
@@ -1241,7 +1214,7 @@ void RHID3D12Swapchain::Initialize(IRHIContext* Context, RHIFormat InSwapchainFo
     SwapChainDesc.Format = RHID3D12PlatformSupport::GetDXFormat(InSwapchainFormat);
 
     // This sample does not support fullscreen transitions.
-    ThrowIfFailed(D3D12Context->factory->MakeWindowAssociation(D3D12Context->hWnd, DXGI_MWA_NO_ALT_ENTER));
+    ThrowIfFailed(D3D12Context->factory->MakeWindowAssociation((HWND)D3D12Context->WindowExtension->GetHWND(), DXGI_MWA_NO_ALT_ENTER));
 
     ThrowIfFailed(swapChain.As(&m_swapChain));
     // Create frame resources.

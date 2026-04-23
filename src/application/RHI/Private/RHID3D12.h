@@ -163,6 +163,7 @@ public:
     DescriptorHeapAllocator DSVAllocator;
 };
 
+class IRHIWindowExtension;
 
 // RHID3D12Context
 class RHID3D12Context : public IRHIContext
@@ -178,7 +179,7 @@ public:
     D3D12DescriptorFactory DescriptorFactory;
 
     MSG msg;
-    HWND hWnd;
+    std::unique_ptr<IRHIWindowExtension> WindowExtension;
     UINT m_width = 720;
     UINT m_height = 720;
     bool bResized = false;
@@ -374,7 +375,7 @@ public:
 	ImGuiSharedGlobals ImGlobals;
     RHID3D12ImGUI() = default;
     virtual ~RHID3D12ImGUI() override = default;
-
+    IRHIWindowExtension* WindowExtension;
     virtual void Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass) override;
     virtual void DispatchImGUI(IRHICommandBuffer* CommandBuffer) override;
     virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;

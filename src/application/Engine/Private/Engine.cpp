@@ -379,8 +379,8 @@ Engine::~Engine() {}
 void Engine::Shutdown() {}
 
  int main(int argc, char** argv) {
-    ERendererSelection renderer = ERendererSelection::PathTracing;
-    RHIBackend rhi = RHIBackend::Vulkan;
+    ERendererSelection renderer = ERendererSelection::BlinnPhong;
+    RHIBackend rhi = RHIBackend::D3D12;
     int maxFrames = -1;
     std::string outputPath = "";
     bool enableValidation = true;

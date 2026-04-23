@@ -3,6 +3,7 @@
 #define RHI_IMPLEMENT
 #include "RHI.h"
 #include "RHIVulkan.h"
+#include "RHIWindowExtension.h"
 
 #include <stdexcept>
 #include <vector>
@@ -13,7 +14,6 @@
 
 #include "RHIVulkanImpl.h"
 #include "CoreLog.inl"
-#include "GLFW/glfw3.h"
 
 RHIVulkanPlatformSupport::RHIVulkanPlatformSupport() {}
 
@@ -123,11 +123,6 @@ VkImageStateDesc RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState InState
 RHIVulkanContext::RHIVulkanContext() {}
 RHIVulkanContext::~RHIVulkanContext() {}
 
-void RHIVulkanContext::OnWindowResize(GLFWwindow* window, int width, int height)
-{
-	auto self = reinterpret_cast<RHIVulkanContext*>(glfwGetWindowUserPointer(window));
-}
-
 bool RHIVulkanContext::QuerySurfaceProperties()
 {
 	bool Result = PhysicalDeviceSupportSurface(SurfaceCapabilities, SurfaceFormats, PresentModes, CurrentPhysicalDevice.PhysicalDevice, Surface);
@@ -137,7 +132,9 @@ bool RHIVulkanContext::QuerySurfaceProperties()
 
 void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 {
-	CreateGLFWContext();
+	WindowExtension = CreateWindowExtension(Params.Window);
+	WindowExtension->HookBeginContextInit();
+	WindowExtension->InitializeWindow(Params.WindowWidth, Params.WindowHeight, "A-Engine - Vulkan");
 	VkDebugUtilsMessengerCreateInfoEXT DebugCreateInfo{};
 	DebugCreateInfo.flags = 0;
 	DebugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -179,8 +176,9 @@ void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 	Log("Select Physical Device: ", CurrentPhysicalDevice.PDProperties.deviceName);
 
 	// create glfw window
-	CreateGLFWWindow(pGLFWwindow, Params.WindowWidth, Params.WindowHeight, this, OnWindowResize);
-	CreateVkSurface(Instance, pGLFWwindow, Surface);
+	WindowExtension->HookBeforeSurfaceInit();
+	WindowExtension->CreateVkSurface(Instance, Surface);
+	WindowExtension->HookAfterSurfaceInit();
 	SurfaceFormats.clear();
 	PresentModes.clear();
 	if (PhysicalDeviceSupportSurface(SurfaceCapabilities, SurfaceFormats, PresentModes, CurrentPhysicalDevice.PhysicalDevice, Surface)
@@ -203,8 +201,10 @@ void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 void RHIVulkanContext::Cleanup()
 {
 	vkDestroySurfaceKHR(Instance, Surface, nullptr);
-	glfwDestroyWindow(pGLFWwindow);
-	glfwTerminate();
+	if (WindowExtension) {
+		WindowExtension->Cleanup();
+	}
+	WindowExtension.reset();
 	vkDestroyCommandPool(Device, FrameCommandPool, nullptr);
 	vkDestroyCommandPool(Device, TransientCommandPool, nullptr);
 	vkDestroyDevice(Device, nullptr);
@@ -218,13 +218,13 @@ void RHIVulkanContext::WaitDeviceIdle()
 
 void RHIVulkanContext::ProcessFrameInput()
 {
-	glfwPollEvents();
+	WindowExtension->ProcessMessages();
 }
 
 
 bool RHIVulkanContext::IsWindowAlive()
 {
-	return !glfwWindowShouldClose(pGLFWwindow);
+	return WindowExtension->IsWindowAlive();
 }
 
 

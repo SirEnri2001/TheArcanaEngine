@@ -131,6 +131,12 @@ enum class RHIBackend: uint32_t
     D3D12,
 };
 
+enum class WindowExtensionSelection: uint32_t
+{
+	GLFW,
+    HWND
+};
+
 
 /**
  * IRHIPlatformSupport provides Graphics API environment context. 
@@ -163,8 +169,9 @@ struct ContextCreateParams
     uint32_t WindowWidth;
     uint32_t WindowHeight;
     bool bEnableValidation = true;
+    WindowExtensionSelection Window;
 };
- 
+
 /** IRHIContext serves as a general RHI resource allocator.
  * It should only has necessary fields and handles to create rendering resource like Images and Buffers.
  */
