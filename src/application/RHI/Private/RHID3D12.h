@@ -187,6 +187,9 @@ public:
     UINT m_frameIndex;
     DXGI_FORMAT RTFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 
+    DWORD callbackCookie = 0;
+    static void CALLBACK MessageCallback(D3D12_MESSAGE_CATEGORY Category, D3D12_MESSAGE_SEVERITY Severity, D3D12_MESSAGE_ID ID, LPCSTR pDescription, void* pContext);
+
     RHID3D12Context() = default;
     virtual ~RHID3D12Context() override = default;
 

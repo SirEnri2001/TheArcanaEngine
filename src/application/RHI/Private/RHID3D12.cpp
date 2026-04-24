@@ -12,6 +12,9 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <tchar.h>
+#include <iostream>
+#include <string>
+#include "CoreLog.inl"
 
 #ifdef _DEBUG
 #define DX12_ENABLE_DEBUG_LAYER
@@ -128,6 +131,27 @@ std::unique_ptr<IRHISwapchain         > RHID3D12Context::CreateRHISwapchain     
 std::unique_ptr<IRHIBuffer           > RHID3D12Context::CreateRHIBuffer            () { return std::make_unique<RHID3D12Buffer           >(); }
 
 // RHID3D12Context implementation
+void CALLBACK RHID3D12Context::MessageCallback(D3D12_MESSAGE_CATEGORY Category, D3D12_MESSAGE_SEVERITY Severity, D3D12_MESSAGE_ID ID, LPCSTR pDescription, void* pContext)
+{
+    switch (Severity)
+    {
+    case D3D12_MESSAGE_SEVERITY_CORRUPTION:
+    case D3D12_MESSAGE_SEVERITY_ERROR:
+        Error("[D3D12] ", pDescription);
+        __debugbreak();
+        break;
+    case D3D12_MESSAGE_SEVERITY_WARNING:
+        Warning("[D3D12] ", pDescription);
+        break;
+    case D3D12_MESSAGE_SEVERITY_INFO:      
+    case D3D12_MESSAGE_SEVERITY_MESSAGE:
+        Log("[D3D12] ", pDescription);
+        break;
+    default:
+        break;
+    }
+}
+
 void RHID3D12Context::Initialize(const ContextCreateParams& Params)
 {
     m_width = Params.WindowWidth;
@@ -180,6 +204,14 @@ void RHID3D12Context::Initialize(const ContextCreateParams& Params)
             IID_PPV_ARGS(&m_device)
             ));
     }
+    
+    if (Params.bEnableValidation) {
+        ComPtr<ID3D12InfoQueue1> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+        {
+            infoQueue->RegisterMessageCallback(MessageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, this, &callbackCookie);
+        }
+    }
 
     // Describe and create the command queue.
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
@@ -209,6 +241,15 @@ void RHID3D12Context::Initialize(const ContextCreateParams& Params)
 
 void RHID3D12Context::Cleanup()
 {
+    if (callbackCookie != 0)
+    {
+        ComPtr<ID3D12InfoQueue1> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+        {
+            infoQueue->UnregisterMessageCallback(callbackCookie);
+        }
+        callbackCookie = 0;
+    }
     CloseHandle(m_fenceEvent);
     if (WindowExtension) {
         WindowExtension->Cleanup();
@@ -1479,7 +1520,10 @@ void D3D12DescriptorTable::UploadTable(ID3D12Device* Device)
     {
         auto& SrcCPUDescriptor = HandlesToBeSet[i].CPUHandle;
         auto& DestCPUDescriptor = std::get<0>(ConsecutiveHandles[i]);
-        Device->CopyDescriptorsSimple(1, DestCPUDescriptor, SrcCPUDescriptor, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        if (SrcCPUDescriptor.ptr!=NULL)
+        {
+            Device->CopyDescriptorsSimple(1, DestCPUDescriptor, SrcCPUDescriptor, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        }
     }
 }
 

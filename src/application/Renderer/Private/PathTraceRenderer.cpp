@@ -243,8 +243,10 @@ void PathTraceRenderer::Render(float4 ViewPos, RenderControl* control) {
     PresentPass->BeginRenderPass(CommandBuffer.get(), FrameBuffer);
     // Comment this line if you don't want ImGUI
     if (!control->RenderingPaused && !control->ShaderCompileHasError) {
-        PostPipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
-        PostPipeline.PipelineObject->SetImageSampler(RHIStoreImage.get(), 0);
+        PostPipeline.PipelineObject->SetBindingResource(0, DescriptorType::SAMPLER2D, RHIStoreImage.get());
+        PostPipeline.PipelineObject->SetBindingResource(1, DescriptorType::UNIFORM, CameraUniform.get());
+        //PostPipeline.PipelineObject->SetUniform(CameraUniform.get(), 1);
+        //PostPipeline.PipelineObject->SetImageSampler(RHIStoreImage.get(), 0);
         PostPipeline.PipelineObject->BindIndexBuffer(RHIFullScreenQuadIndexBuffer.get(), 0);
         PostPipeline.PipelineObject->BindVertexBuffer(RHIFullScreenQuadBuffer.get(), 0, 0);
         IndexBufferSize = 6;
