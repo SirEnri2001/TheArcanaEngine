@@ -12,6 +12,8 @@ add_library(Renderer
 ./Private/PathTraceRenderer.cpp
 ./Public/BlinnPhongRenderer.h
 ./Private/BlinnPhongRenderer.cpp
+./Public/BaseRenderer.h
+./Private/BaseRenderer.cpp
 )
 
  target_include_directories(Renderer

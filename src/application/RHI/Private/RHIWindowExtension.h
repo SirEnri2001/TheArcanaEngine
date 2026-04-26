@@ -18,7 +18,7 @@ public:
     virtual void HookImGuiNewFrame() = 0;
     virtual void Cleanup() = 0;
     virtual void InitializeWindow(uint32_t width, uint32_t height, const char* title) = 0;
-    virtual void CreateVkSurface(VkInstance& Instance, VkSurfaceKHR& OutVkSurface) = 0;
+    virtual void CreateVkSurface(void* Instance, void** OutVkSurface) = 0;
 };
 
 class RHIGLFWExtension : public IRHIWindowExtension {
@@ -34,7 +34,7 @@ public:
     virtual void HookImGuiNewFrame() override;
     virtual void Cleanup() override;
     virtual void InitializeWindow(uint32_t width, uint32_t height, const char* title) override;
-    virtual void CreateVkSurface(VkInstance& Instance, VkSurfaceKHR& OutVkSurface) override;
+    virtual void CreateVkSurface(void* Instance, void** OutVkSurface) override;
 private:
     void* pWindow; // GLFWwindow*
 };
@@ -51,7 +51,7 @@ public:
     virtual void HookImGuiNewFrame() override;
     virtual void Cleanup() override;
     virtual void InitializeWindow(uint32_t width, uint32_t height, const char* title) override;
-    virtual void CreateVkSurface(VkInstance& Instance, VkSurfaceKHR& OutVkSurface) override;
+    virtual void CreateVkSurface(void* Instance, void** OutVkSurface) override;
 private:
     void* hWnd;    // HWND
     bool bAlive = true;

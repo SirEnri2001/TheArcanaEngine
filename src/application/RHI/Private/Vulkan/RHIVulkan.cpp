@@ -177,7 +177,9 @@ void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 
 	// create glfw window
 	WindowExtension->HookBeforeSurfaceInit();
-	WindowExtension->CreateVkSurface(Instance, Surface);
+	void* pSurface = Surface;
+	WindowExtension->CreateVkSurface((void*)Instance, &pSurface);
+	Surface = (VkSurfaceKHR)pSurface;
 	WindowExtension->HookAfterSurfaceInit();
 	SurfaceFormats.clear();
 	PresentModes.clear();

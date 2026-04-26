@@ -39,11 +39,13 @@ void RHIGLFWExtension::InitializeWindow(uint32_t width, uint32_t height, const c
     pWindow = pGLFWwindow;
 }
 
-void RHIGLFWExtension::CreateVkSurface(VkInstance& Instance, VkSurfaceKHR& OutVkSurface)
+void RHIGLFWExtension::CreateVkSurface(void* Instance, void** OutVkSurface)
 {
-    if (glfwCreateWindowSurface(Instance, (GLFWwindow*)pWindow, nullptr, &OutVkSurface) != VK_SUCCESS) {
+    VkSurfaceKHR Surface;
+    if (glfwCreateWindowSurface((VkInstance)Instance, (GLFWwindow*)pWindow, nullptr, &Surface) != VK_SUCCESS) {
         throw std::runtime_error("failed to create window surface!");
     }
+    *OutVkSurface = Surface;
 }
 
 void RHIGLFWExtension::HookAfterSurfaceInit() {
@@ -178,16 +180,18 @@ void* RHIHWNDExtension::GetHWND() {
     return hWnd;
 }
 
-void RHIHWNDExtension::CreateVkSurface(VkInstance& Instance, VkSurfaceKHR& OutVkSurface)
+void RHIHWNDExtension::CreateVkSurface(void* Instance, void** OutVkSurface)
 {
     VkWin32SurfaceCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
     createInfo.hwnd = (HWND)hWnd; // Handle to the window
     createInfo.hinstance = GetModuleHandle(nullptr);
 
-    if (vkCreateWin32SurfaceKHR(Instance, &createInfo, nullptr, &OutVkSurface) != VK_SUCCESS) {
+    VkSurfaceKHR Surface;
+    if (vkCreateWin32SurfaceKHR((VkInstance)Instance, &createInfo, nullptr, &Surface) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create Win32 surface!");
     }
+    *OutVkSurface = Surface;
 }
 
 

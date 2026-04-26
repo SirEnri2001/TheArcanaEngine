@@ -2,9 +2,7 @@
 #define CORESCENE_INCLUDE
 #define RENDERER_INCLUDE
 #define SHADERCOMPILER_INCLUDE
-#define PBR_RENDERER_INCLUDE
 #define RHI_INCLUDE
-#define PATHTRACERENDERER_INCLUDE
 
 #include <chrono>
 #include <fstream>
@@ -17,6 +15,8 @@
 #include "RHI.h"
 #include "RHIImGuiHelper.h"
 #include "PathTraceRenderer.h"
+#include "BlinnPhongRenderer.h"
+#include "BaseRenderer.h"
 #include "Renderer.h"
 #include "Engine.h"
 
@@ -25,188 +25,16 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-const std::string MODEL_PATH = "models/spot/spot_triangulated_good.obj";
-const std::string TEXTURE_PATH = "models/spot/spot_texture.png";
-const std::string MODEL2_PATH = "models/viking_room.obj";
-const std::string TEXTURE2_PATH = "textures/viking_room.png";
-const std::string VERT_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.vert";
-const std::string FRAG_SHADER_PATH = "shaderbytecode/glsl/BlinnPhong.frag";
-const std::string CUBE_PATH = "models/cube/cube.obj";
-
  RenderControl Engine::GControl;
 
-void readFile_U32I(const std::string& filename, std::vector<uint32_t>& buffer_u32) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open()) {
-        throw std::runtime_error("failed to open file!");
-    }
-
-    size_t fileSize = (size_t)file.tellg();
-    std::vector<char> buffer(fileSize);
-
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-
-    file.close();
-    buffer_u32.resize(buffer.size()/4);
-    for (int i = 0; i < buffer.size(); i+=4) {
-        // Assuming little-endian file format; adjust if needed
-        buffer_u32[i / 4] = static_cast<uint32_t>(buffer[i]) |
-            (static_cast<uint32_t>(buffer[i + 1]) << 8) |
-            (static_cast<uint32_t>(buffer[i + 2]) << 16) |
-            (static_cast<uint32_t>(buffer[i + 3]) << 24);
-    }
-}
-
-template<class T>
-std::vector<T> read_spirv_file(const char* path)
+void Engine::ProcessInput(ImGuiSharedGlobals* ImGlobals)
 {
-    FILE* file = fopen(path, "rb");
-    if (!file)
-    {
-        fprintf(stderr, "Failed to open SPIR-V file: %s\n", path);
-        return {};
+    if (ImGlobals) {
+        ImGui::SetCurrentContext(ImGlobals->Context);
+        ImGui::SetAllocatorFunctions(ImGlobals->MemAllocFunc, ImGlobals->MemFreeFunc, ImGlobals->UserData);
     }
-
-    fseek(file, 0, SEEK_END);
-    long len = ftell(file) / sizeof(T);
-    rewind(file);
-
-    std::vector<T> spirv(len);
-    if (fread(spirv.data(), sizeof(T), len, file) != size_t(len))
-        spirv.clear();
-
-    fclose(file);
-    return spirv;
-}
-
-void Engine::DrawUI(ImGuiSharedGlobals* ImGlobals)
-{
-    ImGui::SetCurrentContext(ImGlobals->Context);
-    ImGui::SetAllocatorFunctions(ImGlobals->MemAllocFunc, ImGlobals->MemFreeFunc, ImGlobals->UserData);
-    static bool show_demo_window = false;
-    static bool show_another_window = false;
-    static float4 clear_color;
-    static ImGuiIO& io = ImGui::GetIO();
-    // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-    if (show_demo_window)
-    {
-        ImGui::ShowDemoWindow(&show_demo_window);
-    }
-
-    // 2. Show a simple window that we create ourselves. W e use a Begin/End pair to create a named window.
-    {
-        static float f = 0.0f;
-        static int counter = 0;
-
-        ImGui::Begin("Toolbar");                          // Create a window called "Hello, world!" and append into it.
-        ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-
-        if (ImGui::Button("Recompile Shaders")) {
-            Engine::GControl.bClear = true;
-            Engine::GControl.Recompile = true;
-            Engine::GControl.TestShaders = false;
-        }
-
-        if (ImGui::Button("Pause")) {
-            Engine::GControl.RenderingPaused = true;
-            ImGui::OpenPopup("Pause Rendering");
-        }
-
-        if (ImGui::Button("Clear")) {
-            Engine::GControl.bClear = true;
-        }
-
-        if (ImGui::SliderInt("MaxFrames",&Engine::GControl.maxFrames, -1, 5000, "%d")) {
-        }
-
-        ImGui::SliderFloat("Moving speed", &Engine::GControl.movingSpeed, 0.1f, 1.f);
-
-        ImGui::Checkbox("Enable Gamma", &Engine::GControl.enableGamma);
-        ImGui::Checkbox("Use Single Pass", &Engine::GControl.useSinglePass);
-
-        ImGui::Separator();
-        ImGui::Text("Pipeline Selection");
-        if (ImGui::BeginCombo("##PipelineSelection", Engine::GControl.pipelineSelected < (int)Engine::GControl.pipelines.size() ? Engine::GControl.pipelines[Engine::GControl.pipelineSelected].c_str() : "None"))
-        {
-            for (int i = 0; i < Engine::GControl.pipelines.size(); i++)
-            {
-                const bool is_selected = (Engine::GControl.pipelineSelected == i);
-                if (ImGui::Selectable(Engine::GControl.pipelines[i].c_str(), is_selected))
-                {
-                    Engine::GControl.pipelineSelected = i;
-                }
-                if (is_selected)
-                {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
-        }
-
-        ImGui::Text("Frame: %d", Engine::GControl.currentFrame);
-        ImGui::Text("FPS: %.1f", io.Framerate);
-        
-        ImGui::Separator();
-        ImGui::Text("Path Tracing Parameters");
-        ImGui::SliderInt("Total Iterations", &Engine::GControl.totalIters, 1, 10);
-        ImGui::SliderInt("Dispatch Depth", &Engine::GControl.dispatchDepth, 1, 24);
-        ImGui::SliderFloat("Roughness", &Engine::GControl.roughness, 0.0f, 1.0f);
-        ImGui::SliderFloat("Lambert Prob", &Engine::GControl.prob_lambert, 0.0f, 1.0f);
-        ImGui::Checkbox("Enable NEE", &Engine::GControl.enableNEE);
-
-        ImGui::Separator();
-
-        if (Engine::GControl.ShaderCompileHasError) {
-            ImGui::OpenPopup("Shader Compiler Error");
-        }
-
-        // Always center this window when appearing
-        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-
-        if (ImGui::BeginPopupModal("Pause Rendering", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            ImGui::Text("Rendering paused. ");
-            ImGui::Separator();
-
-            if (ImGui::Button("Continue", ImVec2(120, 0)))
-            {
-                Engine::GControl.RenderingPaused = false;
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SetItemDefaultFocus();
-            ImGui::EndPopup();
-        }
-
-        if (ImGui::BeginPopupModal("Shader Compiler Error", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            ImGui::Text("Shader has compilation error, check console for more information. ");
-            ImGui::Separator();
-
-            if (ImGui::Button("Retry", ImVec2(120, 0))) 
-            { 
-                //CompileAllShaders(&Engine::GControl);
-                ImGui::CloseCurrentPopup(); 
-            }
-            ImGui::SetItemDefaultFocus();
-            ImGui::EndPopup();
-        }
-
-        ImGui::End();
-    }
-
-    // 3. Show another simple window.
-    if (show_another_window)
-    {
-        ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-        ImGui::Text("Hello from another window!");
-        ImGui::Text("io.WantCaptureMouse = %d", io.WantCaptureMouse);
-        if (ImGui::Button("Close Me"))
-            show_another_window = false;
-        ImGui::End();
-    }
+    ImGuiIO& io = ImGui::GetIO();
+    
     if (!io.WantCaptureMouse && (io.MouseDown[0] || io.MouseDown[1])) // User operate with actual scene
     {
         Engine::GControl.isClick = true;
@@ -278,23 +106,22 @@ Engine::Engine() {
 }
 Engine::~Engine() {}
 
- void Engine::Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int InMaxFrames, const std::string& InOutputPath, bool bEnableValidation) {
+void Engine::Initialize(int width, int height, ERendererSelection Renderer, RHIBackend Backend, int InMaxFrames, const std::string& InOutputPath, bool bEnableValidation) {
     RendererSelection = Renderer;
     BackendSelection = Backend;
     MaxFrames = InMaxFrames;
     OutputPath = InOutputPath;
 
     if (RendererSelection == ERendererSelection::PathTracing) {
-        PTRenderer.pFuncImDraw = &Engine::DrawUI;
-        PTRenderer.CreateRenderer(width, height, BackendSelection, bEnableValidation);
-
+        PTRenderer.CreateRenderer(height, width, BackendSelection, bEnableValidation, Engine::ProcessInput);
+        PTRenderer.CreateResource();
         CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
         CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
         CameraTransformLocalToWorld[3] = float4(-0.27f, -0.8f, 0.27f, 1.f);
         GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
 
-        PTRenderer.SceneUniform->Initialize(PTRenderer.Context, sizeof(ModelUniformObject), 8, RHIResourceState::BUFFER_UNIFORM);
-
+        PTRenderer.PTResource.SceneUniform->Initialize(PTRenderer.Env.Context, sizeof(ModelUniformObject), 8, RHIResourceState::BUFFER_UNIFORM);
+        
         std::vector<ModelUniformObject> Objects;
         
         // Light
@@ -321,16 +148,67 @@ Engine::~Engine() {}
             glm::rotate(float4x4(1.0), glm::radians(90.f), float3(1, 0, 0)) * 
             glm::scale(float4x4(1.0f), float3(0.15f, 0.15f, 0.15f)), float3(1.f, 1.f, 0.f), float3(0., 0., 0.));
         PTRenderer.cuo.modelUniformCount = Objects.size();
-        PTRenderer.SceneUniform->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
-        PTRenderer.PrimitiveBuffer->Initialize(PTRenderer.Context, (uint32_t)(sizeof(ModelUniformObject) * Objects.size()), RHIResourceState::BUFFER_SHADER_STORAGE);
-        PTRenderer.PrimitiveBuffer->CopyToBuffer(PTRenderer.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
+        PTRenderer.PTResource.SceneUniform->CopyToBuffer(PTRenderer.Env.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
+        PTRenderer.PTResource.PrimitiveBuffer->Initialize(PTRenderer.Env.Context, (uint32_t)(sizeof(ModelUniformObject) * Objects.size()), RHIResourceState::BUFFER_SHADER_STORAGE);
+        PTRenderer.PTResource.PrimitiveBuffer->CopyToBuffer(PTRenderer.Env.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
     }
     else if (RendererSelection == ERendererSelection::BlinnPhong) {
-        BPRenderer.pFuncImDraw = &Engine::DrawUI;
-        BPRenderer.CreateRenderer(width, height, BackendSelection, bEnableValidation);
-        
+        BPRenderer.CreateRenderer(height, width, BackendSelection, bEnableValidation, Engine::ProcessInput);
+        BPRenderer.CreateResource();
         CameraTransformLocalToWorld = glm::translate(float4x4(1.0f), float3(-10.f, 0, 0.0f));
         GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
+    }
+    else if (RendererSelection == ERendererSelection::Base) {
+        BRenderer.CreateRenderer(height, width, BackendSelection, bEnableValidation, Engine::ProcessInput);
+    }
+    else if (RendererSelection == ERendererSelection::Switch) {
+        SRenderer.CreateRenderer(height, width, BackendSelection, bEnableValidation, Engine::ProcessInput);
+        
+        PTRenderer.SetEnv(SRenderer.Env);
+        PTRenderer.CreateResource();
+
+        BRenderer.SetEnv(SRenderer.Env);
+
+        BPRenderer.SetEnv(SRenderer.Env);
+        BPRenderer.CreateResource();
+
+        CameraTransformLocalToWorld[0] = float4(0.f, 1.f, 0.f, 0.f);
+        CameraTransformLocalToWorld[1] = float4(-1.f, 0.f, 0.f, 0.f);
+        CameraTransformLocalToWorld[3] = float4(-0.27f, -0.8f, 0.27f, 1.f);
+        GControl.CameraTransformLocalToWorld = CameraTransformLocalToWorld;
+
+        PTRenderer.PTResource.SceneUniform->Initialize(PTRenderer.Env.Context, sizeof(ModelUniformObject), 8, RHIResourceState::BUFFER_UNIFORM);
+        
+        std::vector<ModelUniformObject> Objects;
+        
+        // Light
+        SetSceneUniform(2, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.535f)) * glm::rotate(float4x4(1.0), glm::radians(180.f), float3(0, 1, 0.)) * glm::scale(float4x4(1.0f), float3(0.065f, 0.05f, 1.f) * 2.f), float3(1.f, 1.f, 1.f), float3(1., 1., 1.));
+
+        // Floor
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
+        // Celling
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.27f, 0.54f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.27f, 0.001f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
+        // Leftwall
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.54f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(1.f, 0.f, 0.f), float3(0., 0., 0.));
+        // Rightwall
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(0.f, 0.27f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.001f, 0.27f, 0.27f)), float3(0.f, 1.f, 0.f), float3(0., 0., 0.));
+        // Backwall
+        SetSceneUniform(1, Objects, glm::translate(float4x4(1.0), float3(-0.27f, 0.54f, 0.27f)) * glm::scale(float4x4(1.0f), float3(0.27f, 0.001f, 0.27f)), float3(0.8f, 0.8f, 0.8f), float3(0., 0., 0.));
+        
+        // Cow
+        SetSceneUniform(0, Objects, glm::translate(float4x4(1.0), float3(-0.25f, 0.25f, 0.17f)) * 
+            glm::rotate(float4x4(1.0), glm::radians(180.f+45.f), float3(0, 0, 1)) * 
+            glm::rotate(float4x4(1.0), glm::radians(90.f), float3(1, 0, 0)) * 
+            glm::scale(float4x4(1.0f), float3(0.15f, 0.15f, 0.15f)), float3(1.f, 1.f, 0.f), float3(0., 0., 0.));
+        PTRenderer.cuo.modelUniformCount = Objects.size();
+        PTRenderer.PTResource.SceneUniform->CopyToBuffer(PTRenderer.Env.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
+        PTRenderer.PTResource.PrimitiveBuffer->Initialize(PTRenderer.Env.Context, (uint32_t)(sizeof(ModelUniformObject) * Objects.size()), RHIResourceState::BUFFER_SHADER_STORAGE);
+        PTRenderer.PTResource.PrimitiveBuffer->CopyToBuffer(PTRenderer.Env.Context, Objects.data(), (uint32_t)(Objects.size() * sizeof(ModelUniformObject)));
+
+        SRenderer.AddRenderer(&PTRenderer, "Path Trace");
+        SRenderer.AddRenderer(&BRenderer, "Base");
+        SRenderer.AddRenderer(&BPRenderer, "Blinn Phong");
+        SRenderer.CurrentSelection = 0;
     }
 }
 
@@ -341,11 +219,17 @@ Engine::~Engine() {}
     IRHIContext* ActiveContext = nullptr;
     IRenderer* ActiveRenderer = nullptr;
     if (RendererSelection == ERendererSelection::PathTracing) {
-        ActiveContext = PTRenderer.Context;
+        ActiveContext = PTRenderer.Env.Context;
         ActiveRenderer = &PTRenderer;
     } else if (RendererSelection == ERendererSelection::BlinnPhong) {
-        ActiveContext = BPRenderer.Context;
+        ActiveContext = BPRenderer.Env.Context;
         ActiveRenderer = &BPRenderer;
+    } else if (RendererSelection == ERendererSelection::Base) {
+        ActiveContext = BRenderer.Env.Context;
+        ActiveRenderer = &BRenderer;
+    } else if (RendererSelection == ERendererSelection::Switch) {
+        ActiveContext = SRenderer.Env.Context;
+        ActiveRenderer = &SRenderer;
     }
 
     if (!ActiveContext) return;
@@ -356,13 +240,29 @@ Engine::~Engine() {}
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
+        RendererEnvironment Env;
+        ActiveRenderer->GetEnv(Env);
+        ProcessInput(Env.ImGUI ? Env.ImGUI->GetGlobals() : nullptr);
+
         if (RendererSelection == ERendererSelection::PathTracing) {
             PTRenderer.UpdateUniformBuffer(GControl.CameraTransformLocalToWorld, time, &GControl);
             PTRenderer.Render(float4(1.f), &GControl);
             PTRenderer.ProcessInput();
         } else if (RendererSelection == ERendererSelection::BlinnPhong) {
             BPRenderer.Render(GControl.CameraTransformLocalToWorld[3], &GControl);
-            BPRenderer.Context->ProcessFrameInput();
+            BPRenderer.Env.Context->ProcessFrameInput();
+        } else if (RendererSelection == ERendererSelection::Base) {
+            BRenderer.Render(float4(0.f), &GControl);
+            BRenderer.Env.Context->ProcessFrameInput();
+        } else if (RendererSelection == ERendererSelection::Switch) {
+            if (SRenderer.CurrentSelection >= 0 && SRenderer.CurrentSelection < SRenderer.AddedRenderers.size()) {
+                if (SRenderer.AddedRenderers[SRenderer.CurrentSelection] == static_cast<BaseRenderer*>(&PTRenderer)) {
+                    PTRenderer.UpdateUniformBuffer(GControl.CameraTransformLocalToWorld, time, &GControl);
+                    PTRenderer.ProcessInput();
+                }
+            }
+            SRenderer.Render(float4(1.f), &GControl);
+            SRenderer.Env.Context->ProcessFrameInput();
         }
 
         currentFrame++;
@@ -379,8 +279,8 @@ Engine::~Engine() {}
 void Engine::Shutdown() {}
 
  int main(int argc, char** argv) {
-    ERendererSelection renderer = ERendererSelection::BlinnPhong;
-    RHIBackend rhi = RHIBackend::D3D12;
+    ERendererSelection renderer = ERendererSelection::Switch;
+    RHIBackend rhi = RHIBackend::Vulkan;
     int maxFrames = -1;
     std::string outputPath = "";
     bool enableValidation = true;
@@ -391,6 +291,8 @@ void Engine::Shutdown() {}
             std::string val = argv[++i];
             if (val == "PathTracing") renderer = ERendererSelection::PathTracing;
             else if (val == "BlinnPhong") renderer = ERendererSelection::BlinnPhong;
+            else if (val == "Base") renderer = ERendererSelection::Base;
+            else if (val == "Switch") renderer = ERendererSelection::Switch;
         } else if (arg == "--rhi" && i + 1 < argc) {
             std::string val = argv[++i];
             if (val == "D3D12") rhi = RHIBackend::D3D12;
@@ -415,6 +317,28 @@ void Engine::Shutdown() {}
 #include "spirv_glsl.hpp"
 #include <vector>
 #include <utility>
+
+template<class T>
+std::vector<T> read_spirv_file(const char* path)
+{
+    FILE* file = fopen(path, "rb");
+    if (!file)
+    {
+        fprintf(stderr, "Failed to open SPIR-V file: %s\n", path);
+        return {};
+    }
+
+    fseek(file, 0, SEEK_END);
+    long len = ftell(file) / sizeof(T);
+    rewind(file);
+
+    std::vector<T> spirv(len);
+    if (fread(spirv.data(), sizeof(T), len, file) != size_t(len))
+        spirv.clear();
+
+    fclose(file);
+    return spirv;
+}
 
 int main()
 {

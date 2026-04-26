@@ -5,6 +5,8 @@
 #include "ShaderCompiler.h"
 
 #include <algorithm>
+
+#include "RHIImGuiHelper.h"
 #include "spirv_cross.hpp"
 #include "spirv_glsl.hpp"
 

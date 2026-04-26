@@ -381,7 +381,9 @@ public:
     IRHIWindowExtension* WindowExtension;
     virtual void Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass) override;
     virtual void DispatchImGUI(IRHICommandBuffer* CommandBuffer) override;
-    virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
+    virtual ImGuiSharedGlobals* GetGlobals() override { return &ImGlobals; }
+    virtual void BeginImGUI(std::function<void(ImGuiSharedGlobals*)> ContextTransferFunc) override;
+    virtual void EndImGUI() override;
     virtual void Cleanup() override;
 };
 

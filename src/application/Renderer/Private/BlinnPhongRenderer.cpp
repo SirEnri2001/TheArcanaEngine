@@ -8,44 +8,21 @@
 #include <iostream>
 #include <stdexcept>
 
- void BlinnPhongRenderer::CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation) {
-    uptr_Context = IRHIPlatformSupport::Get(Backend)->CreateRHIContext();
-    Context = uptr_Context.get();
+#include "imgui.h"
 
-    ContextCreateParams Params;
-    Params.WindowWidth = Width;
-    Params.WindowHeight = Height;
-    Params.bEnableValidation = bEnableValidation;
-    Context->Initialize(Params);
+void BlinnPhongRenderer::CreateResource() {
+    VertexBuffer = Env.Context->CreateRHIBuffer();
+    IndexBuffer = Env.Context->CreateRHIBuffer();
+    UBO = Env.Context->CreateRHIBuffer();
+    ModelUBO = Env.Context->CreateRHIBuffer();
 
-    Swapchain = Context->CreateRHISwapchain();
-    RenderPass = Context->CreateRHIRenderPass();
-    // PathTraceRenderer creates FrameBuffer during Render if size changed or at init.
-    // I'll follow the pattern of initializing swapchain and render pass first.
-
-    VertexBuffer = Context->CreateRHIBuffer();
-    IndexBuffer = Context->CreateRHIBuffer();
-    UBO = Context->CreateRHIBuffer();
-    ModelUBO = Context->CreateRHIBuffer();
-    ImGUI = Context->CreateRHIImGUI();
-
-    SwapchainFormat = B8G8R8A8_SRGB;
-    Swapchain->Initialize(Context, SwapchainFormat);
-
-    std::vector<RHIFormat> ColorRTFormats = { SwapchainFormat };
-    RenderPass->Initialize(Context, ColorRTFormats);
-
-    FrameSize = Swapchain->GetFrameSize();
-    
-    Pipeline.InitializeAsGraphics(Context, *RenderPass, BP_VERTSHADER, BP_FRAGSHADER, sizeof(BlinnPhongVertex));
-    Pipeline.Compile(Context, RenderPass.get());
+    Pipeline.InitializeAsGraphics(Env.Context, *Env.RenderPass, BP_VERTSHADER, BP_FRAGSHADER, sizeof(BlinnPhongVertex));
+    Pipeline.Compile(Env.Context, Env.RenderPass);
 
     LoadMeshAndTexture("./models/spot/spot_triangulated.obj", "./models/spot/spot_texture.png");
 
-    UBO->Initialize(Context, sizeof(UniformBufferObject), RHIResourceState::BUFFER_UNIFORM);
-    ModelUBO->Initialize(Context, sizeof(ModelUniform), RHIResourceState::BUFFER_UNIFORM);
-
-    ImGUI->Initialize(Context, Swapchain.get(), RenderPass.get());
+    UBO->Initialize(Env.Context, sizeof(UniformBufferObject), RHIResourceState::BUFFER_UNIFORM);
+    ModelUBO->Initialize(Env.Context, sizeof(ModelUniform), RHIResourceState::BUFFER_UNIFORM);
 }
 
 void BlinnPhongRenderer::LoadMeshAndTexture(const std::string& MeshPath, const std::string& TexturePath) {
@@ -54,11 +31,11 @@ void BlinnPhongRenderer::LoadMeshAndTexture(const std::string& MeshPath, const s
     CalculateNormal<BlinnPhongVertex, uint32_t>(Mesh);
     IndexCount = (uint32_t)Mesh.Indices.size();
 
-    VertexBuffer->Initialize(Context, sizeof(BlinnPhongVertex), (uint32_t)Mesh.Vertices.size(), RHIResourceState::BUFFER_VERTEX);
-    IndexBuffer->Initialize(Context, sizeof(uint32_t), (uint32_t)Mesh.Indices.size(), RHIResourceState::BUFFER_INDEX);
+    VertexBuffer->Initialize(Env.Context, sizeof(BlinnPhongVertex), (uint32_t)Mesh.Vertices.size(), RHIResourceState::BUFFER_VERTEX);
+    IndexBuffer->Initialize(Env.Context, sizeof(uint32_t), (uint32_t)Mesh.Indices.size(), RHIResourceState::BUFFER_INDEX);
 
-    VertexBuffer->CopyToBuffer(Context, Mesh.Vertices.data(), (uint32_t)(Mesh.Vertices.size() * sizeof(BlinnPhongVertex)));
-    IndexBuffer->CopyToBuffer(Context, Mesh.Indices.data(), (uint32_t)(Mesh.Indices.size() * sizeof(uint32_t)));
+    VertexBuffer->CopyToBuffer(Env.Context, Mesh.Vertices.data(), (uint32_t)(Mesh.Vertices.size() * sizeof(BlinnPhongVertex)));
+    IndexBuffer->CopyToBuffer(Env.Context, Mesh.Indices.data(), (uint32_t)(Mesh.Indices.size() * sizeof(uint32_t)));
 
     // Load Texture
     int texWidth, texHeight, texChannels;
@@ -67,14 +44,14 @@ void BlinnPhongRenderer::LoadMeshAndTexture(const std::string& MeshPath, const s
         throw std::runtime_error("Failed to load texture: " + TexturePath);
     }
 
-    Texture = Context->CreateRHIImageResource();
-    Texture->Initialize(Context, (uint32_t)texHeight, (uint32_t)texWidth, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::SHADER_READ | RHIResourceState::COPY_DST);
+    Texture = Env.Context->CreateRHIImageResource();
+    Texture->Initialize(Env.Context, (uint32_t)texHeight, (uint32_t)texWidth, RHIFormat::R8G8B8A8_SRGB, RHIResourceState::SHADER_READ | RHIResourceState::COPY_DST);
     
     // Copy texture data
-    auto Cmd = Context->CreateRHICommandBuffer();
-    Cmd->Initialize(Context);
+    auto Cmd = Env.Context->CreateRHICommandBuffer();
+    Cmd->Initialize(Env.Context);
     Cmd->BeginCommandBuffer();
-    Texture->CopyToTexture(Cmd.get(), Context, pixels, 4);
+    Texture->CopyToTexture(Cmd.get(), Env.Context, pixels, 4);
     Texture->Transition(Cmd.get(), RHIResourceState::SHADER_READ);
     Cmd->EndCommandBuffer();
     
@@ -86,24 +63,13 @@ void BlinnPhongRenderer::LoadMeshAndTexture(const std::string& MeshPath, const s
     stbi_image_free(pixels);
 }
 
-void BlinnPhongRenderer::Render(float4 ViewPos, RenderControl* control) {
-    ImGUI->UpdateUI(pFuncImDraw);
-    UpdateUniforms(ViewPos, control);
+bool BlinnPhongRenderer::BeginRender(IRHICommandBuffer* CommandBuffer, IRHIFrameBuffer*& OutFrameBuffer, RenderControl* control) {
+    UpdateUniforms(float4(1.0f), control); // We'll just pass a dummy ViewPos or use control's lookat
+    return BaseRenderer::BeginRender(CommandBuffer, OutFrameBuffer, control);
+}
 
-    IRHIFrameBuffer* CurrentFrameBuffer = nullptr;
-    auto CommandBuffer = Context->CreateRHICommandBuffer();
-    CommandBuffer->Initialize(Context);
-    CommandBuffer->BeginCommandBuffer();
-
-    Swapchain->AcquireFrame(Context, CurrentFrameBuffer, RenderPass.get());
-    if (!CurrentFrameBuffer) return;
-
-    if (FrameSize != Swapchain->GetFrameSize()) {
-        FrameSize = Swapchain->GetFrameSize();
-        // Here we could recreate size-dependent resources
-    }
-
-    RenderPass->BeginRenderPass(CommandBuffer.get(), CurrentFrameBuffer);
+void BlinnPhongRenderer::DrawPasses(IRHICommandBuffer* CommandBuffer, IRHIFrameBuffer* FrameBuffer, float4 ViewPos, RenderControl* control) {
+    Env.RenderPass->BeginRenderPass(CommandBuffer, FrameBuffer);
 
     if (!control->RenderingPaused && !control->ShaderCompileHasError) {
         Pipeline.PipelineObject->SetUniform(UBO.get(), 0);
@@ -113,37 +79,39 @@ void BlinnPhongRenderer::Render(float4 ViewPos, RenderControl* control) {
         Pipeline.PipelineObject->BindVertexBuffer(VertexBuffer.get(), 0, 0);
         Pipeline.PipelineObject->BindIndexBuffer(IndexBuffer.get(), 0);
 
-        Pipeline.PipelineObject->Draw(CommandBuffer.get(), IndexCount, 0, 1);
+        Pipeline.PipelineObject->Draw(CommandBuffer, IndexCount, 0, 1);
     }
 
-    ImGUI->DispatchImGUI(CommandBuffer.get());
-    RenderPass->EndRenderPass(CommandBuffer.get());
-    CommandBuffer->EndCommandBuffer();
+    if (Env.ImGUI) {
+        Env.ImGUI->DispatchImGUI(CommandBuffer);
+    }
+    Env.RenderPass->EndRenderPass(CommandBuffer);
+}
 
-    Pipeline.PipelineObject->CopyDescriptors(Context);
-    Swapchain->PresentFrameAndRelease(Context, CommandBuffer.get());
-    Context->WaitDeviceIdle();
+void BlinnPhongRenderer::EndRender(IRHICommandBuffer* CommandBuffer) {
+    Pipeline.PipelineObject->CopyDescriptors(Env.Context);
+    BaseRenderer::EndRender(CommandBuffer);
 }
 
 void BlinnPhongRenderer::UpdateUniforms(float4 ViewPos, RenderControl* control) {
     // UBO
     uboData.view = glm::lookAt(float3(-1., 0., 0.), float3(0., 0., 0.), float3(0., 0., 1.)) *  glm::inverse(control->CameraTransformLocalToWorld);
-    float Aspect = (float)FrameSize.Width / (float)FrameSize.Height;
+    float Aspect = (float)Env.FrameSize.Width / (float)Env.FrameSize.Height;
     uboData.proj = glm::perspective(glm::radians(45.0f), Aspect, 0.01f, 100.0f);
     uboData.viewPosition = ViewPos;
-    UBO->CopyToBuffer(Context, &uboData, sizeof(UniformBufferObject));
+    UBO->CopyToBuffer(Env.Context, &uboData, sizeof(UniformBufferObject));
 
     // ModelUBO
     modelData.model = float4x4(1.0f); // Identity for now, or use control transform
     modelData.modelInv = inverse(modelData.model);
      modelData.color = float3(1.0f, 1.0f, 1.0f);
-    ModelUBO->CopyToBuffer(Context, &modelData, sizeof(ModelUniform));
+    ModelUBO->CopyToBuffer(Env.Context, &modelData, sizeof(ModelUniform));
 }
 
-void BlinnPhongRenderer::CaptureFrame(const std::string& Path) {
-    // For BlinnPhongRenderer, we currently don't have an offscreen RHIStoreImage like PathTraceRenderer.
-    // This would require reading from the swapchain or adding an offscreen target.
-    // For now, we'll provide a placeholder or skip if not easily accessible.
-    // In a real implementation, we'd read back the current frame buffer.
-    std::cout << "CaptureFrame not yet fully implemented for BlinnPhongRenderer" << std::endl;
+void BlinnPhongRenderer::DrawImGUI()
+{
+    static bool check = false;
+    ImGui::Begin("Blinn Phong");
+    ImGui::Checkbox("Check", &check);
+    ImGui::End();
 }

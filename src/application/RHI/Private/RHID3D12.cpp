@@ -1163,14 +1163,16 @@ void RHID3D12ImGUI::DispatchImGUI(IRHICommandBuffer* CommandBuffer)
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmdList.Get());
 }
 
-void RHID3D12ImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context))
+void RHID3D12ImGUI::BeginImGUI(std::function<void(ImGuiSharedGlobals*)> ContextTransferFunc)
 {
-    // Start the Dear ImGui frame
     ImGui_ImplDX12_NewFrame();
     WindowExtension->HookImGuiNewFrame();
     ImGui::NewFrame();
-	pFuncDrawUI(&ImGlobals);
-    // Rendering
+    ContextTransferFunc(&ImGlobals);
+}
+
+void RHID3D12ImGUI::EndImGUI()
+{
     ImGui::Render();
 }
 

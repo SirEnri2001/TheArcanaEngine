@@ -36,3 +36,8 @@ IRHIPlatformSupport* IRHIPlatformSupport::Get(RHIBackend InBackend)
 	}
 	return GInstances[Index].get();
 }
+
+void IRHIImGUI::DrawImGUI(std::function<void(void)> pFuncDrawUI)
+{
+	pFuncDrawUI();
+}

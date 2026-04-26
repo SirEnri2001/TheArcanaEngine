@@ -229,14 +229,16 @@ void RHIVulkanImGUI::Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, 
 	WindowExtension = vkContext->WindowExtension.get();
 }
 
-void RHIVulkanImGUI::UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context))
+void RHIVulkanImGUI::BeginImGUI(std::function<void(ImGuiSharedGlobals*)> ContextTransferFunc)
 {
-    // Start the Dear ImGui frame
     ImGui_ImplVulkan_NewFrame();
     WindowExtension->HookImGuiNewFrame();
     ImGui::NewFrame();
-	pFuncDrawUI(&ImGlobals);
-    // Rendering
+	ContextTransferFunc(&ImGlobals);
+}
+
+void RHIVulkanImGUI::EndImGUI()
+{
     ImGui::Render();
 }
 

@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <functional>
 
 class IRHICommandBuffer;
 class IRHIContext;
@@ -375,6 +376,11 @@ public:
     /**
      * UI components are defined here. 
      */
-    virtual void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) = 0;
+    void DrawImGUI(std::function<void(void)> pFuncDrawUI);
+
+    // ContextTransferFunc: must be defined as a lambda in the target compile unit(cpp file)
+    virtual void BeginImGUI(std::function<void(ImGuiSharedGlobals*)> ContextTransferFunc) = 0; 
+    virtual void EndImGUI() = 0;
 	virtual void Cleanup() = 0;
+    virtual ImGuiSharedGlobals* GetGlobals() = 0;
 };

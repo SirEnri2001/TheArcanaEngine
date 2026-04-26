@@ -1,19 +1,9 @@
 #pragma once
-
-#ifdef PATHTRACERENDERER_IMPLEMENT
-#define PATHTRACERENDERER_API __declspec(dllexport)
-#else
-#ifdef PATHTRACERENDERER_INCLUDE
-#define PATHTRACERENDERER_API __declspec(dllimport)
-#else
-#error Please specify API linkage before include this file
-#define PATHTRACERENDERER_API
-#endif
-#endif
+#include "BaseRenderer.h"
 
 #include <string>
 
-#define RENDERER_INCLUDE
+#define RENDERER_IMPLEMENT
 #include "Renderer.h"
 
 #define COREGEOMETRY_INCLUDE
@@ -40,43 +30,39 @@ struct RayObject {
 };
 
 using PTVertex = TVertex<float3, float3, float2, float3, float3>;
-class PATHTRACERENDERER_API PathTraceRenderer : public IRenderer {
+class RENDERER_API PathTraceRenderer : public BaseRenderer {
 public:
-    uint32_t IndexBufferSize;
-    std::unique_ptr<IRHIContext> uptr_Context;
-    IRHIContext* Context;
-    std::unique_ptr<IRHIBuffer> RHIFullScreenQuadBuffer;
-    std::unique_ptr<IRHIBuffer> RHIFullScreenQuadIndexBuffer;
-    std::unique_ptr<IRHIImageResource> RHIScreenBuffer1;
-    std::unique_ptr<IRHIImageResource> RHIScreenBuffer2;
-    std::unique_ptr<IRHIImageResource> RHIScreenBufferDepth;
-    std::unique_ptr<IRHIImageResource> RHIStoreImage;
-    std::unique_ptr<IRHIImageResource> RHIMeshTexture;
-    std::unique_ptr<IRHIRenderPass> PresentPass;
-    std::unique_ptr<IRHIRenderPass> PTRenderPass;
-    std::unique_ptr<IRHIBuffer> CameraUniform;
-    std::unique_ptr<IRHIBuffer> SceneUniform;
-    std::unique_ptr<IRHIBuffer> StorageBuffer;
-    std::unique_ptr<IRHIBuffer> PrimitiveBuffer;
-    std::unique_ptr<IRHIBuffer> MeshVerticesBuffer;
-    std::unique_ptr<IRHIBuffer> MeshBVHBuffer;
-    std::unique_ptr<IRHIBuffer> RayStateBuffer;
-    std::unique_ptr<IRHISwapchain> Swapchain;
-    std::unique_ptr<IRHIFrameBuffer> FBuffer1;
-    std::unique_ptr<IRHIFrameBuffer> FBuffer2;
-    std::unique_ptr<IRHIImGUI> ImGUI;
+    struct OwnedResource
+    {
+        std::unique_ptr<IRHIBuffer> RHIFullScreenQuadBuffer;
+        std::unique_ptr<IRHIBuffer> RHIFullScreenQuadIndexBuffer;
+        std::unique_ptr<IRHIImageResource> RHIScreenBuffer1;
+        std::unique_ptr<IRHIImageResource> RHIScreenBuffer2;
+        std::unique_ptr<IRHIImageResource> RHIScreenBufferDepth;
+        std::unique_ptr<IRHIImageResource> RHIStoreImage;
+        std::unique_ptr<IRHIImageResource> RHIMeshTexture;
+        std::unique_ptr<IRHIRenderPass> PTRenderPass;
+        std::unique_ptr<IRHIBuffer> CameraUniform;
+        std::unique_ptr<IRHIBuffer> SceneUniform;
+        std::unique_ptr<IRHIBuffer> StorageBuffer;
+        std::unique_ptr<IRHIBuffer> PrimitiveBuffer;
+        std::unique_ptr<IRHIBuffer> MeshVerticesBuffer;
+        std::unique_ptr<IRHIBuffer> MeshBVHBuffer;
+        std::unique_ptr<IRHIBuffer> RayStateBuffer;
+        std::unique_ptr<IRHIFrameBuffer> FBuffer1;
+        std::unique_ptr<IRHIFrameBuffer> FBuffer2;
 
-    AutoPipeline Pipeline;
-    AutoPipeline PostPipeline;
-    AutoPipeline TestCompPipeline;
-    AutoPipeline IterationPipeline;
-    RHIFormat SwapchainFormat;
-    ImageExtent3D FrameSize;
+        AutoPipeline Pipeline;
+        AutoPipeline PostPipeline;
+        AutoPipeline TestCompPipeline;
+        AutoPipeline IterationPipeline;
+    } PTResource;
+
+    uint32_t IndexBufferSize;
+
     std::vector<BVHBox<PTVertex, uint32_t>> BVHBoxes;
 
     bool swap = false;
-
-    void (*pFuncImDraw)(ImGuiSharedGlobals*);
 
     struct CameraUniformObject {
         alignas(16) float4x4 camToWorld;
@@ -95,10 +81,18 @@ public:
     PathTraceRenderer() = default;
 
      // --- IRenderer interface implementation ---
-    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation = true) override;
-    virtual void Render(float4 ViewPos, RenderControl* control) override;
+    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation = true, std::function<void(ImGuiSharedGlobals*)> EngineUIFunc = nullptr) override;
+    virtual void CreateResource() override;
     virtual void CaptureFrame(const std::string& Path) override;
+    virtual void DrawImGUI() override;
 
+protected:
+    virtual bool BeginRender(IRHICommandBuffer* CommandBuffer, IRHIFrameBuffer*& OutFrameBuffer, RenderControl* control) override;
+    virtual void ResizeScreen() override;
+    virtual void DrawPasses(IRHICommandBuffer* CommandBuffer, IRHIFrameBuffer* FrameBuffer, float4 ViewPos, RenderControl* control) override;
+    virtual void EndRender(IRHICommandBuffer* CommandBuffer) override;
+
+public:
     // --- PathTraceRenderer specific methods ---
     void UpdateUniformBuffer(float4x4 camToWorld, float time, RenderControl* control);
     void ProcessInput();

@@ -1,21 +1,14 @@
 #pragma once
 
-#ifdef BLINNPHONGRENDERER_IMPLEMENT
-#define BLINNPHONGRENDERER_API __declspec(dllexport)
-#else
-#ifdef BLINNPHONGRENDERER_INCLUDE
-#define BLINNPHONGRENDERER_API __declspec(dllimport)
-#else
-#define BLINNPHONGRENDERER_API
-#endif
-#endif
-
 #include <string>
 #include <vector>
 #include <memory>
 
-#define RENDERER_INCLUDE
+#define RENDERER_IMPLEMENT
 #include "Renderer.h"
+
+#define BASERENDERER_INCLUDE
+#include "BaseRenderer.h"
 
 #define COREGEOMETRY_INCLUDE
 #include "CoreGeometry.h"
@@ -25,16 +18,8 @@
 
 using BlinnPhongVertex = TVertex<float3, float3, float2, float3, float3>;
 
-class BLINNPHONGRENDERER_API BlinnPhongRenderer : public IRenderer {
+class RENDERER_API BlinnPhongRenderer : public BaseRenderer {
 public:
-    std::unique_ptr<IRHIContext> uptr_Context;
-    IRHIContext* Context;
-    
-    std::unique_ptr<IRHISwapchain> Swapchain;
-    std::unique_ptr<IRHIRenderPass> RenderPass;
-    std::unique_ptr<IRHIFrameBuffer> FrameBuffer;
-    std::unique_ptr<IRHIImGUI> ImGUI;
-
     // Mesh resources
     std::unique_ptr<IRHIBuffer> VertexBuffer;
     std::unique_ptr<IRHIBuffer> IndexBuffer;
@@ -48,8 +33,6 @@ public:
     std::unique_ptr<IRHIBuffer> ModelUBO;
 
     AutoPipeline Pipeline;
-    RHIFormat SwapchainFormat;
-    ImageExtent3D FrameSize;
 
     struct UniformBufferObject {
         float4x4 view;
@@ -63,15 +46,17 @@ public:
         alignas(16) float3 color;
     } modelData;
 
-    void (*pFuncImDraw)(ImGuiSharedGlobals*);
-
     BlinnPhongRenderer() = default;
 
-     // --- IRenderer interface ---
-    virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation = true) override;
-    virtual void Render(float4 ViewPos, RenderControl* control) override;
-    virtual void CaptureFrame(const std::string& Path) override;
+    virtual void CreateResource() override;
+    virtual void DrawImGUI() override;
 
+protected:
+    virtual bool BeginRender(IRHICommandBuffer* CommandBuffer, IRHIFrameBuffer*& OutFrameBuffer, RenderControl* control) override;
+    virtual void DrawPasses(IRHICommandBuffer* CommandBuffer, IRHIFrameBuffer* FrameBuffer, float4 ViewPos, RenderControl* control) override;
+    virtual void EndRender(IRHICommandBuffer* CommandBuffer) override;
+
+public:
     // Helpers
     void LoadMeshAndTexture(const std::string& MeshPath, const std::string& TexturePath);
     void UpdateUniforms(float4 ViewPos, RenderControl* control);

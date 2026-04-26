@@ -357,8 +357,10 @@ public:
 	IRHIWindowExtension* WindowExtension;
 	void Initialize(IRHIContext* Context, IRHISwapchain* Swapchain, IRHIRenderPass* PresentRenderPass) override;
 	void DispatchImGUI(IRHICommandBuffer* CommandBuffer) override;
-	void UpdateUI(void (*pFuncDrawUI)(ImGuiSharedGlobals* context)) override;
+	void BeginImGUI(std::function<void(ImGuiSharedGlobals*)> ContextTransferFunc) override;
+	void EndImGUI() override;
 	void Cleanup() override;
+	virtual ImGuiSharedGlobals* GetGlobals() override { return &ImGlobals; }
 };
 
 class RHIVulkanFrameBuffer : public IRHIFrameBuffer {

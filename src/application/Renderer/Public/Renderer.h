@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <fstream>
 #include <optional>
+#include <functional>
 
 #define RHI_INCLUDE
 #include "RHI.h"
@@ -44,13 +45,6 @@ struct RenderControl {
 	// Pipeline selection
 	std::vector<std::string> pipelines;
 	int pipelineSelected = 0;
-
-	// Path tracing parameters
-	int totalIters = 1;
-	int dispatchDepth = 4;
-	float roughness = 0.3f;
-	float prob_lambert = 0.5f;
-	bool enableNEE = true;
 };
 
 typedef char ShaderFileType;
@@ -75,7 +69,7 @@ inline std::vector<char> readFile(const std::string& filename) {
  * InitializePipeline accepts shader source filenames, compiles them to SPIRV, loads the bytecode,
  * and creates the RHI pipeline factory/object. Subclasses override to add descriptor bindings etc.
  */
-class IPipeline {
+class RENDERER_API IPipeline {
 protected:
 	std::unique_ptr<IRHIPipelineFactory> PipelineFactory;
 	uint32_t VertexBufferStride = 0;
@@ -145,13 +139,23 @@ namespace spirv_cross {
  * AutoPipeline - A pipeline implementation that automatically reflects shader bindings using spirv-cross.
  * Automatically sets up descriptor bindings and vertex attributes from compiled SPIR-V shaders.
  */
-class AutoPipeline : public IPipeline {
+class RENDERER_API AutoPipeline : public IPipeline {
 public:
 	void SetAllShaderBindings(IRHIContext* Context) override;
 
 private:
 	void ReflectShaderBindings(spirv_cross::Compiler& compiler, const spirv_cross::ShaderResources& resources, IRHIPipelineFactory::EPipelineStages stage);
 	void ReflectVertexAttributes(spirv_cross::Compiler& compiler, const spirv_cross::ShaderResources& resources);
+};
+
+struct RendererEnvironment
+{
+	IRHIContext* Context;
+	IRHISwapchain* Swapchain;
+	IRHIRenderPass* RenderPass;
+	IRHIImGUI* ImGUI;
+	RHIFormat SwapchainFormat;
+	ImageExtent3D FrameSize;
 };
 
 /**
@@ -166,11 +170,16 @@ public:
 	// --- Renderer lifecycle interface ---
 
 	/** Create and initialize the renderer with the given viewport dimensions. */
-	virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation = true) = 0;
+	virtual void CreateRenderer(uint32_t Height, uint32_t Width, RHIBackend Backend, bool bEnableValidation = true, std::function<void(ImGuiSharedGlobals*)> EngineUIFunc = nullptr) = 0;
 
+	virtual void CreateResource() {}
 	/** Execute a single render frame. */
 	virtual void Render(float4 ViewPos, RenderControl* control) = 0;
 
 	/** Capture the current frame and save it to the given path. */
 	virtual void CaptureFrame(const std::string& Path) = 0;
+
+	virtual void DrawImGUI() = 0;
+	virtual void GetEnv(RendererEnvironment& OutEnv) = 0;
+	virtual void SetEnv(const RendererEnvironment& InEnv) = 0;
 };
