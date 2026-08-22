@@ -8,3 +8,10 @@ hlsl_generated/
 imgui.ini
 html/
 latex/
+
+# Codex-related
+AGENTS.md
+.codex/
+
+# Local-only files
+.local/
