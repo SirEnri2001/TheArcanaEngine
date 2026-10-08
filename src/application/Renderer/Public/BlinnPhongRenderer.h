@@ -24,6 +24,7 @@ public:
     std::unique_ptr<IRHIBuffer> VertexBuffer;
     std::unique_ptr<IRHIBuffer> IndexBuffer;
     std::vector<int> PrimitiveIndexCounts;
+    std::vector<int> MaterialPrimIndex;
     uint32_t IndexCount = 0;
 
     // Texture resources

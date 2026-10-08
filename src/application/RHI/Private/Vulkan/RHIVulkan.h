@@ -329,8 +329,13 @@ public:
 
 	VkPipeline Pipeline;
 	VkPipelineLayout PipelineLayout;
-	std::vector<VkWriteDescriptorSet> WriteDescriptorSets;
-	VkDescriptorSetLayout DescriptorSetLayout;
+	VkDevice Device = VK_NULL_HANDLE;
+	std::vector<VkWriteDescriptorSet> PendingDescriptorWrites;
+	VkDescriptorSetLayout DescriptorSetLayout = VK_NULL_HANDLE;
+	std::vector<VkDescriptorSetLayoutBinding> DescriptorBindings;
+	std::vector<VkDescriptorPool> DescriptorPools;
+	std::vector<VkDescriptorSet> DescriptorSetPerDrawCall;
+	uint32_t DrawCallCount = 0;
 	RHIVulkanPipelineObject() = default;
 	~RHIVulkanPipelineObject() override = default;
 
@@ -342,7 +347,9 @@ public:
 	virtual void BindVertexBuffer(IRHIBuffer* Buffer, uint32_t Offset, uint32_t BindingIndex) override;
 	virtual void BindIndexBuffer(IRHIBuffer* Buffer, uint32_t Offset) override;
 	void Cleanup(IRHIContext* Context) override;
-	virtual void CopyDescriptors(IRHIContext* Context) override {}
+	virtual void CopyDescriptors(IRHIContext* Context) override;
+	VkDescriptorSet GetDescriptorSet(VkDevice Device);
+	void BindDescriptors(VkDevice Device, VkCommandBuffer CommandBuffer, VkPipelineBindPoint BindPoint);
 
 	void Draw(IRHICommandBuffer* CommandBuffer, uint32_t IndexCount, uint32_t IndexOffset, uint32_t InstanceCount) override;
 	void Dispatch(IRHICommandBuffer* CommandBuffer, uint32_t ThreadGroupX, uint32_t ThreadGroupY, uint32_t ThreadGroupZ) override;

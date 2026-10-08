@@ -153,7 +153,6 @@ void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 	}
 	PhysicalDeviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
 #ifndef __APPLE__
 		VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME,
 #endif
@@ -173,13 +172,6 @@ void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 	CurrentPhysicalDevice.PhysicalDevice = AvailablePhysicalDevices[0];
 	vkGetPhysicalDeviceFeatures(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDFeatures);
 	vkGetPhysicalDeviceProperties(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDProperties);
-	VkPhysicalDeviceProperties2 PDProp2{};
-	VkPhysicalDevicePushDescriptorProperties PushDescriptorProp{};
-	PDProp2.pNext = &PushDescriptorProp;
-	PDProp2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-	PushDescriptorProp.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES;
-	vkGetPhysicalDeviceProperties2(CurrentPhysicalDevice.PhysicalDevice, &PDProp2);
-	Log(PDProp2.properties.deviceName, " supports ", PushDescriptorProp.maxPushDescriptors, " push descriptors ");
 	vkGetPhysicalDeviceMemoryProperties(CurrentPhysicalDevice.PhysicalDevice, &CurrentPhysicalDevice.PDMemoryProperties);
 
 	Log("Select Physical Device: ", CurrentPhysicalDevice.PDProperties.deviceName);
@@ -207,6 +199,7 @@ void RHIVulkanContext::Initialize(const ContextCreateParams& Params)
 		CurrentPhysicalDevice.GraphicsQueueFamilyIndex, CurrentPhysicalDevice.PresentQueueFamilyIndex, PhysicalDeviceExtensions);
 	CreateCommandPool(FrameCommandPool, Device, CurrentPhysicalDevice.GraphicsQueueFamilyIndex);
 	CreateCommandPool(TransientCommandPool, Device, CurrentPhysicalDevice.GraphicsQueueFamilyIndex);
+
 }
 
 void RHIVulkanContext::Cleanup()

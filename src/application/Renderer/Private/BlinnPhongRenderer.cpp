@@ -78,6 +78,9 @@ void BlinnPhongRenderer::LoadGLTFTestScene(const std::string& GltfPath, const st
     VertexBuffer->CopyToBuffer(Env.Context, Mesh.Vertices.data(), (uint32_t)(Mesh.Vertices.size() * sizeof(BlinnPhongVertex)));
     IndexBuffer->CopyToBuffer(Env.Context, Mesh.Indices.data(), (uint32_t)(Mesh.Indices.size() * sizeof(uint32_t)));
 
+    MaterialPrimIndex.resize(Mesh.MaterialPrimIndices.size());
+    std::copy(Mesh.MaterialPrimIndices.begin(), Mesh.MaterialPrimIndices.end(), MaterialPrimIndex.begin());
+
     for (auto& TexFilePath : Mesh.MaterialTextures) {
         // Load Texture
         int texWidth, texHeight, texChannels;
@@ -142,13 +145,13 @@ void BlinnPhongRenderer::DrawPasses(IRHICommandBuffer *CommandBuffer, IRHIFrameB
             Pipeline.PipelineObject->BindVertexBuffer(VertexBuffer.get(), 0, 0);
             Pipeline.PipelineObject->BindIndexBuffer(IndexBuffer.get(), 0);
             int IndexOffset = 0;
-            for (int i = DrewPrimitives; i < std::min(16ul + DrewPrimitives, (unsigned long)PrimitiveIndexCounts.size()); i++) {
-                Pipeline.PipelineObject->SetImageSampler(BaseColorTextures[i].get(), 1);
+            for (int i = DrewPrimitives; i < std::min(256ul, (unsigned long)PrimitiveIndexCounts.size()); i++) {
+                Pipeline.PipelineObject->SetImageSampler(BaseColorTextures[MaterialPrimIndex[i]].get(), 1);
                 Pipeline.PipelineObject->Draw(CommandBuffer, PrimitiveIndexCounts[i], IndexOffset, 1);
                 IndexOffset += PrimitiveIndexCounts[i];
             }
-            DrewPrimitives = std::min(16ul + DrewPrimitives, (unsigned long)PrimitiveIndexCounts.size());
-
+            DrewPrimitives = std::min(256ul + DrewPrimitives, (unsigned long)PrimitiveIndexCounts.size());
+            Log("Drew ", DrewPrimitives, " Primitives");
             // Env.RenderPass->EndRenderPass(Cmd.get());
             // Cmd->EndCommandBuffer();
             // Cmd->SubmitCommandBuffer(Env.Context);

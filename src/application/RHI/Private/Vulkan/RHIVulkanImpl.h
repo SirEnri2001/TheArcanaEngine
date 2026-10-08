@@ -24,19 +24,6 @@ public:
         return myvkCreateDebugUtilsMessengerEXT(instance, pCreateInfo, pAllocator, pMessenger);
     }
 
-    VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
-        VkCommandBuffer commandBuffer,
-        VkPipelineBindPoint pipelineBindPoint,
-        VkPipelineLayout layout,
-        uint32_t set,
-        uint32_t descriptorWriteCount,
-        const VkWriteDescriptorSet* pDescriptorWrites)
-    {
-        static auto myvkCmdPushDescriptorSetKHR = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetInstanceProcAddr(
-            Instance, "vkCmdPushDescriptorSetKHR"));
-        return myvkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount,
-            pDescriptorWrites);
-    }
 };
 
 extern VulkanAPILoader APILoader;
@@ -158,10 +145,6 @@ void CreateSampler(VkSampler& OutSampler, VkDevice Device, float maxSamplerAniso
 
 void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size, VkCommandBuffer CommandBuffer);
 
-void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount = 16, uint32_t CombinedImageSamplerCount = 16);
-
-void CreateDescriptorSet(VkDescriptorSet& OutDescriptorSet, std::vector<VkWriteDescriptorSet>& InOutWriteDescriptorSets,
-    VkDevice Device, VkDescriptorPool DescriptorPool, const VkDescriptorSetLayout& DescriptorSetLayout);
 
 VkSampleCountFlagBits GetMaxUsableSampleCount(VkPhysicalDevice& PhysicalDevice);
 

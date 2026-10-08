@@ -23,16 +23,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDebugUtilsMessengerEXT(
 	return APILoader.vkCreateDebugUtilsMessengerEXT(instance, pCreateInfo, pAllocator, pMessenger);
 }
 
-VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSetKHR(
-    VkCommandBuffer                             commandBuffer,
-    VkPipelineBindPoint                         pipelineBindPoint,
-    VkPipelineLayout                            layout,
-    uint32_t                                    set,
-    uint32_t                                    descriptorWriteCount,
-    const VkWriteDescriptorSet* pDescriptorWrites) {
-	return APILoader.vkCmdPushDescriptorSetKHR(commandBuffer, pipelineBindPoint, layout, set, descriptorWriteCount, pDescriptorWrites);
-}
-
 // Implementation helpers
 void CreateCommandBuffer(VkCommandBuffer& OutCommandBuffer, VkDevice Device, VkCommandPool CommandPool);
 
@@ -575,7 +565,6 @@ void CreateDescriptorSetLayout(VkDescriptorSetLayout& OutDescriptorSetLayout, co
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.bindingCount = static_cast<uint32_t>(DescSetLayoutBindings.size());
     layoutInfo.pBindings = DescSetLayoutBindings.data();
-    layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT;
 
     if (vkCreateDescriptorSetLayout(Device, &layoutInfo, nullptr, &OutDescriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
@@ -964,49 +953,6 @@ void CopyBuffer(VkBuffer SrcBuffer, VkBuffer DstBuffer, VkDeviceSize Size, VkCom
     vkCmdCopyBuffer(CommandBuffer, SrcBuffer, DstBuffer, 1, &copyRegion);
 }
 
-
-void CreateDescriptorPool(VkDescriptorPool& OutDescriptorPool, VkDevice Device, uint32_t UniformBufferCount, uint32_t CombinedImageSamplerCount) {
-    std::vector<VkDescriptorPoolSize> poolSizes{};
-
-    VkDescriptorPoolSize UniformDescPoolSize{};
-    UniformDescPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    UniformDescPoolSize.descriptorCount = UniformBufferCount;
-    poolSizes.push_back(UniformDescPoolSize);
-
-    VkDescriptorPoolSize SamplerDescPoolSize{};
-    SamplerDescPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    SamplerDescPoolSize.descriptorCount = CombinedImageSamplerCount;
-    poolSizes.push_back(SamplerDescPoolSize);
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-    poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = 16;
-
-    if (vkCreateDescriptorPool(Device, &poolInfo, nullptr, &OutDescriptorPool) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor pool!");
-    }
-}
-
-void CreateDescriptorSet(VkDescriptorSet& OutDescriptorSet, std::vector<VkWriteDescriptorSet>& InOutWriteDescriptorSets, VkDevice Device, VkDescriptorPool DescriptorPool, const VkDescriptorSetLayout& DescriptorSetLayout) {
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = DescriptorPool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &DescriptorSetLayout;
-
-    if (vkAllocateDescriptorSets(Device, &allocInfo, &OutDescriptorSet) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate descriptor sets!");
-    }
-
-    for (auto& WriteDesc : InOutWriteDescriptorSets)
-    {
-        WriteDesc.dstSet = OutDescriptorSet;
-    }
-
-    vkUpdateDescriptorSets(Device, InOutWriteDescriptorSets.size(), InOutWriteDescriptorSets.data(), 0, nullptr);
-}
 
 void CreateMipmapForImage(VkCommandBuffer& InCommandBuffer, VkImage Image, int32_t TexWidth, int32_t TexHeight, uint32_t MipmapLevel)
 {
