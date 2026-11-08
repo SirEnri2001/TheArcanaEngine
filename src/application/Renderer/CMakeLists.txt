@@ -9,6 +9,7 @@ add_library(Renderer
 ./Public/PBRRenderer.h
 ./Private/PBRRenderer.cpp
 ./Public/PathTraceRenderer.h
+./Public/PathTraceScene.h
 ./Private/PathTraceRenderer.cpp
 ./Public/BlinnPhongRenderer.h
 ./Private/BlinnPhongRenderer.cpp

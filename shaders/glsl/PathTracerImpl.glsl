@@ -7,6 +7,7 @@ SurfaceIntersect NewSurfaceIntersect(){
     Inters.baseColor = vec3(0., 0., 0.);
     Inters.emissive = vec3(0., 0., 0.);
     Inters.worldNormal = vec3(0., 0., 0.);
+    Inters.faceNormal = vec3(0., 0., 1.);
     Inters.texcoord = vec2(0., 0.);
     Inters.objId = -1;
     return Inters;
@@ -106,6 +107,7 @@ void SampleDirectLight(in vec2 Xi, in ModelUniform ubo_light, in vec3 rayOrigin,
     Inters.baseColor = vec3(0., 0., 0.);
     Inters.emissive = vec3(0., 0., 0.);
     Inters.worldNormal = vec3(0., 0., 0.);
+    Inters.faceNormal = vec3(0., 0., 1.);
     Inters.texcoord = vec2(0., 0.);
 
     RayIntersect(rayOrigin, rayDirection, Inters);

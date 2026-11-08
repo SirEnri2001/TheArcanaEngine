@@ -22,6 +22,7 @@ void RayIntersectBox(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, in 
             // Normal calculation: pick the axis with the hit point near 1.0
             vec3 localNormal = step(0.999, abs(lp)) * sign(lp);
             IntersectInfo.worldNormal = normalize(mat3(ubo.modelInvTranspose) * localNormal);
+            IntersectInfo.faceNormal = IntersectInfo.worldNormal;
         }
     }
 }
@@ -40,6 +41,7 @@ void RayIntersectPlane(in ModelUniform ubo, in vec3 rayOrigin, in vec3 rayDir, i
             IntersectInfo.t = t;
             IntersectInfo.baseColor = ubo.color;
             IntersectInfo.worldNormal = normalize(mat3(ubo.modelInvTranspose) * vec3(0., 0., 1.));
+            IntersectInfo.faceNormal = IntersectInfo.worldNormal;
             IntersectInfo.emissive = ubo.emissive;
             IntersectInfo.pointIntersectWorld = (ubo.model * vec4(Intersect, 1.0)).xyz;
         }
@@ -68,7 +70,10 @@ bool RayIntersectTriangle(vec3 Pa, vec3 Pb, vec3 Pc, vec3 rayOrigin, vec3 rayDir
 
     if (t > 0.0 && t < IntersectInfo.t) {
         IntersectInfo.t = t;
+        // Flat geometric normal of this triangle, in the mesh's LOCAL space.
+        // RayIntersectMeshBVH transforms it to world space before returning.
         IntersectInfo.worldNormal = normalize(cross(edge1, edge2));
+        IntersectInfo.faceNormal = IntersectInfo.worldNormal;
         IntersectInfo.pointIntersectWorld = rayOrigin + t * rayDir;
         return true;
     }
@@ -115,7 +120,11 @@ void RayIntersectMeshBVH(in out ModelUniform ubo, in vec3 rayOrigin, in vec3 ray
                 vec3 v1 = b_MeshVertices.Vertices[3 * i + 1].Position;
                 vec3 v2 = b_MeshVertices.Vertices[3 * i + 2].Position;
                 if (RayIntersectTriangle(v0, v1, v2, rayOrigin, rayDir, IntersectInfo)) {
-                    IntersectInfo.baseColor = vec3(0.1, 0.1, 0.1); // Default mesh color
+                    // All three vertices of a primitive share one material, so
+                    // v0.Color is enough. glTF meshes store a per-material
+                    // average texture colour here; OBJ meshes leave it at 0 and
+                    // the textured path below is used instead.
+                    IntersectInfo.baseColor = b_MeshVertices.Vertices[3 * i + 0].Color;
                     IntersectInfo.emissive = vec3(0., 0., 0.);
                     vec3 P = IntersectInfo.pointIntersectWorld;
                     float S = length(cross(v2 - v0, v1 - v0));
@@ -149,8 +158,11 @@ void RayIntersectMeshBVH(in out ModelUniform ubo, in vec3 rayOrigin, in vec3 ray
         if (world_t < GlobalIntersectInfo.t){
             GlobalIntersectInfo.t = world_t;
             GlobalIntersectInfo.pointIntersectWorld = worldTarget;
-            GlobalIntersectInfo.baseColor = texture(meshTex, IntersectInfo.texcoord).xyz;
+            GlobalIntersectInfo.baseColor = (uniforms.useVertexColor != 0)
+                ? IntersectInfo.baseColor
+                : texture(meshTex, IntersectInfo.texcoord).xyz;
             GlobalIntersectInfo.worldNormal = normalize(vec3(ubo.modelInvTranspose * vec4(IntersectInfo.worldNormal, 0.)));
+            GlobalIntersectInfo.faceNormal = normalize(vec3(ubo.modelInvTranspose * vec4(IntersectInfo.faceNormal, 0.)));
             GlobalIntersectInfo.emissive = vec3(0., 0., 0.);
             GlobalIntersectInfo.texcoord = IntersectInfo.texcoord;
         }

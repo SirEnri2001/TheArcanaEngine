@@ -91,6 +91,9 @@ VkImageStateDesc RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState InState
 		StateDesc.PipelineStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 		break;
 	case RHIResourceState::SHADER_READWRITE:
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		StateDesc.Access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 		break;
 	case RHIResourceState::COLOR_ATTACHMENT:
 		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -103,6 +106,12 @@ VkImageStateDesc RHIVulkanPlatformSupport::GetStateDesc(RHIResourceState InState
 		StateDesc.PipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		break;
 	case RHIResourceState::COPY_SRC:
+		// CopyFromTexture() transitions here before vkCmdCopyImageToBuffer.
+		// Leaving this empty produced a zero dstStageMask (VUID-03937) and an
+		// UNDEFINED newLayout, which aborts any run with validation enabled.
+		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		StateDesc.Access = VK_ACCESS_TRANSFER_READ_BIT;
+		StateDesc.PipelineStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		break;
 	case RHIResourceState::COPY_DST:
 		StateDesc.ImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -407,8 +416,10 @@ void RHIVulkanSwapchain::PresentFrameAndRelease(IRHIContext* Context, IRHIComman
 		submitInfo.pSignalSemaphores = &RenderFinishSemaphore;
 
 
-		if (vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence) != VK_SUCCESS) {
-			throw std::runtime_error("failed to submit draw command buffer!");
+		VkResult SubmitResult = vkQueueSubmit(VulkanContext->GraphicsQueue, 1, &submitInfo, InFlightFence);
+		if (SubmitResult != VK_SUCCESS) {
+			throw std::runtime_error("failed to submit draw command buffer! VkResult=" +
+				std::to_string(static_cast<int>(SubmitResult)));
 		}
 	}
 
@@ -553,6 +564,10 @@ void RHIVulkanCommandBuffer::Cleanup(IRHIContext* Context)
 	if (CommandBuffer) {
 		vkFreeCommandBuffers(Device, CommandPool, 1, &CommandBuffer);
 		vkDestroyCommandPool(Device, CommandPool, nullptr);
+		// The destructor frees these too; without nulling, an explicit
+		// Cleanup() + destruction is a double free (seen on frame capture).
+		CommandBuffer = VK_NULL_HANDLE;
+		CommandPool = VK_NULL_HANDLE;
 	}
 }
 

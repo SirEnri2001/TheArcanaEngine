@@ -27,6 +27,11 @@ find_package(Vulkan REQUIRED)
 #set(LIBRARIES "glfw;${VULKAN_LIBRARY}")
 set(LIBRARIES "glfw;Vulkan::Vulkan")
 
+if(MINGW)
+  # GNU ld ignores imgui's #pragma comment(lib, "dwmapi" / "gdi32") directives.
+  list(APPEND LIBRARIES dwmapi gdi32)
+endif()
+
 # Use vulkan headers from glfw:
 include_directories(${GLFW_DIR}/deps)
 

@@ -3,6 +3,7 @@
 #define RHI_IMPLEMENT
 #include "RHI.h"
 #include "RHID3D12Impl.h"
+#include "RHID3D12MinGWCompat.h"
 
 #include "spirv_hlsl.hpp"
 
@@ -10,6 +11,13 @@
 #include <d3dcompiler.h>
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
+
+// _uuidof() is MSVC-only; MinGW-w64 resolves the IID from dxguid instead.
+#ifdef _MSC_VER
+#define RHI_IID_ID3D12DEVICE RHI_IID_ID3D12DEVICE
+#else
+#define RHI_IID_ID3D12DEVICE IID_ID3D12Device
+#endif
 
 // Helper function for acquiring the first available hardware adapter that supports Direct3D 12.
 // If no such adapter can be found, *ppAdapter will be set to nullptr.
@@ -46,7 +54,7 @@ void GetHardwareAdapter(
 
             // Check to see whether the adapter supports Direct3D 12, but don't create the
             // actual device yet.
-            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr)))
+            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, RHI_IID_ID3D12DEVICE, nullptr)))
             {
                 break;
             }
@@ -69,7 +77,7 @@ void GetHardwareAdapter(
 
             // Check to see whether the adapter supports Direct3D 12, but don't create the
             // actual device yet.
-            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr)))
+            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, RHI_IID_ID3D12DEVICE, nullptr)))
             {
                 break;
             }

@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "RHID3D12.h"
+#include "RHID3D12MinGWCompat.h"
 
 #include <d3dcompiler.h>
 
@@ -13,6 +14,8 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <tchar.h>
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include "CoreLog.inl"
@@ -34,12 +37,28 @@ static const int APP_SRV_HEAP_SIZE = 64;
 void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap, bool hasGpuHandle)
 {
     Heap = heap;
-    D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
+    D3D12_DESCRIPTOR_HEAP_DESC desc{};
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandleStart{};
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandleStart{};
+#if defined(_MSC_VER) || !defined(_WIN32)
+    // Windows SDK / DirectX-Headers expose by-value getters on MSVC.
+    desc = heap->GetDesc();
+    cpuHandleStart = Heap->GetCPUDescriptorHandleForHeapStart();
+    if (hasGpuHandle)
+        gpuHandleStart = Heap->GetGPUDescriptorHandleForHeapStart();
+#else
+    // DirectX-Headers uses the C-style ABI (out parameters) for non-MSVC
+    // compilers on Windows, e.g. MinGW-w64.
+    heap->GetDesc(&desc);
+    Heap->GetCPUDescriptorHandleForHeapStart(&cpuHandleStart);
+    if (hasGpuHandle)
+        Heap->GetGPUDescriptorHandleForHeapStart(&gpuHandleStart);
+#endif
     HeapType = desc.Type;
-    HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
+    HeapStartCpu = cpuHandleStart;
     if (hasGpuHandle)
     {
-        HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+        HeapStartGpu = gpuHandleStart;
         bAllocateGPU = true;
     }
     HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
@@ -824,7 +843,7 @@ void RHID3D12PipelineFactory::InitializePipelineObject(IRHIPipelineObject* OutPi
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         psoDesc.NumRenderTargets = D3D12RenderPassResource->ColorRTFormats.size();
         DXGI_FORMAT* PSOColorFormats = psoDesc.RTVFormats;
-        memcpy(PSOColorFormats, D3D12RenderPassResource->ColorRTFormats.data(), min(D3D12RenderPassResource->ColorRTFormats.size(), 8));
+        memcpy(PSOColorFormats, D3D12RenderPassResource->ColorRTFormats.data(), std::min(D3D12RenderPassResource->ColorRTFormats.size(), size_t(8)));
         psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         psoDesc.SampleDesc.Count = Samplers.size();
         ThrowIfFailed(D3D12Context->m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&D3D12PipelineObject->m_pipelineState)));

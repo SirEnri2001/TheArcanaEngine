@@ -27,6 +27,7 @@ add_library(RHI
 ./Private/RHID3D12.cpp
 ./Private/RHID3D12Impl.h
 ./Private/RHID3D12Impl.cpp
+./Private/RHID3D12MinGWCompat.h
 
 # Window Extension
 ./Private/RHIWindowExtension.cpp
@@ -67,9 +68,22 @@ PRIVATE ./Private
 
 add_dependencies(RHI CoreMath CoreLog)
 
+if(MINGW)
+    # MinGW-w64 defaults to WINVER=0x0502, which hides SetProcessDpiAwarenessContext.
+    target_compile_definitions(RHI PRIVATE WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+
+    # RHID3D12.cpp takes the address of CD3DX12_* temporaries. MSVC accepts this;
+    # strict GCC rejects it, so relax the diagnostic for this translation unit only.
+    set_source_files_properties(./Private/RHID3D12.cpp
+        PROPERTIES COMPILE_OPTIONS "-fpermissive")
+endif()
+
 if(WIN32)
 target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog  DirectX-Headers d3d12 dxgi d3dcompiler dxguid spirv-cross-hlsl)
-target_link_libraries(RHI d3d12.lib)
+if(MSVC)
+    # MSVC import library name; MinGW uses libd3d12.a via the plain "d3d12" above.
+    target_link_libraries(RHI d3d12.lib)
+endif()
 else()
     target_link_libraries(RHI Vulkan::Vulkan imgui glfw CoreLog  DirectX-Headers spirv-cross-hlsl)
 endif()

@@ -24,6 +24,14 @@ public:
     void Run();
     void Shutdown();
 
+    // Initial PathTrace scene for the ImGui dropdown (also exposed as --scene).
+    void SetPathTraceScene(int SceneIndex);
+    void SetSponzaLOD(int TriangleStride);
+    // 0 = path traced, 1 = flat triangle normals, 2 = normals + depth cue
+    void SetDebugMode(int Mode);
+    // Edge length of one compute tile in pixels (snapped to 64/128/256/512).
+    void SetTileSize(int TileSize);
+
 private:    
     static void ProcessInput(ImGuiSharedGlobals* ImGlobals);
 

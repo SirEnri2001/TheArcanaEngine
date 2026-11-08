@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <array>
 #include <stdexcept>
@@ -44,6 +45,10 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
     if (messageSeverity== VkDebugUtilsMessageSeverityFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         Error("[Vulkan] ", pCallbackData->pMessage);
+        // CoreLog writes a bare '\n' (no flush) and __debugbreak() aborts the
+        // process immediately, which silently discards the buffered message.
+        // Flush here so validation errors are actually visible in logs.
+        std::cout.flush();
 #ifdef _WIN32
         __debugbreak();
 #else
@@ -860,6 +865,12 @@ void TransitionImageLayout(
     {
         return;
     }
+    // Some combined RHIResourceState flag values have no GetStateDesc() case
+    // and therefore carry a zero stage mask. Without synchronization2 a zero
+    // src/dstStageMask is a spec violation, so fall back to the widest valid
+    // stages instead of letting the validation layer abort the process.
+    if (srcPipelineStageMask == 0) srcPipelineStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    if (dstPipelineStageMask == 0) dstPipelineStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;

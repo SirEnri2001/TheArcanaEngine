@@ -16,6 +16,11 @@ layout(std140, binding = 1) readonly buffer UniformBuffer{
     float roughness;
     float prob_lambert;
     int enableNEE;
+    int useVertexColor;  // 0: sample meshTex, 1: use per-vertex material colour
+    int debugMode;       // 0: path trace, 1: triangle normal, 2: normal + depth
+    // std140 gives an ivec4 a 16-byte base alignment, so after the trailing
+    // ints above this member sits at offset 128 and the block becomes 144 B.
+    ivec4 tileRect;      // xy = tile origin, zw = clamped tile size, in pixels
 } uniforms;
 
 struct ModelUniform {
@@ -32,6 +37,7 @@ struct SurfaceIntersect{
     vec3 pointIntersectWorld;
     vec3 baseColor;
     vec3 worldNormal;
+    vec3 faceNormal;   // geometric (flat) triangle normal in world space
     vec3 emissive;
     vec2 texcoord;
     int objId;
@@ -84,17 +90,26 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 void main() 
 {
-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    // Only one tile is dispatched per frame, so gl_GlobalInvocationID is
+    // tile-local. Map it back to full-screen pixel coordinates before doing
+    // any image load/store or deriving the per-pixel RNG seed.
+    ivec2 pixel = uniforms.tileRect.xy + ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(outImage);
-    uint tid = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * size.x;
+    if (gl_GlobalInvocationID.x >= uint(uniforms.tileRect.z) ||
+        gl_GlobalInvocationID.y >= uint(uniforms.tileRect.w)) {
+        return;
+    }
+    if (pixel.x >= size.x || pixel.y >= size.y) {
+        return;
+    }
+    // Use the global pixel index, not the tile-local invocation index, or
+    // every tile would generate the exact same noise sequence.
+    uint tid = uint(pixel.x) + uint(pixel.y) * uint(size.x);
     vec2 size_f = vec2(size);
     vec2 pixel_f = vec2(pixel);
     vec2 perturb = SampleXi(11223344, tid+uniforms.frameId);
     pixel_f += perturb*0.5;
     vec4 outColor = vec4(0., 0., 0., 1.);
-    if(pixel.x>size.x || pixel.y > size.y){
-        return;
-    }
     // sensor size 32mm
     // focal length 45mm
     // fov = 2 * atan(sensor_size/2/focal_length)
@@ -120,6 +135,24 @@ void main()
     vec3 w_o = vec3(camToWorld * vec4(rayCamSpaceDir, 0.));
     vec4 eye_pos = camToWorld * vec4(0., 0., 0., 1.);
     vec3 rayWorldOrigin = vec3(eye_pos);
+
+    // Debug shading: one primary ray, no bounces, no NEE, no accumulation.
+    // The colour IS the flat triangle normal, so geometry / winding / scale /
+    // camera placement can be inspected directly.
+    if (uniforms.debugMode != 0) {
+        SurfaceIntersect dbg = NewSurfaceIntersect();
+        RayIntersect(rayWorldOrigin, w_o, dbg);
+        vec3 dbgColor = vec3(0.03, 0.035, 0.05); // miss / background
+        if (dbg.t < 1e29) {
+            dbgColor = normalize(dbg.faceNormal) * 0.5 + 0.5;
+            if (uniforms.debugMode == 2) {
+                dbgColor *= clamp(1.0 - dbg.t / 60.0, 0.25, 1.0); // depth cue
+            }
+        }
+        imageStore(outImage, pixel, vec4(dbgColor, 1.0));
+        return;
+    }
+
     vec3 throughput = vec3(1.0);
     vec4 worldPoint = vec4(0.0, 0.0, 0.0, 1.0);
     int lightObjIndex = 0;
@@ -264,7 +297,10 @@ void main()
     // scale the outColor
     outColor.xyz *= 5.;
     if(uniforms.frameId>0 && inColor.x==inColor.x){
-        outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId));
+        // frameId is the number of COMPLETED sweeps, so this is sample
+        // (frameId + 1). A 1/(frameId+1) weight gives a correct running
+        // average; the old 1/frameId replaced the whole image on sweep 1.
+        outColor = mix(inColor, outColor, 1.0 / float(uniforms.frameId + 1));
         outColor.w = 1.0;
     }
     imageStore(outImage, pixel, outColor);

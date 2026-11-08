@@ -32,6 +32,10 @@ struct RenderControl {
 	bool RenderingPaused = false;
 	bool ShaderCompileHasError = false;
 	float4x4 CameraTransformLocalToWorld;
+	// Source of truth for navigation. CameraTransformLocalToWorld's rotation is
+	// rebuilt from this quaternion every frame; the matrix stays the GPU-facing
+	// representation consumed by the renderers.
+	glm::quat CameraOrientation = glm::quat(1.f, 0.f, 0.f, 0.f);
 	float4x4 CameraLookAt;
 	float4x4 CameraPersp;
 	bool isClick = false;
@@ -39,7 +43,9 @@ struct RenderControl {
 	int maxFrames = -1;
 	int currentFrame = 0;
 	bool enableGamma = true;
-	float movingSpeed = 0.5;
+	float movingSpeed = 0.5f;         // world units per second
+	float mouseSensitivity = 0.001f;  // radians per pixel
+	bool bMouseDragging = false;      // drops the delta spike on the frame a drag starts
 	bool useSinglePass = true;
 
 	// Pipeline selection

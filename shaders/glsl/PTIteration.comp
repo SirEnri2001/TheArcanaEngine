@@ -16,6 +16,11 @@ layout(std140, binding = 1) readonly buffer UniformBuffer{
     float roughness;
     float prob_lambert;
     int enableNEE;
+    int useVertexColor;  // 0: sample meshTex, 1: use per-vertex material colour
+    int debugMode;       // 0: path trace, 1: triangle normal, 2: normal + depth
+    // std140 gives an ivec4 a 16-byte base alignment, so after the trailing
+    // ints above this member sits at offset 128 and the block becomes 144 B.
+    ivec4 tileRect;      // xy = tile origin, zw = clamped tile size, in pixels
 } uniforms;
 
 struct ModelUniform {
@@ -32,6 +37,7 @@ struct SurfaceIntersect{
     vec3 pointIntersectWorld;
     vec3 baseColor;
     vec3 worldNormal;
+    vec3 faceNormal;   // geometric (flat) triangle normal in world space
     vec3 emissive;
     vec2 texcoord;
     int objId;
@@ -98,13 +104,45 @@ layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 void main() 
 {
-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    // Only one tile is dispatched per frame, so gl_GlobalInvocationID is
+    // tile-local. Map it back to full-screen pixel coordinates; the RayState
+    // buffer is indexed by the global pixel index below.
+    ivec2 pixel = uniforms.tileRect.xy + ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(outImage);
+    if (gl_GlobalInvocationID.x >= uint(uniforms.tileRect.z) ||
+        gl_GlobalInvocationID.y >= uint(uniforms.tileRect.w)) {
+        return;
+    }
     if(pixel.x >= size.x || pixel.y >= size.y){
         return;
     }
-    
-    uint tid = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * size.x;
+
+    // Same debug shading as Test.comp, kept in sync so both pipelines behave
+    // identically. One primary ray only; the state machine is bypassed.
+    if (uniforms.debugMode != 0) {
+        vec2 size_f = vec2(size);
+        vec2 pixel_f = vec2(pixel);
+        float halffov = atan(0.032 / 2. / 0.045);
+        float cameraDistance = 1. / tan(halffov);
+        vec3 ndc = vec3(pixel_f.x / uniforms.screenres.x * 2 - 1, 1 - pixel_f.y / uniforms.screenres.y * 2, 0.);
+        vec3 rayUnnorm = vec3(ndc.x, ndc.y / (size_f.x / size_f.y), cameraDistance);
+        vec3 dir = normalize(rayUnnorm);
+        dir.xyz = dir.zxy;
+        dir.y *= -1.;
+        vec3 worldDir = normalize(vec3(uniforms.camToWorld * vec4(dir, 0.)));
+        vec3 origin = vec3(uniforms.camToWorld * vec4(0., 0., 0., 1.));
+        SurfaceIntersect dbg = NewSurfaceIntersect();
+        RayIntersect(origin, worldDir, dbg);
+        vec3 dbgColor = vec3(0.03, 0.035, 0.05);
+        if (dbg.t < 1e29) {
+            dbgColor = normalize(dbg.faceNormal) * 0.5 + 0.5;
+            if (uniforms.debugMode == 2) dbgColor *= clamp(1.0 - dbg.t / 60.0, 0.25, 1.0);
+        }
+        imageStore(outImage, pixel, vec4(dbgColor, 1.0));
+        return;
+    }
+
+    uint tid = uint(pixel.x) + uint(pixel.y) * uint(size.x);
     RayState state = b_RayState.states[tid];
     
     vec4 inColor = imageLoad(outImage, pixel);
@@ -298,7 +336,7 @@ void main()
     if (state.iter_etc.y == 0 || state.iter_etc.x >= uniforms.totalIters) {
         vec3 finalColor = state.accumulatedColor.xyz * 5.0; // matching scale in original Test.comp
         if(uniforms.frameId > 0){
-            vec3 blended = mix(inColor.xyz, finalColor, 1.0 / float(uniforms.frameId));
+            vec3 blended = mix(inColor.xyz, finalColor, 1.0 / float(uniforms.frameId + 1));
             imageStore(outImage, pixel, vec4(blended, 1.0));
         } else {
             imageStore(outImage, pixel, vec4(finalColor, 1.0));

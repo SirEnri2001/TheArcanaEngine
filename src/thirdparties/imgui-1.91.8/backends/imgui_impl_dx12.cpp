@@ -57,6 +57,17 @@
 #pragma comment(lib, "d3dcompiler") // Automatically link with d3dcompiler.lib as we are using D3DCompile() below.
 #endif
 
+// MinGW-w64's d3d12.h only declares PFN_D3D12_SERIALIZE_VERSIONED_ROOT_SIGNATURE.
+// Provide the non-versioned function pointer typedef used below (the matching
+// D3D12SerializeRootSignature export is declared by the MinGW import library).
+#if defined(__MINGW32__) && !defined(PFN_D3D12_SERIALIZE_ROOT_SIGNATURE)
+typedef HRESULT (WINAPI* PFN_D3D12_SERIALIZE_ROOT_SIGNATURE)(
+    const D3D12_ROOT_SIGNATURE_DESC* pRootSignature,
+    D3D_ROOT_SIGNATURE_VERSION Version,
+    ID3DBlob** ppBlob,
+    ID3DBlob** ppErrorBlob);
+#endif
+
 // DirectX12 data
 struct ImGui_ImplDX12_RenderBuffers;
 
